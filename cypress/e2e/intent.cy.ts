@@ -4,7 +4,7 @@ const clickRoute = (route: string) => {
 
 describe('Privacy-First Intent Sandbox', () => {
   beforeEach(() => {
-    cy.visit('sandbox/index.html', {
+    cy.visit('/sandbox/index.html', {
       onBeforeLoad: (win) => {
         win.localStorage.clear();
       }
