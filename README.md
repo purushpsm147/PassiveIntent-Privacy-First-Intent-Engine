@@ -1,131 +1,178 @@
 # Privacy-First Intent Engine
 
-A lightweight TypeScript SDK for modeling user navigation intent entirely on-device.
-It combines a Bloom filter for state presence checks and a sparse Markov graph for
-transition modeling, entropy monitoring, and trajectory anomaly detection.
+A lightweight TypeScript SDK for on-device intent modeling.
+It combines a Bloom filter for fast membership checks and a sparse Markov graph for transition learning, entropy signals, and trajectory anomaly detection.
 
-## Features
+## Why this library
 
-- **Local-first state modeling**: no network requests required for inference.
-- **Compact memory profile**:
-  - Bloom filter for fast "seen state" checks.
-  - Sparse graph representation for state transitions.
-- **Behavior signals**:
-  - High-entropy navigation detection.
-  - Baseline trajectory likelihood threshold detection.
-- **Persistence support**:
-  - Automatic `localStorage` snapshot/restore.
-  - Debounced persistence to reduce UI overhead.
+- Local-first inference: no network calls required.
+- SSR-safe runtime: browser globals are behind adapters.
+- Bounded growth: LFU-style graph pruning prevents unbounded state expansion.
+- Efficient persistence: binary graph encoding reduces serialization overhead.
 
-## Core API
+## Install
 
-### `BloomFilter`
+```bash
+npm install privacy-first-intent-engine
+```
 
-- `add(item: string)`
-- `check(item: string): boolean`
-- `toBase64(): string`
-- `BloomFilter.fromBase64(base64, config)`
+## Quick usage
 
-### `MarkovGraph`
+```ts
+import {
+  IntentManager,
+  MarkovGraph,
+  BrowserStorageAdapter,
+  BrowserTimerAdapter,
+} from 'privacy-first-intent-engine';
 
-- `ensureState(state): number`
-- `incrementTransition(fromState, toState)`
-- `getProbability(fromState, toState)`
-- `entropyForState(state)`
-- `normalizedEntropyForState(state)`
-- `getQuantizedRow(state)`
-- `getQuantizedProbability(fromState, toState)`
-- `toJSON()` / `MarkovGraph.fromJSON(data)`
-- `MarkovGraph.logLikelihoodTrajectory(baseline, sequence)`
+const baseline = new MarkovGraph();
+baseline.incrementTransition('/home', '/search');
+baseline.incrementTransition('/search', '/product');
 
-### `IntentManager`
+const intent = new IntentManager({
+  storageKey: 'ui-telepathy',
+  persistDebounceMs: 1500,
+  baseline: baseline.toJSON(),
+  graph: {
+    highEntropyThreshold: 0.75,
+    divergenceThreshold: 2.0,
+    maxStates: 500,
+  },
+  storage: new BrowserStorageAdapter(),
+  timer: new BrowserTimerAdapter(),
+  onError: (err) => {
+    // quota/security persistence failures land here
+    console.warn('Intent persistence error:', err.message);
+  },
+});
 
-- `track(state)` records the latest state and transition.
-- `hasSeen(state)` checks Bloom filter membership.
-- `on(event, listener)` subscribes to SDK events:
-  - `state_change`
-  - `high_entropy`
-  - `trajectory_anomaly`
-- `exportGraph()` exports transition graph JSON.
-- `flushNow()` forces immediate persistence.
+intent.on('state_change', ({ from, to }) => {
+  console.log('state_change', from, '=>', to);
+});
 
+intent.on('high_entropy', (signal) => {
+  console.log('high_entropy', signal.state, signal.normalizedEntropy);
+});
 
-### Anomaly scoring semantics
+intent.on('trajectory_anomaly', (signal) => {
+  console.log('trajectory_anomaly', signal.zScore);
+});
 
-Trajectory anomaly detection now uses only baseline-model trajectory likelihood:
+intent.track('/home');
+intent.track('/search');
+intent.track('/product');
 
-- `expectedAvgLL = MarkovGraph.logLikelihoodTrajectory(baseline, trajectory, smoothingEpsilon) / steps`
-- Trigger when `expectedAvgLL <= divergenceThreshold`.
+// force immediate save (optional)
+intent.flushNow();
+```
 
-`divergenceThreshold` is therefore an **absolute** negative log-likelihood threshold (nats per step),
-not a live-vs-baseline difference score.
+## API highlights
 
-Default graph tuning:
+### BloomFilter
 
-- `smoothingEpsilon = 0.01`
-- `divergenceThreshold = -2.0`
+- `BloomFilter.computeOptimal(expectedItems, targetFPR)` computes tuned `bitSize` and `hashCount`.
+- `estimateCurrentFPR(insertedItemsCount)` estimates live false-positive rate.
+- `add(item)` and `check(item)` provide O(k) membership operations.
 
-## Development
+### MarkovGraph
 
-### Install dependencies
+- Sparse transition storage with state-index mapping.
+- `prune()` applies LFU-style eviction when `maxStates` is exceeded.
+- `toBinary()` / `MarkovGraph.fromBinary()` provide compact binary persistence.
+- `toJSON()` / `fromJSON()` remain available for baseline transport and tooling compatibility.
+
+### IntentManager
+
+- `track(state)` updates Bloom + graph + event signals.
+- Debounced persistence with adapter-based storage/timers.
+- `persist()` performs graph pruning before snapshot.
+- Restores from binary payload first, then legacy JSON payload fallback.
+
+## Design decisions (brief)
+
+- **Isomorphic adapters**: direct `window`/`localStorage` usage is avoided in core flow to keep SSR safe.
+- **Memory bounds by default**: `maxStates` defaults to `500`; low-frequency states are pruned first.
+- **Binary graph serialization**: reduces main-thread pressure compared to deep JSON graph snapshots.
+- **Compatibility-first migration**: restore supports both new binary payloads and legacy JSON payloads.
+- **Predictable anomaly math**:
+  - entropy signal from normalized outgoing distribution,
+  - trajectory anomaly from baseline log-likelihood window and optional z-score calibration.
+
+## Logic flow (brief)
+
+On each `track(state)`:
+
+1. Add state to Bloom filter.
+2. Add transition from previous state to current state.
+3. Evaluate entropy signal (after minimum sample gate).
+4. Evaluate trajectory anomaly (after minimum window gate and baseline availability).
+5. Emit `state_change`.
+6. Schedule debounced persistence.
+
+During persistence:
+
+1. Prune graph if state count exceeds limit.
+2. Serialize graph to binary.
+3. Encode binary to base64 and store alongside Bloom snapshot.
+
+## Run tests
+
+Install project dependencies first:
 
 ```bash
 npm install
 ```
 
-### Run unit test suite
+Run TypeScript build:
+
+```bash
+npm run build
+```
+
+Run unit tests:
 
 ```bash
 npm test
 ```
 
-### Run E2E test suite (headless)
+Run performance suite:
+
+```bash
+npm run test:perf
+```
+
+Run E2E tests (headless):
 
 ```bash
 npm run test:e2e
 ```
 
-### Open Cypress E2E runner (headed)
+Run E2E tests (headed):
 
 ```bash
 npm run test:e2e:headed
 ```
 
-## Test Coverage
-
-### Unit tests (`tests/intent-sdk.test.mjs`)
-
-The automated unit test suite validates:
-
-- Bloom filter add/check and base64 round-trip behavior.
-- Markov probability, entropy, quantization, and JSON serialization.
-- Markov trajectory likelihood smoothing for unseen edges.
-- Intent manager event emission, state tracking, persistence, and restore behavior.
-
-### E2E tests (`cypress/e2e/intent.cy.ts`)
-
-The Cypress E2E test suite exercises the sandbox app against four scenarios:
-
-- **Test A – The Perfect Buyer**: follows the ideal checkout path (`/home → /search → /product → /cart → /checkout`) and asserts that no entropy or anomaly toasts appear.
-- **Test B – The Rage-Click Healer**: simulates erratic back-and-forth navigation and asserts that a high-entropy toast ("Rage Click Detected") is shown.
-- **Test C – The Hesitation Discount**: follows a normal path then deviates (`/product → /help`) and asserts that a trajectory-anomaly toast ("Hesitation Detected") is shown.
-- **Test D – Persistence Debounce**: navigates through several routes and then waits for the debounce window to confirm the intent graph is written to `localStorage`.
-
-## Repository Structure
+## Repository structure
 
 ```
 .
 ├── src/
-│   └── intent-sdk.ts          # SDK source implementation
+│   ├── adapters.ts
+│   ├── index.ts
+│   └── intent-sdk.ts
 ├── tests/
-│   └── intent-sdk.test.mjs    # Node unit test suite
+│   └── intent-sdk.test.mjs
+├── scripts/
+│   ├── perf-runner.mjs
+│   ├── perf-regression.mjs
+│   └── scenario-matrix.mjs
 ├── sandbox/
-│   ├── app.ts                 # Browser sandbox application
-│   └── index.html             # Sandbox HTML page
+│   ├── app.ts
+│   └── index.html
 ├── cypress/
 │   └── e2e/
-│       └── intent.cy.ts       # Cypress E2E test suite
-├── cypress.config.ts          # Cypress configuration
-├── tsconfig.json              # TypeScript compiler configuration
-└── package.json               # Project metadata and scripts
+│       └── intent.cy.ts
+└── package.json
 ```

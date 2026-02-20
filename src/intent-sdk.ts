@@ -12,6 +12,11 @@ import type {
   BenchmarkConfig,
   PerformanceReport,
 } from './performance-instrumentation.js';
+import {
+  BrowserStorageAdapter,
+  BrowserTimerAdapter,
+} from './adapters.js';
+import type { StorageAdapter, TimerAdapter, TimerHandle } from './adapters.js';
 
 export type {
   BenchmarkConfig,
@@ -79,6 +84,12 @@ export interface MarkovGraphConfig {
    * Smoothing epsilon used when baseline transition probabilities are unknown.
    */
   smoothingEpsilon?: number;
+
+  /**
+   * Maximum number of live states before LFU pruning kicks in.
+   * Default: 500.  Set to Infinity to disable pruning entirely.
+   */
+  maxStates?: number;
 }
 
 export interface IntentManagerConfig {
@@ -110,6 +121,25 @@ export interface IntentManagerConfig {
    * Optional performance instrumentation.
    */
   benchmark?: BenchmarkConfig;
+
+  /**
+   * Isomorphic storage adapter (defaults to BrowserStorageAdapter).
+   * Provide a custom adapter for SSR or testing.
+   */
+  storage?: StorageAdapter;
+
+  /**
+   * Isomorphic timer adapter (defaults to BrowserTimerAdapter).
+   * Provide a custom adapter for SSR or testing.
+   */
+  timer?: TimerAdapter;
+
+  /**
+   * Error callback invoked when persistence fails
+   * (e.g. QuotaExceededError, SecurityError).
+   * If not provided, errors are silently swallowed to avoid crashing the main thread.
+   */
+  onError?: (err: Error) => void;
 }
 
 /**
@@ -190,6 +220,53 @@ export class BloomFilter {
     return true;
   }
 
+  /**
+   * Compute optimal Bloom filter parameters for a given capacity and
+   * desired false-positive rate using the standard formulas:
+   *
+   *   m = ceil( -(n * ln(p)) / (ln(2))^2 )
+   *   k = round( (m / n) * ln(2) )
+   *
+   * where n = expectedItems, p = targetFPR, m = bitSize, k = hashCount.
+   */
+  static computeOptimal(
+    expectedItems: number,
+    targetFPR: number,
+  ): { bitSize: number; hashCount: number } {
+    // Guard against degenerate inputs.
+    if (expectedItems <= 0) return { bitSize: 8, hashCount: 1 };
+    if (targetFPR <= 0) targetFPR = 1e-10;
+    if (targetFPR >= 1) targetFPR = 0.99;
+
+    const ln2 = Math.LN2;                       // 0.6931…
+    const ln2Sq = ln2 * ln2;                     // 0.4805…
+
+    // m = ceil( -(n * ln(p)) / ln(2)^2 )
+    const m = Math.ceil(-(expectedItems * Math.log(targetFPR)) / ln2Sq);
+
+    // k = round( (m / n) * ln(2) )
+    const k = Math.max(1, Math.round((m / expectedItems) * ln2));
+
+    return { bitSize: m, hashCount: k };
+  }
+
+  /**
+   * Estimate the current false-positive rate given the number of items
+   * that have been inserted.  Uses the standard approximation:
+   *
+   *   FPR ≈ (1 - e^(-k*n/m))^k
+   *
+   * where m = bitSize, k = hashCount, n = insertedItemsCount.
+   */
+  estimateCurrentFPR(insertedItemsCount: number): number {
+    if (insertedItemsCount <= 0) return 0;
+    // Probability a single bit is still 0 after k*n insertions.
+    const exponent = -(this.hashCount * insertedItemsCount) / this.bitSize;
+    const bitZeroProbability = Math.exp(exponent);
+    // FPR = probability that all k bits are 1 for a random query.
+    return Math.pow(1 - bitZeroProbability, this.hashCount);
+  }
+
   getBitsetByteSize(): number {
     return this.bits.byteLength;
   }
@@ -250,6 +327,7 @@ export class MarkovGraph {
   readonly smoothingEpsilon: number;
   readonly baselineMeanLL?: number;
   readonly baselineStdLL?: number;
+  readonly maxStates: number;
 
   constructor(config: MarkovGraphConfig = {}) {
     this.highEntropyThreshold = config.highEntropyThreshold ?? 0.75;
@@ -257,6 +335,7 @@ export class MarkovGraph {
     this.smoothingEpsilon = config.smoothingEpsilon ?? 0.01;
     this.baselineMeanLL = config.baselineMeanLL;
     this.baselineStdLL = config.baselineStdLL;
+    this.maxStates = config.maxStates ?? 500;
   }
 
   ensureState(state: string): number {
@@ -419,6 +498,74 @@ export class MarkovGraph {
     return total;
   }
 
+  /**
+   * LFU (Least-Frequently-Used) pruning.
+   *
+   * When the number of live states exceeds `maxStates`, evict the bottom
+   * ~20 % of states ranked by total outgoing transitions.  Rather than
+   * re-indexing (which would invalidate every edge reference), pruned
+   * states are "tombstoned":
+   *
+   *   1. Their outgoing row is deleted from `this.rows`.
+   *   2. Any inbound edges referencing them are removed from other rows.
+   *   3. The slot in `indexToState` is set to '' (dead index) and the
+   *      entry is removed from `stateToIndex`.
+   *
+   * This is O(S + E) where S = stateCount and E = total edge entries.
+   */
+  prune(): void {
+    const liveCount = this.stateToIndex.size;
+    if (liveCount <= this.maxStates) return;
+
+    // ── 1. Rank every live state by total outgoing transitions (LFU) ──
+    // Map.forEach callback: (value: number, key: string) where value = index.
+    const ranked: Array<{ index: number; total: number }> = [];
+    this.stateToIndex.forEach((idx) => {
+      const row = this.rows.get(idx);
+      ranked.push({ index: idx, total: row?.total ?? 0 });
+    });
+
+    // Sort ascending by total transitions (lowest first = least used).
+    ranked.sort((a, b) => a.total - b.total);
+
+    // Evict bottom 20 % (at least 1, at most enough to get back to maxStates).
+    const evictTarget = Math.max(1, Math.min(
+      Math.ceil(liveCount * 0.2),
+      liveCount - this.maxStates,
+    ));
+    const evictSet = new Set<number>();
+    for (let i = 0; i < evictTarget && i < ranked.length; i += 1) {
+      evictSet.add(ranked[i].index);
+    }
+
+    // ── 2. Remove outgoing rows for evicted states ──
+    evictSet.forEach((idx) => {
+      this.rows.delete(idx);
+    });
+
+    // ── 3. Scrub inbound edges from surviving rows ──
+    this.rows.forEach((row) => {
+      let removedTotal = 0;
+      evictSet.forEach((deadIdx) => {
+        const count = row.toCounts.get(deadIdx);
+        if (count !== undefined) {
+          removedTotal += count;
+          row.toCounts.delete(deadIdx);
+        }
+      });
+      row.total -= removedTotal;
+    });
+
+    // ── 4. Tombstone index slots ──
+    evictSet.forEach((idx) => {
+      const label = this.indexToState[idx];
+      if (label !== undefined && label !== '') {
+        this.stateToIndex.delete(label);
+      }
+      this.indexToState[idx] = '';  // dead slot
+    });
+  }
+
   toJSON(): SerializedMarkovGraph {
     const rows: SerializedMarkovGraph['rows'] = [];
     this.rows.forEach((row, fromIndex) => {
@@ -450,6 +597,196 @@ export class MarkovGraph {
         row.toCounts.set(toIndex, count);
       }
       graph.rows.set(fromIndex, row);
+    }
+
+    return graph;
+  }
+
+  /* ================================================================== */
+  /*  Binary serialization — zero-dependency, zero JSON.stringify        */
+  /* ================================================================== */
+
+  /**
+   * Binary wire format (little-endian throughout):
+   *
+   * ┌─────────────────────────────────┐
+   * │ Version          : Uint8   (1B) │  — currently 0x01
+   * │ NumStates        : Uint16  (2B) │
+   * │ ┌── for each state ──────────┐  │
+   * │ │ StringByteLen : Uint16 (2B)│  │  — UTF-8 byte length
+   * │ │ UTF-8 Bytes   : [N]        │  │
+   * │ └────────────────────────────┘  │
+   * │ NumRows          : Uint16  (2B) │
+   * │ ┌── for each row ───────────┐   │
+   * │ │ FromIndex  : Uint16  (2B) │   │
+   * │ │ Total      : Uint32  (4B) │   │
+   * │ │ NumEdges   : Uint16  (2B) │   │
+   * │ │ ┌── for each edge ──────┐ │   │
+   * │ │ │ ToIndex : Uint16 (2B) │ │   │
+   * │ │ │ Count   : Uint32 (4B) │ │   │
+   * │ │ └──────────────────────┘ │   │
+   * │ └────────────────────────────┘  │
+   * └─────────────────────────────────┘
+   */
+  toBinary(): Uint8Array {
+    const encoder = new TextEncoder();
+
+    // ── Pre-compute total buffer size so we allocate exactly once ──
+
+    // Header: version (1B) + numStates (2B) = 3 bytes
+    let totalSize = 3;
+
+    // Encode all state labels to UTF-8 up front and cache the buffers.
+    const encodedLabels: Uint8Array[] = new Array(this.indexToState.length);
+    for (let i = 0; i < this.indexToState.length; i += 1) {
+      encodedLabels[i] = encoder.encode(this.indexToState[i]);
+      // Per state: stringByteLen (Uint16 = 2B) + actual bytes
+      totalSize += 2 + encodedLabels[i].byteLength;
+    }
+
+    // NumRows header: 2 bytes
+    totalSize += 2;
+
+    // Per row:  fromIndex (2B) + total (4B) + numEdges (2B) = 8 bytes
+    // Per edge: toIndex (2B) + count (4B) = 6 bytes
+    this.rows.forEach((row) => {
+      totalSize += 8;                          // row header
+      totalSize += row.toCounts.size * 6;      // edges
+    });
+
+    // ── Allocate buffer + DataView ──
+    const buffer = new Uint8Array(totalSize);
+    const view = new DataView(buffer.buffer);
+    let offset = 0;
+
+    // ── Write header ──
+
+    // Byte 0: format version
+    view.setUint8(offset, 0x01);               // version = 1
+    offset += 1;                               // offset now 1
+
+    // Bytes 1-2: number of states (Uint16 LE)
+    view.setUint16(offset, this.indexToState.length, true);
+    offset += 2;                               // offset now 3
+
+    // ── Write state labels ──
+    for (let i = 0; i < this.indexToState.length; i += 1) {
+      const encoded = encodedLabels[i];
+
+      // 2 bytes: UTF-8 byte length of this label
+      view.setUint16(offset, encoded.byteLength, true);
+      offset += 2;
+
+      // N bytes: raw UTF-8 payload
+      buffer.set(encoded, offset);
+      offset += encoded.byteLength;
+    }
+
+    // ── Write rows header ──
+
+    // 2 bytes: number of rows with data
+    view.setUint16(offset, this.rows.size, true);
+    offset += 2;
+
+    // ── Write each row ──
+    this.rows.forEach((row, fromIndex) => {
+      // 2 bytes: fromIndex (Uint16 LE)
+      view.setUint16(offset, fromIndex, true);
+      offset += 2;
+
+      // 4 bytes: total outgoing transitions (Uint32 LE)
+      view.setUint32(offset, row.total, true);
+      offset += 4;
+
+      // 2 bytes: number of edges (Uint16 LE)
+      view.setUint16(offset, row.toCounts.size, true);
+      offset += 2;
+
+      // Per edge: toIndex (2B) + count (4B)
+      row.toCounts.forEach((count, toIndex) => {
+        // 2 bytes: destination state index (Uint16 LE)
+        view.setUint16(offset, toIndex, true);
+        offset += 2;
+
+        // 4 bytes: transition count (Uint32 LE)
+        view.setUint32(offset, count, true);
+        offset += 4;
+      });
+    });
+
+    return buffer;
+  }
+
+  /**
+   * Reconstruct a MarkovGraph from the binary format produced by `toBinary()`.
+   * See the encoding spec in `toBinary()` for the wire layout.
+   */
+  static fromBinary(buffer: Uint8Array, config: MarkovGraphConfig = {}): MarkovGraph {
+    const graph = new MarkovGraph(config);
+    const decoder = new TextDecoder();
+    const view = new DataView(buffer.buffer, buffer.byteOffset, buffer.byteLength);
+    let offset = 0;
+
+    // ── Read header ──
+
+    // Byte 0: version — validate but currently only v1 exists.
+    const version = view.getUint8(offset);
+    offset += 1;                                // offset now 1
+    if (version !== 0x01) {
+      throw new Error(`Unsupported MarkovGraph binary version: ${version}`);
+    }
+
+    // Bytes 1-2: number of states (Uint16 LE)
+    const numStates = view.getUint16(offset, true);
+    offset += 2;                                // offset now 3
+
+    // ── Read state labels ──
+    for (let i = 0; i < numStates; i += 1) {
+      // 2 bytes: UTF-8 byte length
+      const strLen = view.getUint16(offset, true);
+      offset += 2;
+
+      // N bytes: raw UTF-8 payload → string
+      const labelBytes = buffer.subarray(offset, offset + strLen);
+      const label = decoder.decode(labelBytes);
+      offset += strLen;
+
+      graph.ensureState(label);
+    }
+
+    // ── Read rows ──
+
+    // 2 bytes: number of rows
+    const numRows = view.getUint16(offset, true);
+    offset += 2;
+
+    for (let r = 0; r < numRows; r += 1) {
+      // 2 bytes: fromIndex
+      const fromIndex = view.getUint16(offset, true);
+      offset += 2;
+
+      // 4 bytes: total transitions
+      const total = view.getUint32(offset, true);
+      offset += 4;
+
+      // 2 bytes: number of edges
+      const numEdges = view.getUint16(offset, true);
+      offset += 2;
+
+      const toCounts = new Map<number, number>();
+      for (let e = 0; e < numEdges; e += 1) {
+        // 2 bytes: toIndex
+        const toIndex = view.getUint16(offset, true);
+        offset += 2;
+
+        // 4 bytes: count
+        const count = view.getUint32(offset, true);
+        offset += 4;
+
+        toCounts.set(toIndex, count);
+      }
+
+      graph.rows.set(fromIndex, { total, toCounts });
     }
 
     return graph;
@@ -507,9 +844,23 @@ class EventEmitter<Events extends object> {
   }
 }
 
+/**
+ * Version 2 persisted payload uses binary graph serialization
+ * to eliminate JSON.stringify overhead on the main thread.
+ *
+ * `graphBinary` is a base64-encoded Uint8Array produced by
+ * MarkovGraph.toBinary().
+ *
+ * We keep `graph` as an optional field for backward-compatible
+ * reading of V1 payloads that were stored before the upgrade.
+ */
 interface PersistedPayload {
+  /** Always present. */
   bloomBase64: string;
-  graph: SerializedMarkovGraph;
+  /** V2+: base64-encoded binary graph (preferred). */
+  graphBinary?: string;
+  /** V1 legacy: JSON-serialized graph (read-only migration path). */
+  graph?: SerializedMarkovGraph;
 }
 
 /**
@@ -523,8 +874,11 @@ export class IntentManager {
   private readonly storageKey: string;
   private readonly persistDebounceMs: number;
   private readonly benchmark: BenchmarkRecorder;
+  private readonly storage: StorageAdapter;
+  private readonly timer: TimerAdapter;
+  private readonly onError?: (err: Error) => void;
 
-  private persistTimer: number | null = null;
+  private persistTimer: TimerHandle | null = null;
   private previousState: string | null = null;
   private recentTrajectory: string[] = [];
 
@@ -532,6 +886,9 @@ export class IntentManager {
     this.storageKey = config.storageKey ?? 'ui-telepathy';
     this.persistDebounceMs = config.persistDebounceMs ?? 2000;
     this.benchmark = new BenchmarkRecorder(config.benchmark);
+    this.storage = config.storage ?? new BrowserStorageAdapter();
+    this.timer = config.timer ?? new BrowserTimerAdapter();
+    this.onError = config.onError;
 
     const graphConfig: MarkovGraphConfig = {
       ...config.graph,
@@ -608,7 +965,7 @@ export class IntentManager {
 
   flushNow(): void {
     if (this.persistTimer !== null) {
-      window.clearTimeout(this.persistTimer);
+      this.timer.clearTimeout(this.persistTimer);
       this.persistTimer = null;
     }
     this.persist();
@@ -708,31 +1065,70 @@ export class IntentManager {
 
   private schedulePersist(): void {
     if (this.persistTimer !== null) {
-      window.clearTimeout(this.persistTimer);
+      this.timer.clearTimeout(this.persistTimer);
     }
 
-    this.persistTimer = window.setTimeout(() => {
+    this.persistTimer = this.timer.setTimeout(() => {
       this.persistTimer = null;
       this.persist();
     }, this.persistDebounceMs);
   }
 
   private persist(): void {
+    // LFU prune before serializing — keeps storage bounded.
+    this.graph.prune();
+
+    // Binary-encode the graph: avoids JSON.stringify on potentially
+    // large objects, keeping the main thread free of heavy work.
+    const graphBytes = this.graph.toBinary();
+
+    // Convert Uint8Array → base64 string for localStorage compatibility.
+    let graphBinary = '';
+    for (let i = 0; i < graphBytes.length; i += 1) {
+      graphBinary += String.fromCharCode(graphBytes[i]);
+    }
+    graphBinary = btoa(graphBinary);
+
+    // Build the minimal JSON envelope (two short strings, no deep trees).
     const payload: PersistedPayload = {
       bloomBase64: this.bloom.toBase64(),
-      graph: this.graph.toJSON(),
+      graphBinary,
     };
-    localStorage.setItem(this.storageKey, JSON.stringify(payload));
+    try {
+      this.storage.setItem(this.storageKey, JSON.stringify(payload));
+    } catch (err) {
+      // QuotaExceededError, SecurityError, or Private Browsing restrictions.
+      // Surface through the optional error callback; never crash the main thread.
+      if (this.onError && err instanceof Error) {
+        this.onError(err);
+      }
+    }
   }
 
   private restore(graphConfig: MarkovGraphConfig): { bloom: BloomFilter; graph: MarkovGraph } | null {
-    const raw = localStorage.getItem(this.storageKey);
-    if (!raw) return null;
-
     try {
+      const raw = this.storage.getItem(this.storageKey);
+      if (!raw) return null;
+
       const parsed = JSON.parse(raw) as PersistedPayload;
       const bloom = BloomFilter.fromBase64(parsed.bloomBase64);
-      const graph = MarkovGraph.fromJSON(parsed.graph, graphConfig);
+
+      let graph: MarkovGraph;
+      if (parsed.graphBinary) {
+        // V2 path: decode base64 → Uint8Array → fromBinary
+        const binaryStr = atob(parsed.graphBinary);
+        const bytes = new Uint8Array(binaryStr.length);
+        for (let i = 0; i < binaryStr.length; i += 1) {
+          bytes[i] = binaryStr.charCodeAt(i);
+        }
+        graph = MarkovGraph.fromBinary(bytes, graphConfig);
+      } else if (parsed.graph) {
+        // V1 legacy fallback: JSON-serialized graph.
+        graph = MarkovGraph.fromJSON(parsed.graph, graphConfig);
+      } else {
+        return null;
+      }
+
       return { bloom, graph };
     } catch {
       return null;
