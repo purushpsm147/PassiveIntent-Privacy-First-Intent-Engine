@@ -1,0 +1,10 @@
+{
+  "name": "privacy-first-intent-engine",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build": "tsc --project tsconfig.json --declaration --sourceMap",
+    "test": "npm run build && node --test tests/intent-sdk.test.mjs"
+  }
+}
