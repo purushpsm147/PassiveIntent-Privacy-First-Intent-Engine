@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 
-import { BloomFilter, IntentManager, MarkovGraph } from '../dist/intent-sdk.js';
+import { BloomFilter, IntentManager, MarkovGraph } from '../dist/src/intent-sdk.js';
 
 class MemoryStorage {
   constructor() {
@@ -114,6 +114,15 @@ test('IntentManager emits events, tracks seen states, and persists/restores', as
   assert.equal(manager.hasSeen('nonexistent'), false);
   assert.equal(manager.hasSeen('search'), true);
   assert.deepEqual(stateChanges, ['home', 'search', 'detail']);
+
+  // Add more transitions so row.total reaches the minimum sample threshold (3)
+  // before checking that entropy and anomaly events fire.
+  manager.track('home');
+  manager.track('search');
+  manager.track('home');
+  manager.track('search');
+  manager.track('home');
+
   assert.ok(highEntropyCount >= 1);
   assert.ok(anomalyCount >= 1);
 

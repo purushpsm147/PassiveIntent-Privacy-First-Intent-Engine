@@ -123,15 +123,23 @@ export class BloomFilter {
   }
 
   add(item: string): void {
+    // Compute both hashes once; derive k indices via double hashing.
+    const h1 = fnv1a(item, 0x811c9dc5);
+    const h2 = fnv1a(item, 0x01000193);
     for (let i = 0; i < this.hashCount; i += 1) {
-      const index = this.getBitIndex(item, i);
+      // Use >>> 0 to keep the sum as an unsigned 32-bit integer before modulo.
+      const index = ((h1 + i * h2) >>> 0) % this.bitSize;
       this.setBit(index);
     }
   }
 
   check(item: string): boolean {
+    // Same double-hash derivation as add() to ensure consistent bit positions.
+    const h1 = fnv1a(item, 0x811c9dc5);
+    const h2 = fnv1a(item, 0x01000193);
     for (let i = 0; i < this.hashCount; i += 1) {
-      const index = this.getBitIndex(item, i);
+      // Use >>> 0 to keep the sum as an unsigned 32-bit integer before modulo.
+      const index = ((h1 + i * h2) >>> 0) % this.bitSize;
       if (!this.getBit(index)) return false;
     }
     // All bits are set => probably exists (allowing Bloom false positives).
@@ -153,13 +161,6 @@ export class BloomFilter {
       arr[i] = binary.charCodeAt(i);
     }
     return new BloomFilter(config, arr);
-  }
-
-  private getBitIndex(item: string, salt: number): number {
-    // "Double hashing" style derivation from two FNV variants.
-    const h1 = fnv1a(item, 0x811c9dc5);
-    const h2 = fnv1a(item, 0x01000193 ^ salt);
-    return (h1 + salt * h2 + salt * salt) % this.bitSize;
   }
 
   private setBit(bitIndex: number): void {
@@ -201,7 +202,9 @@ export class MarkovGraph {
 
   constructor(config: MarkovGraphConfig = {}) {
     this.highEntropyThreshold = config.highEntropyThreshold ?? 0.75;
-    this.divergenceThreshold = config.divergenceThreshold ?? 6;
+    // Default is per-step divergence; raw sum threshold of 6 was replaced by
+    // a normalized per-step threshold of 0.5 (see evaluateTrajectory).
+    this.divergenceThreshold = config.divergenceThreshold ?? 0.5;
   }
 
   ensureState(state: string): number {
@@ -297,7 +300,13 @@ export class MarkovGraph {
 
   /**
    * Quantized view of outgoing probabilities for a state as Uint8Array.
-   * For edge e: q_e = round(P_e * 255)
+   *
+   * Encoding per edge (3 bytes):
+   *   byte 0: low byte  of toIndex  (toIndex & 0xff)
+   *   byte 1: high byte of toIndex  ((toIndex >> 8) & 0xff)
+   *   byte 2: quantized probability  round(P * 255) & 0xff
+   *
+   * Using 2 bytes for toIndex supports up to 65535 states without overflow.
    */
   getQuantizedRow(state: string): Uint8Array {
     const from = this.stateToIndex.get(state);
@@ -306,13 +315,15 @@ export class MarkovGraph {
     const row = this.rows.get(from);
     if (!row || row.total === 0) return new Uint8Array(0);
 
-    const out = new Uint8Array(row.toCounts.size * 2);
+    // 3 bytes per edge: [lowByte(toIndex), highByte(toIndex), quantizedProbability]
+    const out = new Uint8Array(row.toCounts.size * 3);
     let offset = 0;
     row.toCounts.forEach((count, toIndex) => {
       const probability = count / row.total;
-      out[offset] = toIndex & 0xff;
-      out[offset + 1] = quantizeProbability(probability);
-      offset += 2;
+      out[offset]     = toIndex & 0xff;          // low byte of toIndex
+      out[offset + 1] = (toIndex >> 8) & 0xff;   // high byte of toIndex
+      out[offset + 2] = quantizeProbability(probability); // quantized probability
+      offset += 3;
     });
     return out;
   }
@@ -332,6 +343,16 @@ export class MarkovGraph {
     if (count === 0) return 0;
 
     return dequantizeProbability(quantizeProbability(count / row.total));
+  }
+
+  /**
+   * Returns the total number of outgoing transitions recorded for a state.
+   * Used as a minimum-sample guard before firing entropy/divergence events.
+   */
+  rowTotal(state: string): number {
+    const from = this.stateToIndex.get(state);
+    if (from === undefined) return 0;
+    return this.rows.get(from)?.total ?? 0;
   }
 
   toJSON(): SerializedMarkovGraph {
@@ -370,6 +391,12 @@ export class MarkovGraph {
     return graph;
   }
 }
+
+/**
+ * Minimum number of outgoing transitions a state must have before entropy or
+ * divergence evaluation is considered statistically meaningful.
+ */
+const MIN_SAMPLE_TRANSITIONS = 3;
 
 type Listener<T> = (payload: T) => void;
 
@@ -475,6 +502,9 @@ export class IntentManager {
   }
 
   private evaluateEntropy(state: string): void {
+    // Skip if there are fewer than MIN_SAMPLE_TRANSITIONS outgoing transitions (too small a sample).
+    if (this.graph.rowTotal(state) < MIN_SAMPLE_TRANSITIONS) return;
+
     const entropy = this.graph.entropyForState(state);
     const normalizedEntropy = this.graph.normalizedEntropyForState(state);
 
@@ -490,6 +520,9 @@ export class IntentManager {
   private evaluateTrajectory(from: string, to: string): void {
     if (!this.baseline) return;
 
+    // Skip if the from-state has too few transitions for a reliable estimate.
+    if (this.graph.rowTotal(from) < MIN_SAMPLE_TRANSITIONS) return;
+
     // Calculate real log-likelihood for the bounded window using the live graph.
     let realLogLikelihood = 0;
     for (let i = 0; i < this.recentTrajectory.length - 1; i++) {
@@ -501,7 +534,13 @@ export class IntentManager {
 
     // Expected baseline likelihood for the same window.
     const expected = MarkovGraph.logLikelihoodTrajectory(this.baseline, this.recentTrajectory);
-    const divergence = Math.abs(realLogLikelihood - expected);
+
+    // Normalize both values by the number of transitions to make divergence
+    // independent of trajectory length (per-step average log likelihood).
+    const N = Math.max(1, this.recentTrajectory.length - 1);
+    const realAvg = realLogLikelihood / N;
+    const expectedAvg = expected / N;
+    const divergence = Math.abs(realAvg - expectedAvg);
 
     if (divergence >= this.graph.divergenceThreshold) {
       this.emitter.emit('trajectory_anomaly', {
