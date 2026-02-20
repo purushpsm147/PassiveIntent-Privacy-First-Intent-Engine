@@ -7,6 +7,19 @@
  * - Sparse + quantized storage for state transitions
  */
 
+import { BenchmarkRecorder } from './performance-instrumentation.js';
+import type {
+  BenchmarkConfig,
+  PerformanceReport,
+} from './performance-instrumentation.js';
+
+export type {
+  BenchmarkConfig,
+  MemoryFootprintReport,
+  OperationStats,
+  PerformanceReport,
+} from './performance-instrumentation.js';
+
 export type IntentEventName = 'high_entropy' | 'trajectory_anomaly' | 'state_change';
 
 export interface HighEntropyPayload {
@@ -52,11 +65,6 @@ export interface MarkovGraphConfig {
   divergenceThreshold?: number;
 }
 
-export interface BenchmarkConfig {
-  enabled?: boolean;
-  maxSamples?: number;
-}
-
 export interface IntentManagerConfig {
   bloom?: BloomFilterConfig;
   graph?: MarkovGraphConfig;
@@ -76,81 +84,6 @@ export interface IntentManagerConfig {
    * Optional performance instrumentation.
    */
   benchmark?: BenchmarkConfig;
-}
-
-export interface OperationStats {
-  count: number;
-  avgMs: number;
-  p95Ms: number;
-  p99Ms: number;
-  maxMs: number;
-}
-
-export interface MemoryFootprintReport {
-  stateCount: number;
-  totalTransitions: number;
-  bloomBitsetBytes: number;
-  serializedGraphBytes: number;
-}
-
-export interface PerformanceReport {
-  benchmarkEnabled: boolean;
-  track: OperationStats;
-  bloomAdd: OperationStats;
-  bloomCheck: OperationStats;
-  incrementTransition: OperationStats;
-  entropyComputation: OperationStats;
-  divergenceComputation: OperationStats;
-  memoryFootprint: MemoryFootprintReport;
-}
-
-interface BenchmarkAccumulator {
-  count: number;
-  totalMs: number;
-  maxMs: number;
-  samples: number[];
-}
-
-const DEFAULT_BENCHMARK_MAX_SAMPLES = 4096;
-
-function createAccumulator(): BenchmarkAccumulator {
-  return {
-    count: 0,
-    totalMs: 0,
-    maxMs: 0,
-    samples: [],
-  };
-}
-
-function recordSample(acc: BenchmarkAccumulator, elapsedMs: number, maxSamples: number): void {
-  acc.count += 1;
-  acc.totalMs += elapsedMs;
-  if (elapsedMs > acc.maxMs) acc.maxMs = elapsedMs;
-  if (acc.samples.length < maxSamples) {
-    acc.samples.push(elapsedMs);
-  } else if (maxSamples > 0) {
-    acc.samples[acc.count % maxSamples] = elapsedMs;
-  }
-}
-
-function percentile(sorted: number[], p: number): number {
-  if (sorted.length === 0) return 0;
-  const idx = Math.min(sorted.length - 1, Math.ceil(p * sorted.length) - 1);
-  return sorted[idx];
-}
-
-function toOperationStats(acc: BenchmarkAccumulator): OperationStats {
-  if (acc.count === 0) {
-    return { count: 0, avgMs: 0, p95Ms: 0, p99Ms: 0, maxMs: 0 };
-  }
-  const sorted = [...acc.samples].sort((a, b) => a - b);
-  return {
-    count: acc.count,
-    avgMs: acc.totalMs / acc.count,
-    p95Ms: percentile(sorted, 0.95),
-    p99Ms: percentile(sorted, 0.99),
-    maxMs: acc.maxMs,
-  };
 }
 
 /**
@@ -500,8 +433,6 @@ export class MarkovGraph {
  */
 const MIN_SAMPLE_TRANSITIONS = 3;
 
-const textEncoder = typeof TextEncoder !== 'undefined' ? new TextEncoder() : null;
-
 type Listener<T> = (payload: T) => void;
 
 /**
@@ -543,25 +474,16 @@ export class IntentManager {
   private readonly emitter = new EventEmitter<IntentEventMap>();
   private readonly storageKey: string;
   private readonly persistDebounceMs: number;
-  private readonly benchmarkEnabled: boolean;
-  private readonly benchmarkMaxSamples: number;
+  private readonly benchmark: BenchmarkRecorder;
 
   private persistTimer: number | null = null;
   private previousState: string | null = null;
   private recentTrajectory: string[] = [];
 
-  private readonly trackStats = createAccumulator();
-  private readonly bloomAddStats = createAccumulator();
-  private readonly bloomCheckStats = createAccumulator();
-  private readonly incrementStats = createAccumulator();
-  private readonly entropyStats = createAccumulator();
-  private readonly divergenceStats = createAccumulator();
-
   constructor(config: IntentManagerConfig = {}) {
     this.storageKey = config.storageKey ?? 'ui-telepathy';
     this.persistDebounceMs = config.persistDebounceMs ?? 2000;
-    this.benchmarkEnabled = config.benchmark?.enabled ?? false;
-    this.benchmarkMaxSamples = config.benchmark?.maxSamples ?? DEFAULT_BENCHMARK_MAX_SAMPLES;
+    this.benchmark = new BenchmarkRecorder(config.benchmark);
 
     const restored = this.restore();
 
@@ -581,13 +503,11 @@ export class IntentManager {
    * Track a page view or custom state transition.
    */
   track(state: string): void {
-    const trackStart = this.benchmarkEnabled ? performance.now() : 0;
+    const trackStart = this.benchmark.now();
 
-    const bloomAddStart = this.benchmarkEnabled ? performance.now() : 0;
+    const bloomAddStart = this.benchmark.now();
     this.bloom.add(state);
-    if (this.benchmarkEnabled) {
-      recordSample(this.bloomAddStats, performance.now() - bloomAddStart, this.benchmarkMaxSamples);
-    }
+    this.benchmark.record('bloomAdd', bloomAddStart);
 
     const from = this.previousState;
     this.previousState = state;
@@ -597,11 +517,9 @@ export class IntentManager {
     if (this.recentTrajectory.length > 32) this.recentTrajectory.shift();
 
     if (from) {
-      const incrementStart = this.benchmarkEnabled ? performance.now() : 0;
+      const incrementStart = this.benchmark.now();
       this.graph.incrementTransition(from, state);
-      if (this.benchmarkEnabled) {
-        recordSample(this.incrementStats, performance.now() - incrementStart, this.benchmarkMaxSamples);
-      }
+      this.benchmark.record('incrementTransition', incrementStart);
 
       this.evaluateEntropy(state);
       this.evaluateTrajectory(from, state);
@@ -610,17 +528,13 @@ export class IntentManager {
     this.emitter.emit('state_change', { from, to: state });
     this.schedulePersist();
 
-    if (this.benchmarkEnabled) {
-      recordSample(this.trackStats, performance.now() - trackStart, this.benchmarkMaxSamples);
-    }
+    this.benchmark.record('track', trackStart);
   }
 
   hasSeen(state: string): boolean {
-    const start = this.benchmarkEnabled ? performance.now() : 0;
+    const start = this.benchmark.now();
     const seen = this.bloom.check(state);
-    if (this.benchmarkEnabled) {
-      recordSample(this.bloomCheckStats, performance.now() - start, this.benchmarkMaxSamples);
-    }
+    this.benchmark.record('bloomCheck', start);
     return seen;
   }
 
@@ -638,36 +552,20 @@ export class IntentManager {
 
   getPerformanceReport(): PerformanceReport {
     const serialized = this.graph.toJSON();
-    const serializedText = JSON.stringify(serialized);
-    const serializedBytes = textEncoder
-      ? textEncoder.encode(serializedText).byteLength
-      : serializedText.length;
-
-    return {
-      benchmarkEnabled: this.benchmarkEnabled,
-      track: toOperationStats(this.trackStats),
-      bloomAdd: toOperationStats(this.bloomAddStats),
-      bloomCheck: toOperationStats(this.bloomCheckStats),
-      incrementTransition: toOperationStats(this.incrementStats),
-      entropyComputation: toOperationStats(this.entropyStats),
-      divergenceComputation: toOperationStats(this.divergenceStats),
-      memoryFootprint: {
-        stateCount: this.graph.stateCount(),
-        totalTransitions: this.graph.totalTransitions(),
-        bloomBitsetBytes: this.bloom.getBitsetByteSize(),
-        serializedGraphBytes: serializedBytes,
-      },
-    };
+    return this.benchmark.report({
+      stateCount: this.graph.stateCount(),
+      totalTransitions: this.graph.totalTransitions(),
+      bloomBitsetBytes: this.bloom.getBitsetByteSize(),
+      serializedGraphBytes: this.benchmark.serializedSizeBytes(serialized),
+    });
   }
 
   private evaluateEntropy(state: string): void {
-    const start = this.benchmarkEnabled ? performance.now() : 0;
+    const start = this.benchmark.now();
 
     // Skip if there are fewer than MIN_SAMPLE_TRANSITIONS outgoing transitions (too small a sample).
     if (this.graph.rowTotal(state) < MIN_SAMPLE_TRANSITIONS) {
-      if (this.benchmarkEnabled) {
-        recordSample(this.entropyStats, performance.now() - start, this.benchmarkMaxSamples);
-      }
+      this.benchmark.record('entropyComputation', start);
       return;
     }
 
@@ -682,26 +580,20 @@ export class IntentManager {
       });
     }
 
-    if (this.benchmarkEnabled) {
-      recordSample(this.entropyStats, performance.now() - start, this.benchmarkMaxSamples);
-    }
+    this.benchmark.record('entropyComputation', start);
   }
 
   private evaluateTrajectory(from: string, to: string): void {
-    const start = this.benchmarkEnabled ? performance.now() : 0;
+    const start = this.benchmark.now();
 
     if (!this.baseline) {
-      if (this.benchmarkEnabled) {
-        recordSample(this.divergenceStats, performance.now() - start, this.benchmarkMaxSamples);
-      }
+      this.benchmark.record('divergenceComputation', start);
       return;
     }
 
     // Skip if the from-state has too few transitions for a reliable estimate.
     if (this.graph.rowTotal(from) < MIN_SAMPLE_TRANSITIONS) {
-      if (this.benchmarkEnabled) {
-        recordSample(this.divergenceStats, performance.now() - start, this.benchmarkMaxSamples);
-      }
+      this.benchmark.record('divergenceComputation', start);
       return;
     }
 
@@ -734,9 +626,7 @@ export class IntentManager {
       });
     }
 
-    if (this.benchmarkEnabled) {
-      recordSample(this.divergenceStats, performance.now() - start, this.benchmarkMaxSamples);
-    }
+    this.benchmark.record('divergenceComputation', start);
   }
 
   private schedulePersist(): void {
@@ -770,221 +660,5 @@ export class IntentManager {
     } catch {
       return null;
     }
-  }
-}
-
-export interface SimulationConfig {
-  sessions: number;
-  transitionsPerSession: number;
-  stateSpaceSize: number;
-  entropyControl: number;
-  mode: 'baseline' | 'noisy' | 'adversarial';
-  anomalySessionRate?: number;
-}
-
-export interface SimulationSummary {
-  totalTransitions: number;
-  cpuMsPer10kTransitions: number;
-  memoryGrowthBytes: number;
-  entropyTriggerRate: number;
-  divergenceTriggerRate: number;
-  evaluation: EvaluationSummary;
-  performanceReport: PerformanceReport;
-}
-
-export interface EvaluationSummary {
-  accuracy: number;
-  precision: number;
-  recall: number;
-  f1: number;
-  avgDetectionLatency: number;
-  avgHesitationAtTrigger: number;
-  entropyTriggerRate: number;
-  divergenceTriggerRate: number;
-  truePositiveRate: number;
-  falsePositiveRate: number;
-}
-
-interface SessionResult {
-  isGroundTruthHesitation: boolean;
-  entropyTriggered: boolean;
-  divergenceTriggered: boolean;
-  detectionLatency: number | null;
-  hesitationAtTrigger: number | null;
-}
-
-function clamp(value: number, min: number, max: number): number {
-  return Math.max(min, Math.min(max, value));
-}
-
-function createStatePool(size: number): string[] {
-  const out: string[] = [];
-  for (let i = 0; i < size; i += 1) {
-    out.push(`S${i}`);
-  }
-  return out;
-}
-
-function pickNextState(
-  states: string[],
-  currentIndex: number,
-  entropyControl: number,
-  mode: SimulationConfig['mode'],
-  step: number,
-): number {
-  const randomness = clamp(entropyControl, 0, 1);
-
-  if (mode === 'adversarial') {
-    return step % 2 === 0 ? (currentIndex + 1) % states.length : (currentIndex + states.length - 1) % states.length;
-  }
-
-  if (Math.random() < randomness || mode === 'noisy') {
-    return Math.floor(Math.random() * states.length);
-  }
-
-  return (currentIndex + 1) % states.length;
-}
-
-export function evaluatePredictionMatrix(results: SessionResult[]): EvaluationSummary {
-  let tp = 0;
-  let fp = 0;
-  let tn = 0;
-  let fn = 0;
-
-  let entropyTriggers = 0;
-  let divergenceTriggers = 0;
-  let triggerCount = 0;
-  let latencyTotal = 0;
-  let hesitationTotal = 0;
-
-  for (let i = 0; i < results.length; i += 1) {
-    const r = results[i];
-    const predicted = r.entropyTriggered || r.divergenceTriggered;
-
-    if (r.entropyTriggered) entropyTriggers += 1;
-    if (r.divergenceTriggered) divergenceTriggers += 1;
-
-    if (predicted && r.detectionLatency !== null) {
-      triggerCount += 1;
-      latencyTotal += r.detectionLatency;
-      hesitationTotal += r.hesitationAtTrigger ?? 0;
-    }
-
-    if (predicted && r.isGroundTruthHesitation) tp += 1;
-    else if (predicted && !r.isGroundTruthHesitation) fp += 1;
-    else if (!predicted && r.isGroundTruthHesitation) fn += 1;
-    else tn += 1;
-  }
-
-  const total = results.length || 1;
-  const accuracy = (tp + tn) / total;
-  const precision = tp + fp > 0 ? tp / (tp + fp) : 0;
-  const recall = tp + fn > 0 ? tp / (tp + fn) : 0;
-  const f1 = precision + recall > 0 ? (2 * precision * recall) / (precision + recall) : 0;
-  const tpr = recall;
-  const fpr = fp + tn > 0 ? fp / (fp + tn) : 0;
-
-  return {
-    accuracy,
-    precision,
-    recall,
-    f1,
-    avgDetectionLatency: triggerCount > 0 ? latencyTotal / triggerCount : 0,
-    avgHesitationAtTrigger: triggerCount > 0 ? hesitationTotal / triggerCount : 0,
-    entropyTriggerRate: entropyTriggers / total,
-    divergenceTriggerRate: divergenceTriggers / total,
-    truePositiveRate: tpr,
-    falsePositiveRate: fpr,
-  };
-}
-
-export class BenchmarkSimulationEngine {
-  run(config: SimulationConfig): SimulationSummary {
-    const statePool = createStatePool(config.stateSpaceSize);
-
-    const baselineBuilder = new MarkovGraph();
-    for (let i = 0; i < statePool.length; i += 1) {
-      baselineBuilder.incrementTransition(statePool[i], statePool[(i + 1) % statePool.length]);
-    }
-
-    const manager = new IntentManager({
-      baseline: baselineBuilder.toJSON(),
-      persistDebounceMs: 60_000,
-      benchmark: { enabled: true },
-    });
-
-    const anomalyRate = clamp(config.anomalySessionRate ?? 0.2, 0, 1);
-    const sessionResults: SessionResult[] = [];
-
-    let entropyFires = 0;
-    let divergenceFires = 0;
-
-    const startedAt = performance.now();
-    const startMemory = manager.getPerformanceReport().memoryFootprint.serializedGraphBytes;
-
-    for (let session = 0; session < config.sessions; session += 1) {
-      const isGroundTruthHesitation = Math.random() < anomalyRate || config.mode !== 'baseline';
-      let entropyTriggered = false;
-      let divergenceTriggered = false;
-      let detectionLatency: number | null = null;
-      let hesitationAtTrigger: number | null = null;
-      let currentStep = 0;
-
-      const offEntropy = manager.on('high_entropy', (payload) => {
-        entropyTriggered = true;
-        entropyFires += 1;
-        if (detectionLatency === null) {
-          detectionLatency = currentStep;
-          hesitationAtTrigger = payload.normalizedEntropy;
-        }
-      });
-
-      const offDivergence = manager.on('trajectory_anomaly', (payload) => {
-        divergenceTriggered = true;
-        divergenceFires += 1;
-        if (detectionLatency === null) {
-          detectionLatency = currentStep;
-          hesitationAtTrigger = payload.divergence;
-        }
-      });
-
-      let current = Math.floor(Math.random() * statePool.length);
-      for (let step = 0; step < config.transitionsPerSession; step += 1) {
-        currentStep = step + 1;
-        const sessionEntropy = isGroundTruthHesitation
-          ? clamp(config.entropyControl + 0.35, 0, 1)
-          : config.entropyControl;
-        current = pickNextState(statePool, current, sessionEntropy, config.mode, step);
-        manager.track(statePool[current]);
-      }
-
-      offEntropy();
-      offDivergence();
-
-      sessionResults.push({
-        isGroundTruthHesitation,
-        entropyTriggered,
-        divergenceTriggered,
-        detectionLatency,
-        hesitationAtTrigger,
-      });
-    }
-
-    const elapsed = performance.now() - startedAt;
-    const totalTransitions = config.sessions * config.transitionsPerSession;
-    const report = manager.getPerformanceReport();
-    const endMemory = report.memoryFootprint.serializedGraphBytes;
-
-    const evaluation = evaluatePredictionMatrix(sessionResults);
-
-    return {
-      totalTransitions,
-      cpuMsPer10kTransitions: totalTransitions > 0 ? (elapsed / totalTransitions) * 10_000 : 0,
-      memoryGrowthBytes: endMemory - startMemory,
-      entropyTriggerRate: totalTransitions > 0 ? entropyFires / totalTransitions : 0,
-      divergenceTriggerRate: totalTransitions > 0 ? divergenceFires / totalTransitions : 0,
-      evaluation,
-      performanceReport: report,
-    };
   }
 }

@@ -2,12 +2,14 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 
 import {
-  BenchmarkSimulationEngine,
   BloomFilter,
   IntentManager,
   MarkovGraph,
-  evaluatePredictionMatrix,
 } from '../dist/src/intent-sdk.js';
+import {
+  BenchmarkSimulationEngine,
+  evaluatePredictionMatrix,
+} from '../dist/src/intent-sdk-performance.js';
 
 class MemoryStorage {
   constructor() {
