@@ -4,7 +4,7 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "build": "tsc src/intent-sdk.ts --target ES2022 --module NodeNext --moduleResolution NodeNext --outDir dist",
+    "build": "tsc --project tsconfig.json --declaration --sourceMap",
     "test": "npm run build && node --test tests/intent-sdk.test.mjs"
   }
 }
