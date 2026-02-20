@@ -109,6 +109,7 @@ test('IntentManager emits events, tracks seen states, and persists/restores', as
   manager.track('search');
   manager.track('detail');
 
+  assert.equal(manager.hasSeen('nonexistent'), false);
   assert.equal(manager.hasSeen('search'), true);
   assert.deepEqual(stateChanges, ['home', 'search', 'detail']);
   assert.ok(highEntropyCount >= 1);
