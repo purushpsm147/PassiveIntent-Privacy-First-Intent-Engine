@@ -1,0 +1,37 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Privacy-First Intent Sandbox</title>
+    <style>
+      body { font-family: Arial, sans-serif; margin: 24px; }
+      .routes { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 12px; }
+      button { padding: 8px 12px; border: 1px solid #ccc; border-radius: 6px; background: #fafafa; cursor: pointer; }
+      #active-route { margin-top: 12px; font-weight: 700; }
+      #toast-region { position: fixed; top: 16px; right: 16px; display: flex; flex-direction: column; gap: 8px; max-width: 320px; }
+      .toast { background: #111827; color: white; padding: 10px; border-radius: 8px; box-shadow: 0 6px 18px rgba(0,0,0,.2); }
+      .toast.entropy { background: #b91c1c; }
+      .toast.anomaly { background: #1d4ed8; }
+    </style>
+  </head>
+  <body>
+    <h1>Intent Engine Sandbox</h1>
+    <p>Click routes to simulate user navigation.</p>
+
+    <div class="routes" id="routes">
+      <button data-route="/home">/home</button>
+      <button data-route="/search">/search</button>
+      <button data-route="/product">/product</button>
+      <button data-route="/cart">/cart</button>
+      <button data-route="/checkout">/checkout</button>
+      <button data-route="/help">/help</button>
+      <button data-route="/return-policy">/return-policy</button>
+    </div>
+
+    <div id="active-route">Current Route: none</div>
+    <div id="toast-region" aria-live="polite"></div>
+
+    <script type="module" src="../dist/sandbox/app.js"></script>
+  </body>
+</html>
