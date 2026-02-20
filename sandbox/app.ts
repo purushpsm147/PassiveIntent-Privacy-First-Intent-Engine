@@ -20,9 +20,17 @@ const intentManager = new IntentManager({
   baseline
 });
 
-const activeRoute = document.getElementById('active-route') as HTMLDivElement;
-const routes = document.getElementById('routes') as HTMLDivElement;
-const toastRegion = document.getElementById('toast-region') as HTMLDivElement;
+const activeRouteEl = document.getElementById('active-route');
+const routesEl = document.getElementById('routes');
+const toastRegionEl = document.getElementById('toast-region');
+
+if (!activeRouteEl || !routesEl || !toastRegionEl) {
+  throw new Error('Required DOM elements (#active-route, #routes, #toast-region) not found.');
+}
+
+const activeRoute = activeRouteEl as HTMLDivElement;
+const routes = routesEl as HTMLDivElement;
+const toastRegion = toastRegionEl as HTMLDivElement;
 
 const showToast = (message: string, kind: 'entropy' | 'anomaly') => {
   const toast = document.createElement('div');
