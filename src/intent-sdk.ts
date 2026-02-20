@@ -18,7 +18,7 @@ export interface HighEntropyPayload {
 export interface TrajectoryAnomalyPayload {
   stateFrom: string;
   stateTo: string;
-  cumulativeLogLikelihood: number;
+  realLogLikelihood: number;
   expectedBaselineLogLikelihood: number;
   divergence: number;
 }
@@ -416,7 +416,6 @@ export class IntentManager {
   private persistTimer: number | null = null;
   private previousState: string | null = null;
   private recentTrajectory: string[] = [];
-  private cumulativeLogLikelihood = 0;
 
   constructor(config: IntentManagerConfig = {}) {
     this.storageKey = config.storageKey ?? 'ui-telepathy';
@@ -491,19 +490,24 @@ export class IntentManager {
   private evaluateTrajectory(from: string, to: string): void {
     if (!this.baseline) return;
 
-    // Online update: add current transition log-probability under baseline.
-    const p = this.baseline.getProbability(from, to);
-    this.cumulativeLogLikelihood += Math.log(p > 0 ? p : 1e-6);
+    // Calculate real log-likelihood for the bounded window using the live graph.
+    let realLogLikelihood = 0;
+    for (let i = 0; i < this.recentTrajectory.length - 1; i++) {
+      const fromNode = this.recentTrajectory[i];
+      const toNode = this.recentTrajectory[i + 1];
+      const p = this.graph.getProbability(fromNode, toNode);
+      realLogLikelihood += Math.log(p > 0 ? p : 1e-6);
+    }
 
-    // Compare against expected baseline on same sequence window.
+    // Expected baseline likelihood for the same window.
     const expected = MarkovGraph.logLikelihoodTrajectory(this.baseline, this.recentTrajectory);
-    const divergence = Math.abs(this.cumulativeLogLikelihood - expected);
+    const divergence = Math.abs(realLogLikelihood - expected);
 
     if (divergence >= this.graph.divergenceThreshold) {
       this.emitter.emit('trajectory_anomaly', {
         stateFrom: from,
         stateTo: to,
-        cumulativeLogLikelihood: this.cumulativeLogLikelihood,
+        realLogLikelihood,
         expectedBaselineLogLikelihood: expected,
         divergence,
       });
