@@ -1,6 +1,11 @@
 import { IntentManager, MarkovGraph } from './intent-sdk.js';
 import type { PerformanceReport } from './performance-instrumentation.js';
 
+interface BaselineCalibration {
+  mean: number;
+  std: number;
+}
+
 export interface SimulationConfig {
   sessions: number;
   transitionsPerSession: number;
@@ -146,6 +151,46 @@ function buildBaselineGraph(statePool: string[]): MarkovGraph {
   return baselineBuilder;
 }
 
+function calibrateBaseline(
+  baselineGraph: MarkovGraph,
+  statePool: string[],
+  transitionsPerSession: number,
+  rng: SeededRng,
+  sessions = 160,
+  entropyControl = 0.2,
+): BaselineCalibration {
+  const averages: number[] = [];
+
+  for (let session = 0; session < sessions; session += 1) {
+    const sequence: string[] = [];
+    let current = rng.int(statePool.length);
+
+    for (let step = 0; step < transitionsPerSession; step += 1) {
+      current = pickNextState(statePool, current, entropyControl, 'baseline', step, rng);
+      sequence.push(statePool[current]);
+    }
+
+    const ll = MarkovGraph.logLikelihoodTrajectory(
+      baselineGraph,
+      sequence,
+      baselineGraph.smoothingEpsilon,
+    );
+    const denominator = Math.max(1, sequence.length - 1);
+    averages.push(ll / denominator);
+  }
+
+  const mean = averages.reduce((acc, value) => acc + value, 0) / Math.max(1, averages.length);
+  const variance = averages.reduce((acc, value) => {
+    const delta = value - mean;
+    return acc + delta * delta;
+  }, 0) / Math.max(1, averages.length);
+
+  return {
+    mean,
+    std: Math.max(Math.sqrt(variance), Number.EPSILON),
+  };
+}
+
 export function evaluatePredictionMatrix(results: SessionResult[]): EvaluationSummary {
   let tp = 0;
   let fp = 0;
@@ -229,11 +274,23 @@ export class BenchmarkSimulationEngine {
     const baselineBuilder = buildBaselineGraph(statePool);
     const seed = config.seed ?? deterministicSeedFromConfig(config);
     const rng = new SeededRng(seed);
+    const calibrationRng = new SeededRng(seed ^ 0xa5a5a5a5);
+    const calibrated = calibrateBaseline(
+      baselineBuilder,
+      statePool,
+      config.transitionsPerSession,
+      calibrationRng,
+    );
 
     const manager = new IntentManager({
       baseline: baselineBuilder.toJSON(),
       persistDebounceMs: 60_000,
       benchmark: { enabled: true },
+      graph: {
+        divergenceThreshold: 2.0,
+        baselineMeanLL: calibrated.mean,
+        baselineStdLL: calibrated.std,
+      },
     });
 
     const anomalyRate = clamp(config.anomalySessionRate ?? 0.2, 0, 1);
@@ -268,12 +325,12 @@ export class BenchmarkSimulationEngine {
       });
 
       const offDivergence = manager.on('trajectory_anomaly', (payload) => {
-        divergenceValues.push(payload.divergence);
+        divergenceValues.push(payload.zScore);
         divergenceTriggered = true;
         divergenceFires += 1;
         if (detectionLatency === null) {
           detectionLatency = currentStep;
-          hesitationAtTrigger = payload.divergence;
+          hesitationAtTrigger = payload.zScore;
         }
       });
 

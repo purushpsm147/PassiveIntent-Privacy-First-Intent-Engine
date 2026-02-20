@@ -33,7 +33,7 @@ export interface TrajectoryAnomalyPayload {
   stateTo: string;
   realLogLikelihood: number;
   expectedBaselineLogLikelihood: number;
-  divergence: number;
+  zScore: number;
 }
 
 export interface StateChangePayload {
@@ -60,10 +60,20 @@ export interface MarkovGraphConfig {
   highEntropyThreshold?: number;
 
   /**
-   * Trigger anomaly when average baseline log-likelihood (nats/step)
-   * falls below this absolute threshold.
+   * Z-score trigger magnitude for anomaly detection.
+   * A value of 2 means trigger when z <= -2.
    */
   divergenceThreshold?: number;
+
+  /**
+   * Calibrated baseline mean average log-likelihood.
+   */
+  baselineMeanLL?: number;
+
+  /**
+   * Calibrated baseline standard deviation of average log-likelihood.
+   */
+  baselineStdLL?: number;
 
   /**
    * Smoothing epsilon used when baseline transition probabilities are unknown.
@@ -74,6 +84,16 @@ export interface MarkovGraphConfig {
 export interface IntentManagerConfig {
   bloom?: BloomFilterConfig;
   graph?: MarkovGraphConfig;
+
+  /**
+   * Optional calibrated baseline mean average log-likelihood.
+   */
+  baselineMeanLL?: number;
+
+  /**
+   * Optional calibrated baseline standard deviation of average log-likelihood.
+   */
+  baselineStdLL?: number;
 
   /** localStorage key prefix */
   storageKey?: string;
@@ -228,11 +248,15 @@ export class MarkovGraph {
   readonly highEntropyThreshold: number;
   readonly divergenceThreshold: number;
   readonly smoothingEpsilon: number;
+  readonly baselineMeanLL?: number;
+  readonly baselineStdLL?: number;
 
   constructor(config: MarkovGraphConfig = {}) {
     this.highEntropyThreshold = config.highEntropyThreshold ?? 0.75;
-    this.divergenceThreshold = config.divergenceThreshold ?? -2.0;
+    this.divergenceThreshold = Math.abs(config.divergenceThreshold ?? 2.0);
     this.smoothingEpsilon = config.smoothingEpsilon ?? 0.01;
+    this.baselineMeanLL = config.baselineMeanLL;
+    this.baselineStdLL = config.baselineStdLL;
   }
 
   ensureState(state: string): number {
@@ -433,8 +457,8 @@ export class MarkovGraph {
 }
 
 /**
- * Minimum number of outgoing transitions a state must have before entropy or
- * divergence evaluation is considered statistically meaningful.
+ * Minimum number of outgoing transitions a state must have before entropy
+ * evaluation is considered statistically meaningful.
  * Production value ensures statistical significance before triggering interventions.
  */
 const MIN_SAMPLE_TRANSITIONS = 3;
@@ -491,11 +515,17 @@ export class IntentManager {
     this.persistDebounceMs = config.persistDebounceMs ?? 2000;
     this.benchmark = new BenchmarkRecorder(config.benchmark);
 
-    const restored = this.restore();
+    const graphConfig: MarkovGraphConfig = {
+      ...config.graph,
+      baselineMeanLL: config.baselineMeanLL ?? config.graph?.baselineMeanLL,
+      baselineStdLL: config.baselineStdLL ?? config.graph?.baselineStdLL,
+    };
+
+    const restored = this.restore(graphConfig);
 
     this.bloom = restored?.bloom ?? new BloomFilter(config.bloom);
-    this.graph = restored?.graph ?? new MarkovGraph(config.graph);
-    this.baseline = config.baseline ? MarkovGraph.fromJSON(config.baseline, config.graph) : null;
+    this.graph = restored?.graph ?? new MarkovGraph(graphConfig);
+    this.baseline = config.baseline ? MarkovGraph.fromJSON(config.baseline, graphConfig) : null;
   }
 
   on<K extends keyof IntentEventMap>(
@@ -597,12 +627,6 @@ export class IntentManager {
       return;
     }
 
-    // Skip if the from-state has too few transitions for a reliable estimate.
-    if (this.graph.rowTotal(from) < MIN_SAMPLE_TRANSITIONS) {
-      this.benchmark.record('divergenceComputation', start);
-      return;
-    }
-
     const expected = MarkovGraph.logLikelihoodTrajectory(
       this.baseline,
       this.recentTrajectory,
@@ -611,17 +635,30 @@ export class IntentManager {
 
     const N = Math.max(1, this.recentTrajectory.length - 1);
     const expectedAvg = expected / N;
-    const divergence = expectedAvg;
+    const threshold = -Math.abs(this.graph.divergenceThreshold);
 
-    if (expectedAvg <= this.graph.divergenceThreshold) {
+    const hasCalibratedBaseline =
+      typeof this.graph.baselineMeanLL === 'number'
+      && typeof this.graph.baselineStdLL === 'number'
+      && Number.isFinite(this.graph.baselineMeanLL)
+      && Number.isFinite(this.graph.baselineStdLL)
+      && this.graph.baselineStdLL > 0;
+
+    const zScore = hasCalibratedBaseline
+      ? (expectedAvg - this.graph.baselineMeanLL) / this.graph.baselineStdLL
+      : expectedAvg;
+
+    const shouldEmit = hasCalibratedBaseline
+      ? zScore <= threshold
+      : expectedAvg <= threshold;
+
+    if (shouldEmit) {
       this.emitter.emit('trajectory_anomaly', {
         stateFrom: from,
         stateTo: to,
-        // Preserved for payload compatibility; divergence detection now uses
-        // only baseline likelihood.
         realLogLikelihood: expected,
         expectedBaselineLogLikelihood: expected,
-        divergence,
+        zScore,
       });
     }
 
@@ -647,14 +684,14 @@ export class IntentManager {
     localStorage.setItem(this.storageKey, JSON.stringify(payload));
   }
 
-  private restore(): { bloom: BloomFilter; graph: MarkovGraph } | null {
+  private restore(graphConfig: MarkovGraphConfig): { bloom: BloomFilter; graph: MarkovGraph } | null {
     const raw = localStorage.getItem(this.storageKey);
     if (!raw) return null;
 
     try {
       const parsed = JSON.parse(raw) as PersistedPayload;
       const bloom = BloomFilter.fromBase64(parsed.bloomBase64);
-      const graph = MarkovGraph.fromJSON(parsed.graph);
+      const graph = MarkovGraph.fromJSON(parsed.graph, graphConfig);
       return { bloom, graph };
     } catch {
       return null;
