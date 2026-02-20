@@ -28,6 +28,7 @@ transition modeling, entropy monitoring, and trajectory anomaly detection.
 
 ### `MarkovGraph`
 
+- `ensureState(state): number`
 - `incrementTransition(fromState, toState)`
 - `getProbability(fromState, toState)`
 - `entropyForState(state)`
@@ -56,23 +57,59 @@ transition modeling, entropy monitoring, and trajectory anomaly detection.
 npm install
 ```
 
-### Run test suite
+### Run unit test suite
 
 ```bash
 npm test
 ```
 
+### Run E2E test suite (headless)
+
+```bash
+npm run test:e2e
+```
+
+### Open Cypress E2E runner (headed)
+
+```bash
+npm run test:e2e:headed
+```
+
 ## Test Coverage
 
-The automated test suite validates:
+### Unit tests (`tests/intent-sdk.test.mjs`)
+
+The automated unit test suite validates:
 
 - Bloom filter add/check and base64 round-trip behavior.
 - Markov probability, entropy, quantization, and JSON serialization.
 - Markov trajectory likelihood smoothing for unseen edges.
 - Intent manager event emission, state tracking, persistence, and restore behavior.
 
+### E2E tests (`cypress/e2e/intent.cy.ts`)
+
+The Cypress E2E test suite exercises the sandbox app against four scenarios:
+
+- **Test A – The Perfect Buyer**: follows the ideal checkout path (`/home → /search → /product → /cart → /checkout`) and asserts that no entropy or anomaly toasts appear.
+- **Test B – The Rage-Click Healer**: simulates erratic back-and-forth navigation and asserts that a high-entropy toast ("Rage Click Detected") is shown.
+- **Test C – The Hesitation Discount**: follows a normal path then deviates (`/product → /help`) and asserts that a trajectory-anomaly toast ("Hesitation Detected") is shown.
+- **Test D – Persistence Debounce**: navigates through several routes and then waits for the debounce window to confirm the intent graph is written to `localStorage`.
+
 ## Repository Structure
 
-- `src/intent-sdk.ts`: SDK source implementation.
-- `tests/intent-sdk.test.mjs`: Node test suite.
-- `package.json`: project metadata and test script.
+```
+.
+├── src/
+│   └── intent-sdk.ts          # SDK source implementation
+├── tests/
+│   └── intent-sdk.test.mjs    # Node unit test suite
+├── sandbox/
+│   ├── app.ts                 # Browser sandbox application
+│   └── index.html             # Sandbox HTML page
+├── cypress/
+│   └── e2e/
+│       └── intent.cy.ts       # Cypress E2E test suite
+├── cypress.config.ts          # Cypress configuration
+├── tsconfig.json              # TypeScript compiler configuration
+└── package.json               # Project metadata and scripts
+```
