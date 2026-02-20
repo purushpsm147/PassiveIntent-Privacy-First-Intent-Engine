@@ -476,7 +476,7 @@ export class IntentManager {
   private readonly persistDebounceMs: number;
   private readonly benchmark: BenchmarkRecorder;
 
-  private persistTimer: number | null = null;
+  private persistTimer: ReturnType<typeof setTimeout> | null = null;
   private previousState: string | null = null;
   private recentTrajectory: string[] = [];
 
@@ -544,7 +544,7 @@ export class IntentManager {
 
   flushNow(): void {
     if (this.persistTimer !== null) {
-      window.clearTimeout(this.persistTimer);
+      window.clearTimeout(this.persistTimer as number);
       this.persistTimer = null;
     }
     this.persist();
@@ -631,13 +631,17 @@ export class IntentManager {
 
   private schedulePersist(): void {
     if (this.persistTimer !== null) {
-      window.clearTimeout(this.persistTimer);
+      window.clearTimeout(this.persistTimer as number);
     }
 
     this.persistTimer = window.setTimeout(() => {
       this.persistTimer = null;
       this.persist();
     }, this.persistDebounceMs);
+
+    if (typeof this.persistTimer === 'object' && this.persistTimer && 'unref' in this.persistTimer) {
+      (this.persistTimer as { unref: () => void }).unref();
+    }
   }
 
   private persist(): void {

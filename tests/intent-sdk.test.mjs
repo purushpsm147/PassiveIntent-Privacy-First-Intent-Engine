@@ -194,6 +194,7 @@ test('simulation engine produces benchmark and evaluation outputs', () => {
     entropyControl: 0.3,
     mode: 'noisy',
     anomalySessionRate: 0.5,
+    seed: 99,
   });
 
   assert.equal(summary.totalTransitions, 120);
@@ -201,6 +202,25 @@ test('simulation engine produces benchmark and evaluation outputs', () => {
   assert.ok(summary.performanceReport.track.count > 0);
   assert.ok(summary.evaluation.precision >= 0);
   assert.ok(summary.evaluation.recall >= 0);
+});
+
+test('simulateScenario is deterministic with a fixed seed', () => {
+  const engine = new BenchmarkSimulationEngine();
+  const runA = engine.simulateScenario({
+    seed: 1234,
+    sessions: 5,
+    transitionsPerSession: 20,
+    mode: 'random',
+  });
+  const runB = engine.simulateScenario({
+    seed: 1234,
+    sessions: 5,
+    transitionsPerSession: 20,
+    mode: 'random',
+  });
+
+  assert.deepEqual(runA.sessionReplays, runB.sessionReplays);
+  assert.deepEqual(runA.evaluation, runB.evaluation);
 });
 
 test('prediction matrix evaluation computes expected rates', () => {

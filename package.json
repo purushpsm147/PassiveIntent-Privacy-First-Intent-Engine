@@ -5,7 +5,14 @@
   "type": "module",
   "scripts": {
     "build": "tsc --project tsconfig.json --declaration --sourceMap",
-    "test": "npm run build && node --test tests/intent-sdk.test.mjs",
+    "test": "npm run test:unit",
+    "test:unit": "npm run build && node --test tests/intent-sdk.test.mjs",
+    "test:perf:run": "npm run build && node scripts/perf-runner.mjs",
+    "test:perf:assert": "node scripts/perf-regression.mjs",
+    "test:perf:matrix": "npm run build && node scripts/scenario-matrix.mjs --check-golden",
+    "test:perf": "npm run test:perf:run && npm run test:perf:assert && npm run test:perf:matrix",
+    "test:perf:update-baseline": "npm run build && node scripts/perf-runner.mjs --update-baseline",
+    "test:perf:update-matrix-golden": "npm run build && node scripts/scenario-matrix.mjs --update-golden",
     "test:e2e": "npm run build && cypress run",
     "test:e2e:headed": "npm run build && cypress run --headed --browser chrome"
   },

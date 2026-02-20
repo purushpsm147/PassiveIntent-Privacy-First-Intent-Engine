@@ -1,0 +1,23 @@
+name: performance-matrix
+
+on:
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  perf-regression:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        scenario: [baseline, noisy, adversarial, random]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+      - run: npm ci
+      - run: npm run test:perf:run
+      - run: npm run test:perf:assert
+      - name: Validate scenario matrix
+        run: npm run test:perf:matrix

@@ -6,8 +6,31 @@ export interface SimulationConfig {
   transitionsPerSession: number;
   stateSpaceSize: number;
   entropyControl: number;
-  mode: 'baseline' | 'noisy' | 'adversarial';
+  mode: 'baseline' | 'noisy' | 'adversarial' | 'random';
   anomalySessionRate?: number;
+  seed?: number;
+}
+
+export interface DeterministicScenarioConfig {
+  seed: number;
+  sessions: number;
+  transitionsPerSession: number;
+  mode: 'baseline' | 'noisy' | 'adversarial' | 'random';
+}
+
+export interface SessionReplay {
+  stateSequence: string[];
+  entropyValues: number[];
+  divergenceValues: number[];
+}
+
+export interface ScenarioReplaySummary {
+  seed: number;
+  mode: DeterministicScenarioConfig['mode'];
+  sessions: number;
+  transitionsPerSession: number;
+  sessionReplays: SessionReplay[];
+  evaluation: EvaluationSummary;
 }
 
 export interface EvaluationSummary {
@@ -41,6 +64,33 @@ interface SessionResult {
   hesitationAtTrigger: number | null;
 }
 
+interface InternalRunResult {
+  summary: SimulationSummary;
+  sessionReplays: SessionReplay[];
+  seed: number;
+}
+
+class SeededRng {
+  private state: number;
+
+  constructor(seed: number) {
+    this.state = seed >>> 0;
+  }
+
+  next(): number {
+    this.state = (this.state + 0x6d2b79f5) >>> 0;
+    let t = this.state;
+    t = Math.imul(t ^ (t >>> 15), t | 1);
+    t ^= t + Math.imul(t ^ (t >>> 7), t | 61);
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+  }
+
+  int(maxExclusive: number): number {
+    if (maxExclusive <= 0) return 0;
+    return Math.floor(this.next() * maxExclusive);
+  }
+}
+
 function clamp(value: number, min: number, max: number): number {
   return Math.max(min, Math.min(max, value));
 }
@@ -57,6 +107,7 @@ function pickNextState(
   entropyControl: number,
   mode: SimulationConfig['mode'],
   step: number,
+  rng: SeededRng,
 ): number {
   const randomness = clamp(entropyControl, 0, 1);
 
@@ -66,11 +117,33 @@ function pickNextState(
       : (currentIndex + states.length - 1) % states.length;
   }
 
-  if (Math.random() < randomness || mode === 'noisy') {
-    return Math.floor(Math.random() * states.length);
+  if (mode === 'random') {
+    return rng.int(states.length);
+  }
+
+  if (rng.next() < randomness || mode === 'noisy') {
+    return rng.int(states.length);
   }
 
   return (currentIndex + 1) % states.length;
+}
+
+function deterministicSeedFromConfig(config: Omit<SimulationConfig, 'seed'>): number {
+  let hash = 2166136261;
+  const encoded = `${config.sessions}:${config.transitionsPerSession}:${config.stateSpaceSize}:${config.entropyControl}:${config.mode}:${config.anomalySessionRate ?? ''}`;
+  for (let i = 0; i < encoded.length; i += 1) {
+    hash ^= encoded.charCodeAt(i);
+    hash = Math.imul(hash, 16777619);
+  }
+  return hash >>> 0;
+}
+
+function buildBaselineGraph(statePool: string[]): MarkovGraph {
+  const baselineBuilder = new MarkovGraph();
+  for (let i = 0; i < statePool.length; i += 1) {
+    baselineBuilder.incrementTransition(statePool[i], statePool[(i + 1) % statePool.length]);
+  }
+  return baselineBuilder;
 }
 
 export function evaluatePredictionMatrix(results: SessionResult[]): EvaluationSummary {
@@ -123,12 +196,39 @@ export function evaluatePredictionMatrix(results: SessionResult[]): EvaluationSu
 
 export class BenchmarkSimulationEngine {
   run(config: SimulationConfig): SimulationSummary {
-    const statePool = createStatePool(config.stateSpaceSize);
+    return this.runWithReplay(config).summary;
+  }
 
-    const baselineBuilder = new MarkovGraph();
-    for (let i = 0; i < statePool.length; i += 1) {
-      baselineBuilder.incrementTransition(statePool[i], statePool[(i + 1) % statePool.length]);
-    }
+  simulateScenario(config: DeterministicScenarioConfig): ScenarioReplaySummary {
+    const stateSpaceSize = 50;
+    const entropyControl = config.mode === 'random' ? 1 : config.mode === 'baseline' ? 0.2 : 0.55;
+    const anomalySessionRate = config.mode === 'baseline' ? 0.1 : 0.8;
+
+    const runResult = this.runWithReplay({
+      sessions: config.sessions,
+      transitionsPerSession: config.transitionsPerSession,
+      stateSpaceSize,
+      entropyControl,
+      mode: config.mode,
+      anomalySessionRate,
+      seed: config.seed,
+    });
+
+    return {
+      seed: config.seed,
+      mode: config.mode,
+      sessions: config.sessions,
+      transitionsPerSession: config.transitionsPerSession,
+      sessionReplays: runResult.sessionReplays,
+      evaluation: runResult.summary.evaluation,
+    };
+  }
+
+  private runWithReplay(config: SimulationConfig): InternalRunResult {
+    const statePool = createStatePool(config.stateSpaceSize);
+    const baselineBuilder = buildBaselineGraph(statePool);
+    const seed = config.seed ?? deterministicSeedFromConfig(config);
+    const rng = new SeededRng(seed);
 
     const manager = new IntentManager({
       baseline: baselineBuilder.toJSON(),
@@ -138,6 +238,7 @@ export class BenchmarkSimulationEngine {
 
     const anomalyRate = clamp(config.anomalySessionRate ?? 0.2, 0, 1);
     const sessionResults: SessionResult[] = [];
+    const sessionReplays: SessionReplay[] = [];
     let entropyFires = 0;
     let divergenceFires = 0;
 
@@ -145,7 +246,11 @@ export class BenchmarkSimulationEngine {
     const startMemory = manager.getPerformanceReport().memoryFootprint.serializedGraphBytes;
 
     for (let session = 0; session < config.sessions; session += 1) {
-      const isGroundTruthHesitation = Math.random() < anomalyRate || config.mode !== 'baseline';
+      const entropyValues: number[] = [];
+      const divergenceValues: number[] = [];
+      const stateSequence: string[] = [];
+
+      const isGroundTruthHesitation = rng.next() < anomalyRate || config.mode !== 'baseline';
       let entropyTriggered = false;
       let divergenceTriggered = false;
       let detectionLatency: number | null = null;
@@ -153,6 +258,7 @@ export class BenchmarkSimulationEngine {
       let currentStep = 0;
 
       const offEntropy = manager.on('high_entropy', (payload) => {
+        entropyValues.push(payload.normalizedEntropy);
         entropyTriggered = true;
         entropyFires += 1;
         if (detectionLatency === null) {
@@ -162,6 +268,7 @@ export class BenchmarkSimulationEngine {
       });
 
       const offDivergence = manager.on('trajectory_anomaly', (payload) => {
+        divergenceValues.push(payload.divergence);
         divergenceTriggered = true;
         divergenceFires += 1;
         if (detectionLatency === null) {
@@ -170,15 +277,17 @@ export class BenchmarkSimulationEngine {
         }
       });
 
-      let current = Math.floor(Math.random() * statePool.length);
+      let current = rng.int(statePool.length);
       for (let step = 0; step < config.transitionsPerSession; step += 1) {
         currentStep = step + 1;
         const sessionEntropy = isGroundTruthHesitation
           ? clamp(config.entropyControl + 0.35, 0, 1)
           : config.entropyControl;
 
-        current = pickNextState(statePool, current, sessionEntropy, config.mode, step);
-        manager.track(statePool[current]);
+        current = pickNextState(statePool, current, sessionEntropy, config.mode, step, rng);
+        const state = statePool[current];
+        stateSequence.push(state);
+        manager.track(state);
       }
 
       offEntropy();
@@ -191,6 +300,7 @@ export class BenchmarkSimulationEngine {
         detectionLatency,
         hesitationAtTrigger,
       });
+      sessionReplays.push({ stateSequence, entropyValues, divergenceValues });
     }
 
     const elapsed = performance.now() - startedAt;
@@ -199,13 +309,17 @@ export class BenchmarkSimulationEngine {
     const endMemory = performanceReport.memoryFootprint.serializedGraphBytes;
 
     return {
-      totalTransitions,
-      cpuMsPer10kTransitions: totalTransitions > 0 ? (elapsed / totalTransitions) * 10_000 : 0,
-      memoryGrowthBytes: endMemory - startMemory,
-      entropyTriggerRate: totalTransitions > 0 ? entropyFires / totalTransitions : 0,
-      divergenceTriggerRate: totalTransitions > 0 ? divergenceFires / totalTransitions : 0,
-      evaluation: evaluatePredictionMatrix(sessionResults),
-      performanceReport,
+      seed,
+      sessionReplays,
+      summary: {
+        totalTransitions,
+        cpuMsPer10kTransitions: totalTransitions > 0 ? (elapsed / totalTransitions) * 10_000 : 0,
+        memoryGrowthBytes: endMemory - startMemory,
+        entropyTriggerRate: totalTransitions > 0 ? entropyFires / totalTransitions : 0,
+        divergenceTriggerRate: totalTransitions > 0 ? divergenceFires / totalTransitions : 0,
+        evaluation: evaluatePredictionMatrix(sessionResults),
+        performanceReport,
+      },
     };
   }
 }
