@@ -35,6 +35,7 @@ globalThis.localStorage = storage;
 globalThis.window = {
   setTimeout,
   clearTimeout,
+  localStorage: storage,
 };
 if (!globalThis.performance) {
   globalThis.performance = { now: () => Date.now() };

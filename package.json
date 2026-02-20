@@ -1,23 +1,47 @@
 {
   "name": "privacy-first-intent-engine",
-  "version": "0.1.0",
-  "private": true,
+  "version": "1.0.0",
+  "description": "Privacy-first, SSR-safe intent detection engine using local Markov-chain inference and Bloom filters.",
+  "license": "MIT",
   "type": "module",
+  "main": "./dist/index.cjs",
+  "module": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "import": {
+        "types": "./dist/index.d.ts",
+        "default": "./dist/index.js"
+      },
+      "require": {
+        "types": "./dist/index.d.cts",
+        "default": "./dist/index.cjs"
+      }
+    }
+  },
+  "files": [
+    "dist",
+    "README.md"
+  ],
+  "sideEffects": false,
   "scripts": {
-    "build": "tsc --project tsconfig.json --declaration --sourceMap",
+    "build": "tsup",
+    "build:tsc": "tsc --project tsconfig.json --declaration --sourceMap",
     "test": "npm run test:unit",
-    "test:unit": "npm run build && node --test tests/intent-sdk.test.mjs",
-    "test:perf:run": "npm run build && node scripts/perf-runner.mjs",
+    "test:unit": "npm run build:tsc && node --test tests/intent-sdk.test.mjs",
+    "test:perf:run": "npm run build:tsc && node scripts/perf-runner.mjs",
     "test:perf:assert": "node scripts/perf-regression.mjs",
-    "test:perf:matrix": "npm run build && node scripts/scenario-matrix.mjs --check-golden",
+    "test:perf:matrix": "npm run build:tsc && node scripts/scenario-matrix.mjs --check-golden",
     "test:perf": "npm run test:perf:run && npm run test:perf:assert && npm run test:perf:matrix",
-    "test:perf:update-baseline": "npm run build && node scripts/perf-runner.mjs --update-baseline",
-    "test:perf:update-matrix-golden": "npm run build && node scripts/scenario-matrix.mjs --update-golden",
-    "test:e2e": "npm run build && cypress run",
-    "test:e2e:headed": "npm run build && cypress run --headed --browser chrome"
+    "test:perf:update-baseline": "npm run build:tsc && node scripts/perf-runner.mjs --update-baseline",
+    "test:perf:update-matrix-golden": "npm run build:tsc && node scripts/scenario-matrix.mjs --update-golden",
+    "test:e2e": "npm run build:tsc && cypress run",
+    "test:e2e:headed": "npm run build:tsc && cypress run --headed --browser chrome",
+    "prepublishOnly": "npm run build"
   },
   "devDependencies": {
     "cypress": "^13.15.2",
+    "tsup": "^8.5.1",
     "typescript": "^5.6.3"
   }
 }
