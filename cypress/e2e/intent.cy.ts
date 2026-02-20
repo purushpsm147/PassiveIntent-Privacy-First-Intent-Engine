@@ -2,11 +2,14 @@ const clickRoute = (route: string) => {
   cy.contains('button', route).click();
 };
 
+const TOAST_TIMEOUT_MS = 500;
+
 describe('Privacy-First Intent Sandbox', () => {
   beforeEach(() => {
     cy.visit('/sandbox/index.html', {
       onBeforeLoad: (win) => {
         win.localStorage.clear();
+        (win as typeof win & { __toastTimeoutMs?: number }).__toastTimeoutMs = TOAST_TIMEOUT_MS;
       }
     });
   });
