@@ -61,7 +61,7 @@ export interface MarkovGraphConfig {
 
   /**
    * Z-score trigger magnitude for anomaly detection.
-   * A value of 2 means trigger when z <= -2.
+   * A value of 3.5 means trigger when z <= -3.5.
    */
   divergenceThreshold?: number;
 
@@ -253,7 +253,7 @@ export class MarkovGraph {
 
   constructor(config: MarkovGraphConfig = {}) {
     this.highEntropyThreshold = config.highEntropyThreshold ?? 0.75;
-    this.divergenceThreshold = Math.abs(config.divergenceThreshold ?? 2.0);
+    this.divergenceThreshold = Math.abs(config.divergenceThreshold ?? 3.5);
     this.smoothingEpsilon = config.smoothingEpsilon ?? 0.01;
     this.baselineMeanLL = config.baselineMeanLL;
     this.baselineStdLL = config.baselineStdLL;
@@ -457,11 +457,29 @@ export class MarkovGraph {
 }
 
 /**
+ * Smoothing epsilon for log-likelihood calculations.
+ * Must be identical between calibration and runtime.
+ */
+const SMOOTHING_EPSILON = 0.01;
+
+/**
+ * Minimum sliding window length before evaluating trajectory.
+ * This "warm-up" allows the average log-likelihood to stabilize.
+ */
+const MIN_WINDOW_LENGTH = 16;
+
+/**
+ * Maximum sliding window length (recentTrajectory cap).
+ * Used as reference for variance scaling.
+ */
+const MAX_WINDOW_LENGTH = 32;
+
+/**
  * Minimum number of outgoing transitions a state must have before entropy
  * evaluation is considered statistically meaningful.
- * Production value ensures statistical significance before triggering interventions.
+ * Higher values prevent spurious entropy triggers on small samples.
  */
-const MIN_SAMPLE_TRANSITIONS = 3;
+const MIN_SAMPLE_TRANSITIONS = 10;
 
 type Listener<T> = (payload: T) => void;
 
@@ -550,7 +568,7 @@ export class IntentManager {
 
     this.recentTrajectory.push(state);
     // Keep a short tail to bound memory and compute costs.
-    if (this.recentTrajectory.length > 32) this.recentTrajectory.shift();
+    if (this.recentTrajectory.length > MAX_WINDOW_LENGTH) this.recentTrajectory.shift();
 
     if (from) {
       const incrementStart = this.benchmark.now();
@@ -572,6 +590,16 @@ export class IntentManager {
     const seen = this.bloom.check(state);
     this.benchmark.record('bloomCheck', start);
     return seen;
+  }
+
+  /**
+   * Reset session-specific state for clean evaluation boundaries.
+   * Clears the recent trajectory and previous state, but preserves
+   * the learned Markov graph and Bloom filter.
+   */
+  resetSession(): void {
+    this.recentTrajectory = [];
+    this.previousState = null;
   }
 
   exportGraph(): SerializedMarkovGraph {
@@ -622,15 +650,22 @@ export class IntentManager {
   private evaluateTrajectory(from: string, to: string): void {
     const start = this.benchmark.now();
 
+    // Stabilization gate: wait until window reaches minimum size for statistical stability.
+    if (this.recentTrajectory.length < MIN_WINDOW_LENGTH) {
+      this.benchmark.record('divergenceComputation', start);
+      return;
+    }
+
     if (!this.baseline) {
       this.benchmark.record('divergenceComputation', start);
       return;
     }
 
+    // Use explicit SMOOTHING_EPSILON for parity with calibration phase.
     const expected = MarkovGraph.logLikelihoodTrajectory(
       this.baseline,
       this.recentTrajectory,
-      this.graph.smoothingEpsilon,
+      SMOOTHING_EPSILON,
     );
 
     const N = Math.max(1, this.recentTrajectory.length - 1);
@@ -644,8 +679,14 @@ export class IntentManager {
       && Number.isFinite(this.graph.baselineStdLL)
       && this.graph.baselineStdLL > 0;
 
+    // Dynamic variance scaling: std of an average scales by 1/sqrt(N).
+    // Scale baselineStdLL by sqrt(CALIBRATION_LENGTH / N) where CALIBRATION_LENGTH = MAX_WINDOW_LENGTH.
+    const adjustedStd = hasCalibratedBaseline
+      ? this.graph.baselineStdLL * Math.sqrt(MAX_WINDOW_LENGTH / N)
+      : 0;
+
     const zScore = hasCalibratedBaseline
-      ? (expectedAvg - this.graph.baselineMeanLL) / this.graph.baselineStdLL
+      ? (expectedAvg - this.graph.baselineMeanLL) / adjustedStd
       : expectedAvg;
 
     const shouldEmit = hasCalibratedBaseline

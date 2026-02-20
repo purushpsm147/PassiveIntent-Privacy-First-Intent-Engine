@@ -151,6 +151,34 @@ function buildBaselineGraph(statePool: string[]): MarkovGraph {
   return baselineBuilder;
 }
 
+/**
+ * Smoothing epsilon used for log-likelihood calculations.
+ * Must be identical between calibration and runtime.
+ */
+const SMOOTHING_EPSILON = 0.01;
+
+/**
+ * Minimum sliding window length for calibration sampling.
+ * Matches the warm-up gate in IntentManager.evaluateTrajectory.
+ */
+const MIN_WINDOW_LENGTH = 16;
+
+/**
+ * Maximum sliding window length for calibration sampling.
+ * Matches the recentTrajectory cap in IntentManager.
+ */
+const MAX_WINDOW_LENGTH = 32;
+
+/**
+ * Calibrate baseline statistics using independent samples at the reference window size.
+ * 
+ * Statistical approach:
+ * 1. Generate trajectories of MAX_WINDOW_LENGTH states (the reference size)
+ * 2. Compute average log-likelihood per transition for each trajectory
+ * 3. Calculate mean and std from these independent samples
+ * 
+ * At runtime, variance is scaled by sqrt(MAX_WINDOW_LENGTH / N) for windows of size N.
+ */
 function calibrateBaseline(
   baselineGraph: MarkovGraph,
   statePool: string[],
@@ -161,22 +189,28 @@ function calibrateBaseline(
 ): BaselineCalibration {
   const averages: number[] = [];
 
+  // Generate many independent samples at the reference window size
+  const samplesPerSession = Math.max(1, Math.floor(transitionsPerSession / MAX_WINDOW_LENGTH));
+  
   for (let session = 0; session < sessions; session += 1) {
-    const sequence: string[] = [];
-    let current = rng.int(statePool.length);
+    for (let sample = 0; sample < samplesPerSession; sample += 1) {
+      const sequence: string[] = [];
+      let current = rng.int(statePool.length);
 
-    for (let step = 0; step < transitionsPerSession; step += 1) {
-      current = pickNextState(statePool, current, entropyControl, 'baseline', step, rng);
-      sequence.push(statePool[current]);
+      // Generate a trajectory of exactly MAX_WINDOW_LENGTH states
+      for (let step = 0; step < MAX_WINDOW_LENGTH; step += 1) {
+        current = pickNextState(statePool, current, entropyControl, 'baseline', step, rng);
+        sequence.push(statePool[current]);
+      }
+
+      const ll = MarkovGraph.logLikelihoodTrajectory(
+        baselineGraph,
+        sequence,
+        SMOOTHING_EPSILON,
+      );
+      const denominator = Math.max(1, sequence.length - 1);
+      averages.push(ll / denominator);
     }
-
-    const ll = MarkovGraph.logLikelihoodTrajectory(
-      baselineGraph,
-      sequence,
-      baselineGraph.smoothingEpsilon,
-    );
-    const denominator = Math.max(1, sequence.length - 1);
-    averages.push(ll / denominator);
   }
 
   const mean = averages.reduce((acc, value) => acc + value, 0) / Math.max(1, averages.length);
@@ -282,27 +316,36 @@ export class BenchmarkSimulationEngine {
       calibrationRng,
     );
 
-    const manager = new IntentManager({
-      baseline: baselineBuilder.toJSON(),
-      persistDebounceMs: 60_000,
-      benchmark: { enabled: true },
-      graph: {
-        divergenceThreshold: 2.0,
-        baselineMeanLL: calibrated.mean,
-        baselineStdLL: calibrated.std,
-      },
-    });
-
     const anomalyRate = clamp(config.anomalySessionRate ?? 0.2, 0, 1);
     const sessionResults: SessionResult[] = [];
     const sessionReplays: SessionReplay[] = [];
     let entropyFires = 0;
     let divergenceFires = 0;
 
+    // Shared config for per-session IntentManagers
+    const managerConfig = {
+      baseline: baselineBuilder.toJSON(),
+      persistDebounceMs: 60_000,
+      benchmark: { enabled: true },
+      graph: {
+        divergenceThreshold: 3.5,
+        baselineMeanLL: calibrated.mean,
+        baselineStdLL: calibrated.std,
+      },
+    };
+
     const startedAt = performance.now();
-    const startMemory = manager.getPerformanceReport().memoryFootprint.serializedGraphBytes;
+    // Use a fresh manager for initial memory measurement
+    const firstManager = new IntentManager(managerConfig);
+    const startMemory = firstManager.getPerformanceReport().memoryFootprint.serializedGraphBytes;
+    let lastPerformanceReport = firstManager.getPerformanceReport();
 
     for (let session = 0; session < config.sessions; session += 1) {
+      // Create a fresh IntentManager per session for clean evaluation.
+      // This ensures entropy detection starts fresh (no cross-session pollution)
+      // and divergence detection uses the fixed baseline properly.
+      const manager = new IntentManager(managerConfig);
+
       const entropyValues: number[] = [];
       const divergenceValues: number[] = [];
       const stateSequence: string[] = [];
@@ -358,12 +401,12 @@ export class BenchmarkSimulationEngine {
         hesitationAtTrigger,
       });
       sessionReplays.push({ stateSequence, entropyValues, divergenceValues });
+      lastPerformanceReport = manager.getPerformanceReport();
     }
 
     const elapsed = performance.now() - startedAt;
     const totalTransitions = config.sessions * config.transitionsPerSession;
-    const performanceReport = manager.getPerformanceReport();
-    const endMemory = performanceReport.memoryFootprint.serializedGraphBytes;
+    const endMemory = lastPerformanceReport.memoryFootprint.serializedGraphBytes;
 
     return {
       seed,
@@ -375,7 +418,7 @@ export class BenchmarkSimulationEngine {
         entropyTriggerRate: totalTransitions > 0 ? entropyFires / totalTransitions : 0,
         divergenceTriggerRate: totalTransitions > 0 ? divergenceFires / totalTransitions : 0,
         evaluation: evaluatePredictionMatrix(sessionResults),
-        performanceReport,
+        performanceReport: lastPerformanceReport,
       },
     };
   }

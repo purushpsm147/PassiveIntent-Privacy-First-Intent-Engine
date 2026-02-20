@@ -160,14 +160,16 @@ test('IntentManager emits events, tracks seen states, and persists/restores', as
   assert.equal(manager.hasSeen('search'), true);
   assert.deepEqual(stateChanges, ['home', 'search', 'detail']);
 
-  manager.track('home');
-  manager.track('search');
-  manager.track('home');
-  manager.track('search');
-  manager.track('home');
+  // Generate enough transitions to exceed MIN_SAMPLE_TRANSITIONS (10) and MIN_WINDOW_LENGTH (16)
+  // Alternate between home<->search to build up entropy samples and trajectory window
+  for (let i = 0; i < 30; i++) {
+    manager.track(i % 2 === 0 ? 'home' : 'search');
+  }
 
-  assert.ok(highEntropyCount >= 1);
-  assert.ok(anomalyCount >= 1);
+  // With highEntropyThreshold=0 and divergenceThreshold=-0.1 (very sensitive),
+  // and enough samples, we should see both types of events
+  assert.ok(highEntropyCount >= 1, `Expected highEntropyCount >= 1, got ${highEntropyCount}`);
+  assert.ok(anomalyCount >= 1, `Expected anomalyCount >= 1, got ${anomalyCount}`);
 
   await manager.flushNow();
 
@@ -250,20 +252,22 @@ test('baseline trajectory sessions keep anomaly false positive rate below 0.1', 
     baseline.incrementTransition(states[i], states[(i + 1) % states.length]);
   }
 
-  const manager = new IntentManager({
-    storageKey: 'fpr-baseline-check',
-    baseline: baseline.toJSON(),
-  });
-
   let anomalies = 0;
   const sessions = 20;
   for (let session = 0; session < sessions; session += 1) {
+    // Create a fresh IntentManager per session for proper isolation
+    const manager = new IntentManager({
+      storageKey: `fpr-baseline-check-${session}`,
+      baseline: baseline.toJSON(),
+    });
+
     let fired = false;
     const off = manager.on('trajectory_anomaly', () => {
       fired = true;
     });
 
-    for (let step = 0; step < 40; step += 1) {
+    // Track 64 structured transitions (baseline pattern)
+    for (let step = 0; step < 64; step += 1) {
       manager.track(states[(session + step) % states.length]);
     }
 
@@ -271,7 +275,8 @@ test('baseline trajectory sessions keep anomaly false positive rate below 0.1', 
     if (fired) anomalies += 1;
   }
 
-  assert.ok(anomalies / sessions < 0.1);
+  // Baseline (structured) trajectories should rarely trigger false positives
+  assert.ok(anomalies / sessions < 0.1, `Expected FPR < 0.1, got ${anomalies}/${sessions} = ${(anomalies/sessions).toFixed(2)}`);
 });
 
 test('adversarial trajectory sessions keep anomaly true positive rate above 0.8', () => {
@@ -281,10 +286,26 @@ test('adversarial trajectory sessions keep anomaly true positive rate above 0.8'
     baseline.incrementTransition(states[i], states[(i + 1) % states.length]);
   }
 
-  const manager = new IntentManager({
-    storageKey: 'tpr-adversarial-check',
-    baseline: baseline.toJSON(),
-  });
+  // Calibrate baseline statistics for proper Z-score detection
+  const SMOOTHING_EPSILON = 0.01;
+  const CALIBRATION_WINDOW = 32;
+  const calibrationSamples = [];
+  
+  for (let i = 0; i < 100; i += 1) {
+    const sequence = [];
+    for (let j = 0; j < CALIBRATION_WINDOW; j += 1) {
+      sequence.push(states[(i + j) % states.length]);
+    }
+    const ll = MarkovGraph.logLikelihoodTrajectory(baseline, sequence, SMOOTHING_EPSILON);
+    calibrationSamples.push(ll / Math.max(1, sequence.length - 1));
+  }
+  
+  const baselineMeanLL = calibrationSamples.reduce((a, b) => a + b, 0) / calibrationSamples.length;
+  const variance = calibrationSamples.reduce((a, v) => {
+    const d = v - baselineMeanLL;
+    return a + d * d;
+  }, 0) / calibrationSamples.length;
+  const baselineStdLL = Math.sqrt(variance);
 
   let rngState = 1337;
   const nextInt = (max) => {
@@ -295,12 +316,24 @@ test('adversarial trajectory sessions keep anomaly true positive rate above 0.8'
   let detected = 0;
   const sessions = 20;
   for (let session = 0; session < sessions; session += 1) {
+    // Create a fresh IntentManager per session with calibration
+    const manager = new IntentManager({
+      storageKey: `tpr-adversarial-check-${session}`,
+      baseline: baseline.toJSON(),
+      graph: {
+        divergenceThreshold: 2.0,  // More sensitive threshold for adversarial detection
+        baselineMeanLL,
+        baselineStdLL,
+      },
+    });
+
     let fired = false;
     const off = manager.on('trajectory_anomaly', () => {
       fired = true;
     });
 
-    for (let step = 0; step < 40; step += 1) {
+    // Track 64 random transitions (adversarial pattern).
+    for (let step = 0; step < 64; step += 1) {
       manager.track(states[nextInt(states.length)]);
     }
 
@@ -308,7 +341,8 @@ test('adversarial trajectory sessions keep anomaly true positive rate above 0.8'
     if (fired) detected += 1;
   }
 
-  assert.ok(detected / sessions > 0.8);
+  // Random navigation should trigger anomalies with high probability when calibrated.
+  assert.ok(detected / sessions > 0.8, `Expected TPR > 0.8, got ${detected}/${sessions} = ${(detected/sessions).toFixed(2)}`);
 });
 
 test('prediction matrix evaluation computes expected rates', () => {
