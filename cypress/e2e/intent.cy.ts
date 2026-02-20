@@ -7,6 +7,7 @@ describe('Privacy-First Intent Sandbox', () => {
     cy.visit('/sandbox/index.html', {
       onBeforeLoad: (win) => {
         win.localStorage.clear();
+        (win as typeof win & { __toastDurationMs?: number }).__toastDurationMs = 30000;
       }
     });
   });

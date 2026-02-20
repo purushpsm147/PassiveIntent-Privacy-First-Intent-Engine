@@ -24,6 +24,8 @@ const activeRoute = document.getElementById('active-route') as HTMLDivElement;
 const routes = document.getElementById('routes') as HTMLDivElement;
 const toastRegion = document.getElementById('toast-region') as HTMLDivElement;
 
+const TOAST_DURATION_MS = (window as typeof window & { __toastDurationMs?: number }).__toastDurationMs ?? 3500;
+
 const showToast = (message: string, kind: 'entropy' | 'anomaly') => {
   const toast = document.createElement('div');
   toast.className = `toast ${kind}`;
@@ -33,7 +35,7 @@ const showToast = (message: string, kind: 'entropy' | 'anomaly') => {
 
   window.setTimeout(() => {
     toast.remove();
-  }, 3500);
+  }, TOAST_DURATION_MS);
 };
 
 intentManager.on('high_entropy', () => {
