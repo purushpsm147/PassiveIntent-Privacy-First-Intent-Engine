@@ -7,6 +7,19 @@
  * - Sparse + quantized storage for state transitions
  */
 
+import { BenchmarkRecorder } from './performance-instrumentation.js';
+import type {
+  BenchmarkConfig,
+  PerformanceReport,
+} from './performance-instrumentation.js';
+
+export type {
+  BenchmarkConfig,
+  MemoryFootprintReport,
+  OperationStats,
+  PerformanceReport,
+} from './performance-instrumentation.js';
+
 export type IntentEventName = 'high_entropy' | 'trajectory_anomaly' | 'state_change';
 
 export interface HighEntropyPayload {
@@ -66,6 +79,11 @@ export interface IntentManagerConfig {
    * Optional baseline graph used for trajectory log-likelihood comparison.
    */
   baseline?: SerializedMarkovGraph;
+
+  /**
+   * Optional performance instrumentation.
+   */
+  benchmark?: BenchmarkConfig;
 }
 
 /**
@@ -144,6 +162,10 @@ export class BloomFilter {
     }
     // All bits are set => probably exists (allowing Bloom false positives).
     return true;
+  }
+
+  getBitsetByteSize(): number {
+    return this.bits.byteLength;
   }
 
   toBase64(): string {
@@ -320,8 +342,8 @@ export class MarkovGraph {
     let offset = 0;
     row.toCounts.forEach((count, toIndex) => {
       const probability = count / row.total;
-      out[offset]     = toIndex & 0xff;          // low byte of toIndex
-      out[offset + 1] = (toIndex >> 8) & 0xff;   // high byte of toIndex
+      out[offset] = toIndex & 0xff; // low byte of toIndex
+      out[offset + 1] = (toIndex >> 8) & 0xff; // high byte of toIndex
       out[offset + 2] = quantizeProbability(probability); // quantized probability
       offset += 3;
     });
@@ -353,6 +375,18 @@ export class MarkovGraph {
     const from = this.stateToIndex.get(state);
     if (from === undefined) return 0;
     return this.rows.get(from)?.total ?? 0;
+  }
+
+  stateCount(): number {
+    return this.indexToState.length;
+  }
+
+  totalTransitions(): number {
+    let total = 0;
+    this.rows.forEach((row) => {
+      total += row.total;
+    });
+    return total;
   }
 
   toJSON(): SerializedMarkovGraph {
@@ -440,6 +474,7 @@ export class IntentManager {
   private readonly emitter = new EventEmitter<IntentEventMap>();
   private readonly storageKey: string;
   private readonly persistDebounceMs: number;
+  private readonly benchmark: BenchmarkRecorder;
 
   private persistTimer: number | null = null;
   private previousState: string | null = null;
@@ -448,6 +483,7 @@ export class IntentManager {
   constructor(config: IntentManagerConfig = {}) {
     this.storageKey = config.storageKey ?? 'ui-telepathy';
     this.persistDebounceMs = config.persistDebounceMs ?? 2000;
+    this.benchmark = new BenchmarkRecorder(config.benchmark);
 
     const restored = this.restore();
 
@@ -467,7 +503,11 @@ export class IntentManager {
    * Track a page view or custom state transition.
    */
   track(state: string): void {
+    const trackStart = this.benchmark.now();
+
+    const bloomAddStart = this.benchmark.now();
     this.bloom.add(state);
+    this.benchmark.record('bloomAdd', bloomAddStart);
 
     const from = this.previousState;
     this.previousState = state;
@@ -477,17 +517,25 @@ export class IntentManager {
     if (this.recentTrajectory.length > 32) this.recentTrajectory.shift();
 
     if (from) {
+      const incrementStart = this.benchmark.now();
       this.graph.incrementTransition(from, state);
+      this.benchmark.record('incrementTransition', incrementStart);
+
       this.evaluateEntropy(state);
       this.evaluateTrajectory(from, state);
     }
 
     this.emitter.emit('state_change', { from, to: state });
     this.schedulePersist();
+
+    this.benchmark.record('track', trackStart);
   }
 
   hasSeen(state: string): boolean {
-    return this.bloom.check(state);
+    const start = this.benchmark.now();
+    const seen = this.bloom.check(state);
+    this.benchmark.record('bloomCheck', start);
+    return seen;
   }
 
   exportGraph(): SerializedMarkovGraph {
@@ -502,9 +550,24 @@ export class IntentManager {
     this.persist();
   }
 
+  getPerformanceReport(): PerformanceReport {
+    const serialized = this.graph.toJSON();
+    return this.benchmark.report({
+      stateCount: this.graph.stateCount(),
+      totalTransitions: this.graph.totalTransitions(),
+      bloomBitsetBytes: this.bloom.getBitsetByteSize(),
+      serializedGraphBytes: this.benchmark.serializedSizeBytes(serialized),
+    });
+  }
+
   private evaluateEntropy(state: string): void {
+    const start = this.benchmark.now();
+
     // Skip if there are fewer than MIN_SAMPLE_TRANSITIONS outgoing transitions (too small a sample).
-    if (this.graph.rowTotal(state) < MIN_SAMPLE_TRANSITIONS) return;
+    if (this.graph.rowTotal(state) < MIN_SAMPLE_TRANSITIONS) {
+      this.benchmark.record('entropyComputation', start);
+      return;
+    }
 
     const entropy = this.graph.entropyForState(state);
     const normalizedEntropy = this.graph.normalizedEntropyForState(state);
@@ -516,13 +579,23 @@ export class IntentManager {
         normalizedEntropy,
       });
     }
+
+    this.benchmark.record('entropyComputation', start);
   }
 
   private evaluateTrajectory(from: string, to: string): void {
-    if (!this.baseline) return;
+    const start = this.benchmark.now();
+
+    if (!this.baseline) {
+      this.benchmark.record('divergenceComputation', start);
+      return;
+    }
 
     // Skip if the from-state has too few transitions for a reliable estimate.
-    if (this.graph.rowTotal(from) < MIN_SAMPLE_TRANSITIONS) return;
+    if (this.graph.rowTotal(from) < MIN_SAMPLE_TRANSITIONS) {
+      this.benchmark.record('divergenceComputation', start);
+      return;
+    }
 
     // Calculate real log-likelihood for the bounded window using the live graph.
     let realLogLikelihood = 0;
@@ -552,6 +625,8 @@ export class IntentManager {
         divergence,
       });
     }
+
+    this.benchmark.record('divergenceComputation', start);
   }
 
   private schedulePersist(): void {

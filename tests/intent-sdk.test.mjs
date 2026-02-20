@@ -1,7 +1,15 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 
-import { BloomFilter, IntentManager, MarkovGraph } from '../dist/src/intent-sdk.js';
+import {
+  BloomFilter,
+  IntentManager,
+  MarkovGraph,
+} from '../dist/src/intent-sdk.js';
+import {
+  BenchmarkSimulationEngine,
+  evaluatePredictionMatrix,
+} from '../dist/src/intent-sdk-performance.js';
 
 class MemoryStorage {
   constructor() {
@@ -28,6 +36,22 @@ globalThis.window = {
   setTimeout,
   clearTimeout,
 };
+if (!globalThis.performance) {
+  globalThis.performance = { now: () => Date.now() };
+}
+if (!globalThis.TextEncoder) {
+  globalThis.TextEncoder = class {
+    encode(value) {
+      return Buffer.from(value, 'utf-8');
+    }
+  };
+}
+if (!globalThis.btoa) {
+  globalThis.btoa = (v) => Buffer.from(v, 'binary').toString('base64');
+}
+if (!globalThis.atob) {
+  globalThis.atob = (v) => Buffer.from(v, 'base64').toString('binary');
+}
 
 test('BloomFilter supports add/check and base64 round-trip', () => {
   const bloom = new BloomFilter({ bitSize: 256, hashCount: 3 });
@@ -52,6 +76,8 @@ test('MarkovGraph calculates probabilities, entropy, and serialization', () => {
 
   assert.equal(graph.getProbability('A', 'B'), 2 / 3);
   assert.equal(graph.getProbability('A', 'C'), 1 / 3);
+  assert.equal(graph.stateCount(), 3);
+  assert.equal(graph.totalTransitions(), 3);
 
   const entropy = graph.entropyForState('A');
   assert.ok(entropy > 0);
@@ -115,8 +141,6 @@ test('IntentManager emits events, tracks seen states, and persists/restores', as
   assert.equal(manager.hasSeen('search'), true);
   assert.deepEqual(stateChanges, ['home', 'search', 'detail']);
 
-  // Add more transitions so row.total reaches the minimum sample threshold (3)
-  // before checking that entropy and anomaly events fire.
   manager.track('home');
   manager.track('search');
   manager.track('home');
@@ -138,4 +162,58 @@ test('IntentManager emits events, tracks seen states, and persists/restores', as
 
   assert.equal(restored.hasSeen('home'), true);
   assert.equal(restored.exportGraph().states.includes('search'), true);
+});
+
+test('IntentManager returns performance report when benchmark mode is enabled', () => {
+  const manager = new IntentManager({
+    storageKey: 'perf-test',
+    benchmark: { enabled: true, maxSamples: 32 },
+  });
+
+  manager.track('A');
+  manager.track('B');
+  manager.track('C');
+  manager.hasSeen('A');
+
+  const report = manager.getPerformanceReport();
+
+  assert.equal(report.benchmarkEnabled, true);
+  assert.ok(report.track.count >= 3);
+  assert.ok(report.bloomAdd.count >= 3);
+  assert.ok(report.bloomCheck.count >= 1);
+  assert.ok(report.memoryFootprint.stateCount >= 3);
+  assert.ok(report.memoryFootprint.totalTransitions >= 2);
+});
+
+test('simulation engine produces benchmark and evaluation outputs', () => {
+  const engine = new BenchmarkSimulationEngine();
+  const summary = engine.run({
+    sessions: 4,
+    transitionsPerSession: 30,
+    stateSpaceSize: 8,
+    entropyControl: 0.3,
+    mode: 'noisy',
+    anomalySessionRate: 0.5,
+  });
+
+  assert.equal(summary.totalTransitions, 120);
+  assert.ok(summary.cpuMsPer10kTransitions >= 0);
+  assert.ok(summary.performanceReport.track.count > 0);
+  assert.ok(summary.evaluation.precision >= 0);
+  assert.ok(summary.evaluation.recall >= 0);
+});
+
+test('prediction matrix evaluation computes expected rates', () => {
+  const summary = evaluatePredictionMatrix([
+    { isGroundTruthHesitation: true, entropyTriggered: true, divergenceTriggered: false, detectionLatency: 2, hesitationAtTrigger: 0.8 },
+    { isGroundTruthHesitation: true, entropyTriggered: false, divergenceTriggered: false, detectionLatency: null, hesitationAtTrigger: null },
+    { isGroundTruthHesitation: false, entropyTriggered: true, divergenceTriggered: false, detectionLatency: 1, hesitationAtTrigger: 0.7 },
+    { isGroundTruthHesitation: false, entropyTriggered: false, divergenceTriggered: false, detectionLatency: null, hesitationAtTrigger: null },
+  ]);
+
+  assert.equal(summary.precision, 0.5);
+  assert.equal(summary.recall, 0.5);
+  assert.equal(summary.truePositiveRate, 0.5);
+  assert.equal(summary.falsePositiveRate, 0.5);
+  assert.equal(summary.avgDetectionLatency, 1.5);
 });
