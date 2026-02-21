@@ -121,6 +121,89 @@ test('trajectory likelihood scores structured paths higher than noisy paths unde
   assert.ok(structuredAvg > noisyAvg);
 });
 
+test('MarkovGraph LFU pruning reuses freed indices and round-trips without resurrecting tombstones', () => {
+  // ── Setup: maxStates=3 so pruning fires as soon as we have 4 live states ──
+  const graph = new MarkovGraph({ maxStates: 3 });
+
+  // A↔B is high-use; C and D are low-use targets.
+  for (let i = 0; i < 20; i++) graph.incrementTransition('A', 'B');
+  for (let i = 0; i < 15; i++) graph.incrementTransition('B', 'A');
+  graph.incrementTransition('A', 'C');  // low-use — candidate for eviction
+  graph.incrementTransition('C', 'A');
+  graph.incrementTransition('A', 'D');  // 4th state pushes size over maxStates
+
+  // stateToIndex.size == 4 > maxStates=3 → prune evicts 1 least-used state
+  graph.prune();
+
+  const statesAfterPrune = graph.toJSON().states;
+  const liveAfterPrune   = statesAfterPrune.filter(s => s !== '');
+  const tombstoneCount   = statesAfterPrune.filter(s => s === '').length;
+
+  assert.ok(liveAfterPrune.length <= 3,  `Expected ≤3 live states, got ${liveAfterPrune.length}`);
+  assert.ok(tombstoneCount >= 1,          `Expected ≥1 tombstone slot, got ${tombstoneCount}`);
+
+  // ── In-memory slot reuse ──
+  const arrayLenBeforeReuse = statesAfterPrune.length;
+  graph.incrementTransition('A', 'E');   // E must occupy the freed slot
+
+  assert.equal(
+    graph.toJSON().states.length, arrayLenBeforeReuse,
+    `ensureState must reuse freed slot, not grow array (was ${arrayLenBeforeReuse})`
+  );
+  assert.ok(graph.getProbability('A', 'E') > 0, 'A→E probability must be > 0 after slot reuse');
+
+  // ── Primary path: toBinary / fromBinary (no JSON.stringify on main thread) ──
+  // Build a fresh graph with tombstones so we can verify the binary round-trip
+  // correctly repopulates freedIndices rather than resurrecting '' as a live state.
+  const g2 = new MarkovGraph({ maxStates: 3 });
+  for (let i = 0; i < 20; i++) g2.incrementTransition('A', 'B');
+  for (let i = 0; i < 15; i++) g2.incrementTransition('B', 'A');
+  g2.incrementTransition('A', 'C');
+  g2.incrementTransition('C', 'A');
+  g2.incrementTransition('A', 'D');
+  g2.prune();  // leaves ≥1 tombstone
+
+  assert.ok(g2.toJSON().states.includes(''), 'Precondition: g2 must have tombstone before binary encode');
+  const pAB = g2.getProbability('A', 'B');
+
+  const bin     = g2.toBinary();
+  const fromBin = MarkovGraph.fromBinary(bin);
+
+  // Tombstone must not be queryable as a live state
+  assert.equal(fromBin.getProbability('', 'A'), 0, "fromBinary: '' must not be a live fromState");
+  assert.equal(fromBin.getProbability('A', ''), 0, "fromBinary: '' must not be a live toState");
+
+  // Probabilities must survive the binary round-trip
+  assert.ok(
+    Math.abs(pAB - fromBin.getProbability('A', 'B')) < 1e-9,
+    `fromBinary: A→B probability mismatch`
+  );
+
+  // freedIndices must be repopulated — next new state must reuse a slot, not grow the array
+  const arrayLenBin = fromBin.toJSON().states.length;
+  fromBin.incrementTransition('A', 'F');
+  assert.equal(
+    fromBin.toJSON().states.length, arrayLenBin,
+    `fromBinary: adding F must reuse a freed slot, not extend the array`
+  );
+
+  // ── Secondary path: fromJSON (used for V1 legacy restore + baseline config) ──
+  const fromJson = MarkovGraph.fromJSON(g2.toJSON());
+  assert.equal(fromJson.getProbability('', 'A'), 0, "fromJSON: '' must not be a live fromState");
+  assert.equal(fromJson.getProbability('A', ''), 0, "fromJSON: '' must not be a live toState");
+  assert.ok(
+    Math.abs(pAB - fromJson.getProbability('A', 'B')) < 1e-9,
+    `fromJSON: A→B probability mismatch`
+  );
+  const arrayLenJson = fromJson.toJSON().states.length;
+  fromJson.incrementTransition('A', 'G');
+  assert.equal(
+    fromJson.toJSON().states.length, arrayLenJson,
+    `fromJSON: adding G must reuse a freed slot, not extend the array`
+  );
+});
+
+
 test('IntentManager emits events, tracks seen states, and persists/restores', async () => {
   storage.clear();
 

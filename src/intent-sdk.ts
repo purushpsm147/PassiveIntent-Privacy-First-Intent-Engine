@@ -355,6 +355,7 @@ export class MarkovGraph {
   }
 
   ensureState(state: string): number {
+    if (state === '') throw new Error('MarkovGraph: state label must not be empty string');
     const existing = this.stateToIndex.get(state);
     if (existing !== undefined) return existing;
 
@@ -609,8 +610,17 @@ export class MarkovGraph {
   static fromJSON(data: SerializedMarkovGraph, config: MarkovGraphConfig = {}): MarkovGraph {
     const graph = new MarkovGraph(config);
 
+    // Directly populate the index arrays rather than calling ensureState(),
+    // so that tombstone slots (label === '') rebuild freedIndices instead of
+    // being inserted into stateToIndex as phantom '' entries.
     for (let i = 0; i < data.states.length; i += 1) {
-      graph.ensureState(data.states[i]);
+      const label = data.states[i];
+      graph.indexToState.push(label);
+      if (label !== '') {
+        graph.stateToIndex.set(label, i);
+      } else {
+        graph.freedIndices.push(i);
+      }
     }
 
     for (let r = 0; r < data.rows.length; r += 1) {
@@ -765,6 +775,9 @@ export class MarkovGraph {
     offset += 2;                                // offset now 3
 
     // ── Read state labels ──
+    // Directly populate the index arrays rather than calling ensureState(),
+    // so that tombstone slots (label === '') rebuild freedIndices instead of
+    // being inserted into stateToIndex as phantom '' entries.
     for (let i = 0; i < numStates; i += 1) {
       // 2 bytes: UTF-8 byte length
       const strLen = view.getUint16(offset, true);
@@ -775,7 +788,12 @@ export class MarkovGraph {
       const label = decoder.decode(labelBytes);
       offset += strLen;
 
-      graph.ensureState(label);
+      graph.indexToState.push(label);
+      if (label !== '') {
+        graph.stateToIndex.set(label, i);
+      } else {
+        graph.freedIndices.push(i);
+      }
     }
 
     // ── Read rows ──
