@@ -336,6 +336,7 @@ export class MarkovGraph {
   private readonly rows = new Map<number, TransitionRow>();
   private readonly stateToIndex = new Map<string, number>();
   private readonly indexToState: string[] = [];
+  private readonly freedIndices: number[] = [];
 
   readonly highEntropyThreshold: number;
   readonly divergenceThreshold: number;
@@ -356,9 +357,16 @@ export class MarkovGraph {
   ensureState(state: string): number {
     const existing = this.stateToIndex.get(state);
     if (existing !== undefined) return existing;
-    const index = this.indexToState.length;
+
+    let index: number;
+    if (this.freedIndices.length > 0) {
+      index = this.freedIndices.pop()!;
+      this.indexToState[index] = state;
+    } else {
+      index = this.indexToState.length;
+      this.indexToState.push(state);
+    }
     this.stateToIndex.set(state, index);
-    this.indexToState.push(state);
     return index;
   }
 
@@ -571,12 +579,13 @@ export class MarkovGraph {
       row.total -= removedTotal;
     });
 
-    // ── 4. Tombstone index slots ──
+    // ── 4. Tombstone index slots and register for reuse ──
     evictSet.forEach((idx) => {
       const label = this.indexToState[idx];
       if (label !== undefined && label !== '') {
         this.stateToIndex.delete(label);
       }
+      this.freedIndices.push(idx);
       this.indexToState[idx] = '';  // dead slot
     });
   }
