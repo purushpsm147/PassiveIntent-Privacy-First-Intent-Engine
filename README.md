@@ -95,7 +95,7 @@ intent.flushNow();
 
 ### EntropyGuard (Bot Protection)
 
-EntropyGuard tracks the timing of the last 10 `track()` calls using a fixed-size circular buffer (no heap allocations in the hot path). It increments an internal `botScore` when:
+EntropyGuard tracks the timing of the last 10 `track()` calls using a fixed-size circular buffer (no heap allocations in the hot path). It calculates a `windowBotScore` from the circular buffer when:
 
 - A delta between consecutive calls is below **50 ms** (impossibly fast for a human).
 - The variance of recent deltas is below **100 ms²** (robotic, highly regular cadence).
