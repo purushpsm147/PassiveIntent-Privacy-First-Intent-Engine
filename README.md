@@ -255,4 +255,4 @@ npx cypress open
 This project is dual-licensed:
 
 1. **AGPLv3:** Free for open-source projects, personal use, and testing. Under this license, any modifications or integrations in a network-accessible service must also be open-sourced.
-2. **Commercial License:** For use in closed-source, proprietary, or commercial applications without the AGPLv3 copyleft restrictions, a commercial license must be purchased. Contact [ purushpsm147@yahoo.co.in or successfulindian147@gmail.com ] for commercial licensing details.
+2. **Commercial License:** For use in closed-source, proprietary, or commercial applications without the AGPLv3 copyleft restrictions, a commercial license must be purchased. Contact purushpsm147@yahoo.co.in or successfulindian147@gmail.com for commercial licensing details.
