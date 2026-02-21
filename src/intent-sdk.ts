@@ -1112,6 +1112,14 @@ export class IntentManager {
     }
 
     // Use explicit SMOOTHING_EPSILON for parity with calibration phase.
+    // "real"     = how likely this sequence is under the *live* (learned) graph.
+    // "expected" = how likely it would be under the *baseline* reference graph.
+    // These two values are the meaningful comparison exposed in the event payload.
+    const real = MarkovGraph.logLikelihoodTrajectory(
+      this.graph,
+      this.recentTrajectory,
+      SMOOTHING_EPSILON,
+    );
     const expected = MarkovGraph.logLikelihoodTrajectory(
       this.baseline,
       this.recentTrajectory,
@@ -1147,7 +1155,7 @@ export class IntentManager {
       this.emitter.emit('trajectory_anomaly', {
         stateFrom: from,
         stateTo: to,
-        realLogLikelihood: expected,
+        realLogLikelihood: real,
         expectedBaselineLogLikelihood: expected,
         zScore,
       });

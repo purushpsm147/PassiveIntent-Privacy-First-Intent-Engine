@@ -100,6 +100,10 @@ function runExperiment({
     baseline: baselineGraph.toJSON(),
     persistDebounceMs: 60_000,
     benchmark: { enabled: false },
+    // Synthetic benchmark: all track() calls happen in a tight synchronous
+    // loop with sub-millisecond deltas, which would always trip EntropyGuard
+    // and silently suppress every anomaly event.  Disable for experiments.
+    botProtection: false,
     graph: {
       divergenceThreshold,
       baselineMeanLL: calibrated.mean,
