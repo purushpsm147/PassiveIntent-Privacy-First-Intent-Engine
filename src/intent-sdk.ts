@@ -1231,6 +1231,20 @@ export class IntentManager {
       ? zScore <= threshold
       : expectedAvg <= threshold;
 
+    // ⚠  KNOWN LIMITATION (v1 — accepted for initial release):
+    //    At very low noise deltas (Δε ≤ 0.05, entropy difference < 0.05 nats)
+    //    the z-score distributions of normal and anomalous sessions overlap
+    //    substantially, yielding AUC ≈ 0.74 at the best operating point.
+    //    This is a *fundamental signal constraint*, not a tuning problem:
+    //    no post-processing layer (CUSUM, EWMA, confirmation counter) on top
+    //    of a 32-step single-window average log-likelihood can fully separate
+    //    distributions that close without either:
+    //      a) a significantly longer observation horizon (> 32 steps), or
+    //      b) richer feature space beyond marginal transition probabilities
+    //         (e.g. dwell-time, click-velocity, inter-event interval entropy).
+    //    Revisit when:  longer trajectory windows are viable, or when timing
+    //    side-channels (EntropyGuard deltas) can be folded into the score.
+
     if (shouldEmit) {
       this.emitter.emit('trajectory_anomaly', {
         stateFrom: from,

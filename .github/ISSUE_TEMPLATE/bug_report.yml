@@ -1,0 +1,114 @@
+name: Bug Report
+description: Something isn't working as expected
+labels: ["bug", "needs-triage"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for taking the time to file a bug report. Please fill out every required field — incomplete reports will be closed without investigation.
+
+  - type: input
+    id: sdk-version
+    attributes:
+      label: SDK Version
+      description: Run `npm list privacy-first-intent-engine` or check your `package.json` to find the version.
+      placeholder: "e.g. 1.2.3"
+    validations:
+      required: true
+
+  - type: input
+    id: browser-version
+    attributes:
+      label: Browser & Version
+      description: Include the full browser name and version. You can find this at `chrome://version`, `about:version`, etc.
+      placeholder: "e.g. Chrome 121.0.6167.184 / Firefox 123.0 / Safari 17.3"
+    validations:
+      required: true
+
+  - type: input
+    id: os
+    attributes:
+      label: Operating System
+      placeholder: "e.g. Windows 11, macOS 14.3, Ubuntu 22.04"
+    validations:
+      required: true
+
+  - type: input
+    id: node-version
+    attributes:
+      label: Node.js Version (if applicable)
+      description: Run `node --version`. Only relevant if you are using the SDK server-side.
+      placeholder: "e.g. 20.11.0"
+    validations:
+      required: false
+
+  - type: textarea
+    id: description
+    attributes:
+      label: Bug Description
+      description: A clear and concise description of what the bug is.
+    validations:
+      required: true
+
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps to Reproduce
+      description: Provide the exact steps needed to reliably reproduce the issue.
+      placeholder: |
+        1. Initialize the SDK with config `{ ... }`
+        2. Call `detectIntent(...)` with input `"..."`
+        3. Observe the returned value
+        4. See the error
+    validations:
+      required: true
+
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected Behavior
+      description: What did you expect to happen?
+    validations:
+      required: true
+
+  - type: textarea
+    id: actual
+    attributes:
+      label: Actual Behavior
+      description: What actually happened? Include any error messages or stack traces in full.
+    validations:
+      required: true
+
+  - type: textarea
+    id: minimal-repro
+    attributes:
+      label: Minimal Reproduction
+      description: |
+        A minimal code snippet or repository link that reproduces the issue. Reports without a reproduction are significantly harder to diagnose and may be deprioritized.
+      placeholder: |
+        ```ts
+        import { IntentSDK } from 'privacy-first-intent-engine';
+        // ...
+        ```
+    validations:
+      required: false
+
+  - type: textarea
+    id: additional-context
+    attributes:
+      label: Additional Context
+      description: Any other relevant context — screenshots, console output, network logs, etc.
+    validations:
+      required: false
+
+  - type: checkboxes
+    id: checklist
+    attributes:
+      label: Pre-submission Checklist
+      options:
+        - label: I have searched existing issues and this is not a duplicate.
+          required: true
+        - label: I have provided all required fields above.
+          required: true
+        - label: I am not reporting a security vulnerability (see SECURITY.md for the correct process).
+          required: true
