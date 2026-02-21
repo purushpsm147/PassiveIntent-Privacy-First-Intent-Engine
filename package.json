@@ -2,7 +2,7 @@
   "name": "privacy-first-intent-engine",
   "version": "1.0.0",
   "description": "Privacy-first, SSR-safe intent detection engine using local Markov-chain inference and Bloom filters.",
-  "license": "MIT",
+  "license": "AGPL-3.0-only",
   "type": "module",
   "main": "./dist/index.cjs",
   "module": "./dist/index.js",

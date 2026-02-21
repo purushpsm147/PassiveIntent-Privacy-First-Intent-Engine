@@ -137,6 +137,7 @@ test('IntentManager emits events, tracks seen states, and persists/restores', as
       smoothingEpsilon: 0.01,
     },
     baseline: baseline.toJSON(),
+    botProtection: false, // Disable bot detection for tests
   });
 
   let highEntropyCount = 0;
@@ -181,6 +182,7 @@ test('IntentManager emits events, tracks seen states, and persists/restores', as
       divergenceThreshold: -0.1,
       smoothingEpsilon: 0.01,
     },
+    botProtection: false, // Disable bot detection for tests
   });
 
   assert.equal(restored.hasSeen('home'), true);
@@ -191,6 +193,7 @@ test('IntentManager returns performance report when benchmark mode is enabled', 
   const manager = new IntentManager({
     storageKey: 'perf-test',
     benchmark: { enabled: true, maxSamples: 32 },
+    botProtection: false, // Disable bot detection for tests
   });
 
   manager.track('A');
@@ -260,6 +263,7 @@ test('baseline trajectory sessions keep anomaly false positive rate below 0.1', 
     const manager = new IntentManager({
       storageKey: `fpr-baseline-check-${session}`,
       baseline: baseline.toJSON(),
+      botProtection: false, // Disable bot detection for tests
     });
 
     let fired = false;
@@ -326,6 +330,7 @@ test('adversarial trajectory sessions keep anomaly true positive rate above 0.8'
         baselineMeanLL,
         baselineStdLL,
       },
+      botProtection: false, // Disable bot detection for tests
     });
 
     let fired = false;

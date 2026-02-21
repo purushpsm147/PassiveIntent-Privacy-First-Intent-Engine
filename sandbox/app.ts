@@ -17,7 +17,9 @@ const intentManager = new IntentManager({
     highEntropyThreshold: 0.8,
     divergenceThreshold: 1.0
   },
-  baseline
+  baseline,
+  // Disable bot protection for E2E testing (Cypress behaves like a bot)
+  botProtection: false
 });
 
 const activeRoute = document.getElementById('active-route') as HTMLDivElement;
