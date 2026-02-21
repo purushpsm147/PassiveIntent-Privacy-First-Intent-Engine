@@ -135,12 +135,24 @@ test('MarkovGraph LFU pruning reuses freed indices and round-trips without resur
   // stateToIndex.size == 4 > maxStates=3 → prune evicts 1 least-used state
   graph.prune();
 
-  const statesAfterPrune = graph.toJSON().states;
+  const jsonAfterPrune  = graph.toJSON();
+  const statesAfterPrune = jsonAfterPrune.states;
   const liveAfterPrune   = statesAfterPrune.filter(s => s !== '');
   const tombstoneCount   = statesAfterPrune.filter(s => s === '').length;
 
   assert.ok(liveAfterPrune.length <= 3,  `Expected ≤3 live states, got ${liveAfterPrune.length}`);
   assert.ok(tombstoneCount >= 1,          `Expected ≥1 tombstone slot, got ${tombstoneCount}`);
+
+  // V2: toJSON() must emit an explicit freedIndices array
+  assert.ok(Array.isArray(jsonAfterPrune.freedIndices), 'toJSON() must emit freedIndices array');
+  assert.equal(
+    jsonAfterPrune.freedIndices.length, tombstoneCount,
+    `freedIndices.length must equal tombstone count (${tombstoneCount})`
+  );
+  // Every freed index must point to a '' slot in states
+  for (const idx of jsonAfterPrune.freedIndices) {
+    assert.equal(statesAfterPrune[idx], '', `freedIndices[${idx}] must map to a tombstone slot`);
+  }
 
   // ── In-memory slot reuse ──
   const arrayLenBeforeReuse = statesAfterPrune.length;
@@ -153,8 +165,6 @@ test('MarkovGraph LFU pruning reuses freed indices and round-trips without resur
   assert.ok(graph.getProbability('A', 'E') > 0, 'A→E probability must be > 0 after slot reuse');
 
   // ── Primary path: toBinary / fromBinary (no JSON.stringify on main thread) ──
-  // Build a fresh graph with tombstones so we can verify the binary round-trip
-  // correctly repopulates freedIndices rather than resurrecting '' as a live state.
   const g2 = new MarkovGraph({ maxStates: 3 });
   for (let i = 0; i < 20; i++) g2.incrementTransition('A', 'B');
   for (let i = 0; i < 15; i++) g2.incrementTransition('B', 'A');
@@ -169,11 +179,8 @@ test('MarkovGraph LFU pruning reuses freed indices and round-trips without resur
   const bin     = g2.toBinary();
   const fromBin = MarkovGraph.fromBinary(bin);
 
-  // Tombstone must not be queryable as a live state
   assert.equal(fromBin.getProbability('', 'A'), 0, "fromBinary: '' must not be a live fromState");
   assert.equal(fromBin.getProbability('A', ''), 0, "fromBinary: '' must not be a live toState");
-
-  // Probabilities must survive the binary round-trip
   assert.ok(
     Math.abs(pAB - fromBin.getProbability('A', 'B')) < 1e-9,
     `fromBinary: A→B probability mismatch`
@@ -187,7 +194,7 @@ test('MarkovGraph LFU pruning reuses freed indices and round-trips without resur
     `fromBinary: adding F must reuse a freed slot, not extend the array`
   );
 
-  // ── Secondary path: fromJSON (used for V1 legacy restore + baseline config) ──
+  // ── Secondary path: fromJSON (baseline config loading path) ──
   const fromJson = MarkovGraph.fromJSON(g2.toJSON());
   assert.equal(fromJson.getProbability('', 'A'), 0, "fromJSON: '' must not be a live fromState");
   assert.equal(fromJson.getProbability('A', ''), 0, "fromJSON: '' must not be a live toState");
@@ -200,6 +207,30 @@ test('MarkovGraph LFU pruning reuses freed indices and round-trips without resur
   assert.equal(
     fromJson.toJSON().states.length, arrayLenJson,
     `fromJSON: adding G must reuse a freed slot, not extend the array`
+  );
+});
+
+test('fromJSON rejects inconsistent payloads (freedIndices / label mismatch)', () => {
+  // Case 1: slot in freedIndices has a non-empty label
+  assert.throws(
+    () => MarkovGraph.fromJSON({
+      states: ['A', 'oops'],
+      rows: [],
+      freedIndices: [1],   // slot 1 is 'oops', not ''
+    }),
+    /freedIndices.*non-empty label/,
+    'Should throw when freedIndices slot has a non-empty label'
+  );
+
+  // Case 2: '' label not listed in freedIndices
+  assert.throws(
+    () => MarkovGraph.fromJSON({
+      states: ['A', ''],
+      rows: [],
+      freedIndices: [],    // slot 1 is '' but not declared freed
+    }),
+    /empty-string label.*not listed in freedIndices/,
+    'Should throw when an unlisted slot has an empty-string label'
   );
 });
 
@@ -294,6 +325,35 @@ test('IntentManager returns performance report when benchmark mode is enabled', 
   assert.ok(report.memoryFootprint.totalTransitions >= 2);
 
   manager.flushNow();
+});
+
+test("IntentManager.track('') is a no-op and surfaces a non-fatal error via onError", () => {
+  const errors = [];
+  const manager = new IntentManager({
+    storageKey: 'empty-state-test',
+    botProtection: false,
+    onError: (err) => errors.push(err.message),
+  });
+
+  // track('') must not throw — host app must not crash
+  assert.doesNotThrow(() => manager.track(''));
+
+  // onError must be called with a descriptive message
+  assert.equal(errors.length, 1);
+  assert.ok(errors[0].includes('empty string'), `Expected 'empty string' in error message, got: "${errors[0]}"`);
+
+  // No state_change event must fire for an empty-string call
+  const stateChanges = [];
+  manager.on('state_change', ({ to }) => stateChanges.push(to));
+  manager.track('');
+  assert.deepEqual(stateChanges, []);
+
+  // Normal tracking must still work after the rejected call
+  manager.track('home');
+  manager.track('search');
+  assert.equal(manager.hasSeen('home'), true);
+  assert.equal(manager.hasSeen('search'), true);
+  assert.equal(manager.hasSeen(''), false);
 });
 
 test('simulation engine produces benchmark and evaluation outputs', () => {

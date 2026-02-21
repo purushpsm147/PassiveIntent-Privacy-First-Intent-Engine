@@ -322,10 +322,12 @@ interface TransitionRow {
 }
 
 export interface SerializedMarkovGraph {
-  // index -> state label
+  /** index → state label; '' marks a tombstone (freed) slot */
   states: string[];
-  // sparse rows, each entry [fromIndex, total, [toIndex, count][]]
+  /** sparse rows: [fromIndex, total, [toIndex, count][]] */
   rows: Array<[number, number, Array<[number, number]>]>;
+  /** explicit list of freed (tombstoned) slot indices */
+  freedIndices: number[];
 }
 
 /**
@@ -604,22 +606,33 @@ export class MarkovGraph {
     return {
       states: [...this.indexToState],
       rows,
+      freedIndices: [...this.freedIndices],
     };
   }
 
   static fromJSON(data: SerializedMarkovGraph, config: MarkovGraphConfig = {}): MarkovGraph {
     const graph = new MarkovGraph(config);
+    const tombstoneSet = new Set(data.freedIndices);
 
-    // Directly populate the index arrays rather than calling ensureState(),
-    // so that tombstone slots (label === '') rebuild freedIndices instead of
-    // being inserted into stateToIndex as phantom '' entries.
     for (let i = 0; i < data.states.length; i += 1) {
       const label = data.states[i];
       graph.indexToState.push(label);
-      if (label !== '') {
-        graph.stateToIndex.set(label, i);
-      } else {
+
+      if (tombstoneSet.has(i)) {
+        if (label !== '') {
+          throw new Error(
+            `MarkovGraph.fromJSON: slot ${i} is listed in freedIndices but has non-empty label "${label}"`,
+          );
+        }
         graph.freedIndices.push(i);
+      } else {
+        if (label === '') {
+          throw new Error(
+            `MarkovGraph.fromJSON: slot ${i} has an empty-string label but is not listed in ` +
+            `freedIndices. Empty string is reserved as the tombstone marker.`,
+          );
+        }
+        graph.stateToIndex.set(label, i);
       }
     }
 
@@ -641,26 +654,30 @@ export class MarkovGraph {
   /* ================================================================== */
 
   /**
-   * Binary wire format (little-endian throughout):
+   * Binary wire format — version 0x02, little-endian throughout:
    *
-   * ┌─────────────────────────────────┐
-   * │ Version          : Uint8   (1B) │  — currently 0x01
-   * │ NumStates        : Uint16  (2B) │
-   * │ ┌── for each state ──────────┐  │
-   * │ │ StringByteLen : Uint16 (2B)│  │  — UTF-8 byte length
-   * │ │ UTF-8 Bytes   : [N]        │  │
-   * │ └────────────────────────────┘  │
-   * │ NumRows          : Uint16  (2B) │
-   * │ ┌── for each row ───────────┐   │
-   * │ │ FromIndex  : Uint16  (2B) │   │
-   * │ │ Total      : Uint32  (4B) │   │
-   * │ │ NumEdges   : Uint16  (2B) │   │
-   * │ │ ┌── for each edge ──────┐ │   │
-   * │ │ │ ToIndex : Uint16 (2B) │ │   │
-   * │ │ │ Count   : Uint32 (4B) │ │   │
-   * │ │ └──────────────────────┘ │   │
-   * │ └────────────────────────────┘  │
-   * └─────────────────────────────────┘
+   * ┌──────────────────────────────────────┐
+   * │ Version           : Uint8   (1B)     │  — always 0x02
+   * │ NumStates         : Uint16  (2B)     │
+   * │ ┌── for each state ───────────────┐  │
+   * │ │ StringByteLen : Uint16 (2B)     │  │  — 0 bytes for tombstone slots
+   * │ │ UTF-8 Bytes   : [N]             │  │
+   * │ └─────────────────────────────────┘  │
+   * │ NumFreedIndices   : Uint16  (2B)     │  — 0 if no tombstones
+   * │ ┌── for each freed index ─────────┐  │
+   * │ │ SlotIndex : Uint16 (2B)         │  │
+   * │ └─────────────────────────────────┘  │
+   * │ NumRows           : Uint16  (2B)     │
+   * │ ┌── for each row ──────────────────┐ │
+   * │ │ FromIndex  : Uint16  (2B)        │ │
+   * │ │ Total      : Uint32  (4B)        │ │
+   * │ │ NumEdges   : Uint16  (2B)        │ │
+   * │ │ ┌── for each edge ─────────────┐ │ │
+   * │ │ │ ToIndex : Uint16 (2B)        │ │ │
+   * │ │ │ Count   : Uint32 (4B)        │ │ │
+   * │ │ └──────────────────────────────┘ │ │
+   * │ └──────────────────────────────────┘ │
+   * └──────────────────────────────────────┘
    */
   toBinary(): Uint8Array {
     const encoder = new TextEncoder();
@@ -677,6 +694,9 @@ export class MarkovGraph {
       // Per state: stringByteLen (Uint16 = 2B) + actual bytes
       totalSize += 2 + encodedLabels[i].byteLength;
     }
+
+    // V2 freed-index section: numFreedIndices (2B) + freed index values (2B each)
+    totalSize += 2 + this.freedIndices.length * 2;
 
     // NumRows header: 2 bytes
     totalSize += 2;
@@ -695,8 +715,8 @@ export class MarkovGraph {
 
     // ── Write header ──
 
-    // Byte 0: format version
-    view.setUint8(offset, 0x01);               // version = 1
+    // Byte 0: format version (0x02 — adds explicit freed-index list)
+    view.setUint8(offset, 0x02);               // version = 2
     offset += 1;                               // offset now 1
 
     // Bytes 1-2: number of states (Uint16 LE)
@@ -714,6 +734,18 @@ export class MarkovGraph {
       // N bytes: raw UTF-8 payload
       buffer.set(encoded, offset);
       offset += encoded.byteLength;
+    }
+
+    // ── Write freed-index list (V2) ──
+
+    // 2 bytes: number of freed indices (Uint16 LE)
+    view.setUint16(offset, this.freedIndices.length, true);
+    offset += 2;
+
+    // 2 bytes each: freed slot index (Uint16 LE)
+    for (let i = 0; i < this.freedIndices.length; i += 1) {
+      view.setUint16(offset, this.freedIndices[i], true);
+      offset += 2;
     }
 
     // ── Write rows header ──
@@ -763,36 +795,59 @@ export class MarkovGraph {
 
     // ── Read header ──
 
-    // Byte 0: version — validate but currently only v1 exists.
+    // Byte 0: version — only 0x02 is supported.
     const version = view.getUint8(offset);
-    offset += 1;                                // offset now 1
-    if (version !== 0x01) {
-      throw new Error(`Unsupported MarkovGraph binary version: ${version}`);
+    offset += 1;
+    if (version !== 0x02) {
+      throw new Error(
+        `Unsupported MarkovGraph binary version: 0x${version.toString(16).padStart(2, '0')}. ` +
+        `Only version 0x02 is supported.`,
+      );
     }
 
     // Bytes 1-2: number of states (Uint16 LE)
     const numStates = view.getUint16(offset, true);
-    offset += 2;                                // offset now 3
+    offset += 2;
 
-    // ── Read state labels ──
-    // Directly populate the index arrays rather than calling ensureState(),
-    // so that tombstone slots (label === '') rebuild freedIndices instead of
-    // being inserted into stateToIndex as phantom '' entries.
+    // ── Read state labels into a temporary buffer ──
+    // Classification (live vs tombstone) happens after reading the freed-index
+    // list, so we store raw labels first and populate the graph below.
+    const rawLabels: string[] = [];
     for (let i = 0; i < numStates; i += 1) {
-      // 2 bytes: UTF-8 byte length
       const strLen = view.getUint16(offset, true);
       offset += 2;
-
-      // N bytes: raw UTF-8 payload → string
-      const labelBytes = buffer.subarray(offset, offset + strLen);
-      const label = decoder.decode(labelBytes);
+      rawLabels.push(decoder.decode(buffer.subarray(offset, offset + strLen)));
       offset += strLen;
+    }
 
+    // ── Read freed-index list and classify slots ──
+    const numFreed = view.getUint16(offset, true);
+    offset += 2;
+
+    const tombstoneSet = new Set<number>();
+    for (let i = 0; i < numFreed; i += 1) {
+      tombstoneSet.add(view.getUint16(offset, true));
+      offset += 2;
+    }
+
+    for (let i = 0; i < rawLabels.length; i += 1) {
+      const label = rawLabels[i];
       graph.indexToState.push(label);
-      if (label !== '') {
-        graph.stateToIndex.set(label, i);
-      } else {
+      if (tombstoneSet.has(i)) {
+        if (label !== '') {
+          throw new Error(
+            `MarkovGraph.fromBinary: slot ${i} is listed as freed but has non-empty label "${label}"`,
+          );
+        }
         graph.freedIndices.push(i);
+      } else {
+        if (label === '') {
+          throw new Error(
+            `MarkovGraph.fromBinary: slot ${i} has an empty-string label but is not listed ` +
+            `in the freed-index section. Empty string is reserved as the tombstone marker.`,
+          );
+        }
+        graph.stateToIndex.set(label, i);
       }
     }
 
@@ -914,21 +969,18 @@ class EventEmitter<Events extends object> {
 }
 
 /**
- * Version 2 persisted payload uses binary graph serialization
- * to eliminate JSON.stringify overhead on the main thread.
+ * Persisted payload format.
  *
- * `graphBinary` is a base64-encoded Uint8Array produced by
- * MarkovGraph.toBinary().
- *
- * We keep `graph` as an optional field for backward-compatible
- * reading of V1 payloads that were stored before the upgrade.
+ * `graphBinary` is a base64-encoded Uint8Array produced by MarkovGraph.toBinary().
+ * The `graph` field (JSON-serialized) is kept for the baseline config path only;
+ * the persistence hot-path always uses the binary format.
  */
 interface PersistedPayload {
   /** Always present. */
   bloomBase64: string;
-  /** V2+: base64-encoded binary graph (preferred). */
+  /** Base64-encoded binary graph (preferred for restore). */
   graphBinary?: string;
-  /** V1 legacy: JSON-serialized graph (read-only migration path). */
+  /** JSON-serialized graph — used only for the baseline config path. */
   graph?: SerializedMarkovGraph;
 }
 
@@ -997,6 +1049,16 @@ export class IntentManager {
    * Track a page view or custom state transition.
    */
   track(state: string): void {
+    // Guard: '' is reserved internally as a tombstone marker.
+    // Silently drop the call and surface a non-fatal error rather than letting
+    // MarkovGraph.ensureState() throw and potentially crash the host app.
+    if (state === '') {
+      if (this.onError) {
+        this.onError(new Error('IntentManager.track(): state label must not be an empty string'));
+      }
+      return;
+    }
+
     // Use timer.now() for bot detection to ensure it works even when benchmark is disabled
     const now = this.timer.now();
     const trackStart = this.benchmark.enabled ? now : 0;
@@ -1325,23 +1387,15 @@ export class IntentManager {
       if (!raw) return null;
 
       const parsed = JSON.parse(raw) as PersistedPayload;
-      const bloom = BloomFilter.fromBase64(parsed.bloomBase64);
+      if (!parsed.graphBinary) return null;
 
-      let graph: MarkovGraph;
-      if (parsed.graphBinary) {
-        // V2 path: decode base64 → Uint8Array → fromBinary
-        const binaryStr = atob(parsed.graphBinary);
-        const bytes = new Uint8Array(binaryStr.length);
-        for (let i = 0; i < binaryStr.length; i += 1) {
-          bytes[i] = binaryStr.charCodeAt(i);
-        }
-        graph = MarkovGraph.fromBinary(bytes, graphConfig);
-      } else if (parsed.graph) {
-        // V1 legacy fallback: JSON-serialized graph.
-        graph = MarkovGraph.fromJSON(parsed.graph, graphConfig);
-      } else {
-        return null;
+      const bloom = BloomFilter.fromBase64(parsed.bloomBase64);
+      const binaryStr = atob(parsed.graphBinary);
+      const bytes = new Uint8Array(binaryStr.length);
+      for (let i = 0; i < binaryStr.length; i += 1) {
+        bytes[i] = binaryStr.charCodeAt(i);
       }
+      const graph = MarkovGraph.fromBinary(bytes, graphConfig);
 
       return { bloom, graph };
     } catch {

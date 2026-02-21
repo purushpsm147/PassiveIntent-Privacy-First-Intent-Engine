@@ -29,7 +29,8 @@ const baseline: SerializedMarkovGraph = {
     [2, 10, [[3, 7], [1, 2], [0, 1]]],  // /product -> /cart (70%), /search (20%), /home (10%)
     [3, 5, [[4, 4], [2, 1]]],           // /cart -> /checkout (80%), /product (20%)
     [4, 5, [[5, 5]]],                   // /checkout -> /order-confirmation (100%)
-  ]
+  ],
+  freedIndices: [],
 };
 
 // ============================================
