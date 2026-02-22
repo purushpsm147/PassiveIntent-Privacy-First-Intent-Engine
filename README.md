@@ -10,6 +10,10 @@ It combines a Bloom filter for fast membership checks and a sparse Markov graph 
 - Bounded growth: LFU-style graph pruning prevents unbounded state expansion.
 - Efficient persistence: binary graph encoding with dirty-flag optimization reduces serialization overhead.
 - Bot-resilient signals: EntropyGuard suppresses entropy and trajectory events for suspected automated sessions.
+- Dwell-time anomaly detection: statistical z-score analysis of per-state dwell times using Welford's online algorithm.
+- Selective bigram Markov transitions: optional second-order transition learning with frequency-gated recording.
+- Event cooldown: configurable per-channel cooldown prevents event flooding.
+- Clean teardown: `destroy()` API for SPA lifecycle management.
 
 ## Install
 
@@ -92,6 +96,10 @@ intent.flushNow();
 - **Dirty-flag persistence**: `persist()` is a no-op when no state has changed since the last save, eliminating redundant writes.
 - `persist()` performs graph pruning before snapshot.
 - Restores from binary payload first, then legacy JSON payload fallback.
+- **Dwell-time anomaly detection**: fires `dwell_time_anomaly` when time spent on a state deviates significantly from learned mean (Welford's online algorithm, O(1) per call).
+- **Selective bigrams**: when `enableBigrams: true`, records second-order transitions (`A→B` → `B→C`) only after the unigram from-state crosses `bigramFrequencyThreshold` (default: 5). Bigram states share the same graph with LFU pruning.
+- **Event cooldown**: `eventCooldownMs` suppresses repeated event emissions within a configurable window, per event type.
+- **`destroy()`**: flushes pending state, cancels timers, and removes all listeners — use in SPA cleanup paths (`useEffect` teardown, `onUnmounted`, `ngOnDestroy`).
 
 ### EntropyGuard (Bot Protection)
 
@@ -140,9 +148,12 @@ After a successful write to storage, the flag is reset to `false`. This means ap
 - **Compatibility-first migration**: restore supports both new binary payloads and legacy JSON payloads.
 - **Predictable anomaly math**:
   - entropy signal from normalized outgoing distribution,
-  - trajectory anomaly from baseline log-likelihood window and optional z-score calibration.
+  - trajectory anomaly from baseline log-likelihood window and optional z-score calibration,
+  - dwell-time anomaly from Welford's online z-score per state.
 - **Bot-resilient signals**: EntropyGuard uses a fixed circular buffer to detect impossibly-fast or robotic timing patterns without allocating on every `track()` call.
 - **Write-efficient persistence**: the dirty flag eliminates redundant `localStorage` writes when the user has not navigated since the last persist cycle.
+- **Memory-safe bigrams**: selective second-order Markov recording is frequency-gated to prevent state explosion. Only well-established unigram states generate bigram edges, and all states share the same `maxStates` cap with LFU pruning.
+- **Event flood protection**: per-channel cooldown gating ensures downstream consumers are not overwhelmed by rapid sequential anomaly events.
 
 ## Logic flow (brief)
 
@@ -151,11 +162,13 @@ On each `track(state)`:
 1. If `botProtection` is enabled, record the call timestamp into a circular buffer and evaluate timing patterns.
 2. Check Bloom filter for the state (used to detect new-to-filter states for dirty tracking).
 3. Add state to Bloom filter; mark dirty if the state was new.
-4. Add transition from previous state to current state; mark dirty.
-5. Evaluate entropy signal (skipped if bot suspected, or below minimum sample gate).
-6. Evaluate trajectory anomaly (skipped if bot suspected, or below minimum window gate, or no baseline).
-7. Emit `state_change`.
-8. Schedule debounced persistence.
+4. Evaluate **dwell-time anomaly** on the previous state (if enabled, not bot-suspected, and enough samples collected).
+5. Add transition from previous state to current state; mark dirty.
+6. If `enableBigrams` is true and the unigram from-state is well-established, record the bigram transition.
+7. Evaluate entropy signal (skipped if bot suspected, or below minimum sample gate).
+8. Evaluate trajectory anomaly (skipped if bot suspected, or below minimum window gate, or no baseline).
+9. Emit `state_change` (always emitted — cooldown applies only to anomaly channels).
+10. Schedule debounced persistence.
 
 During persistence:
 
@@ -226,6 +239,7 @@ npx cypress open
 
 ```
 .
+├── FUTURE_FEATURES.md
 ├── src/
 │   ├── adapters.ts
 │   ├── index.ts

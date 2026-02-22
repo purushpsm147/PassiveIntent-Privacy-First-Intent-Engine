@@ -25,10 +25,12 @@ export type {
   IntentEventMap,
   HighEntropyPayload,
   TrajectoryAnomalyPayload,
+  DwellTimeAnomalyPayload,
   StateChangePayload,
   BloomFilterConfig,
   MarkovGraphConfig,
   IntentManagerConfig,
+  DwellTimeConfig,
   SerializedMarkovGraph,
 } from './intent-sdk.js';
 

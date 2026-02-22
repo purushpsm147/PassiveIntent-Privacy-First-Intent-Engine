@@ -32,7 +32,7 @@ export type {
   PerformanceReport,
 } from './performance-instrumentation.js';
 
-export type IntentEventName = 'high_entropy' | 'trajectory_anomaly' | 'state_change';
+export type IntentEventName = 'high_entropy' | 'trajectory_anomaly' | 'state_change' | 'dwell_time_anomaly';
 
 export interface HighEntropyPayload {
   state: string;
@@ -53,10 +53,52 @@ export interface StateChangePayload {
   to: string;
 }
 
+export interface DwellTimeAnomalyPayload {
+  /** The state the user just left (where they dwelled). */
+  state: string;
+  /** Actual dwell time in milliseconds. */
+  dwellMs: number;
+  /** Running mean dwell time for this state (ms). */
+  meanMs: number;
+  /** Running standard deviation of dwell time for this state (ms). */
+  stdMs: number;
+  /** Z-score: how many standard deviations from the mean. */
+  zScore: number;
+}
+
 export interface IntentEventMap {
   high_entropy: HighEntropyPayload;
   trajectory_anomaly: TrajectoryAnomalyPayload;
   state_change: StateChangePayload;
+  dwell_time_anomaly: DwellTimeAnomalyPayload;
+}
+
+export interface DwellTimeConfig {
+  /**
+   * Enable dwell-time anomaly detection.
+   * Default: false.
+   */
+  enabled?: boolean;
+
+  /**
+   * Minimum number of dwell-time samples on a state before
+   * anomaly detection kicks in.  Prevents false signals
+   * during the learning phase.
+   *
+   * Because dwell-time statistics are **session-scoped** (not persisted
+   * across page reloads — see privacy rationale on `IntentManager.dwellStats`),
+   * the learning phase restarts on every new instance.  Consider raising
+   * this value for applications where users frequently reload the page.
+   * Default: 10.
+   */
+  minSamples?: number;
+
+  /**
+   * Z-score threshold for dwell-time anomaly.
+   * An event fires when |z| >= this value.
+   * Default: 2.5.
+   */
+  zScoreThreshold?: number;
 }
 
 export interface BloomFilterConfig {
@@ -155,6 +197,48 @@ export interface IntentManagerConfig {
    * Default: true. Set to false for E2E testing environments (e.g., Cypress).
    */
   botProtection?: boolean;
+
+  /**
+   * Minimum interval (ms) between emissions of the same event type
+   * (`high_entropy`, `trajectory_anomaly`, or `dwell_time_anomaly`).
+   * Prevents listener flooding during rage-click or rapid-navigation bursts.
+   *
+   * Set to 0 to disable cooldown (fire on every qualifying `track()`).
+   * Default: 0 (no cooldown — preserves backward-compatible behavior).
+   */
+  eventCooldownMs?: number;
+
+  /**
+   * Dwell-time anomaly detection configuration.
+   * Tracks how long a user stays on each state and fires
+   * `dwell_time_anomaly` when the dwell time is statistically
+   * unusual (z-score exceeds threshold).  Complements EntropyGuard.
+   */
+  dwellTime?: DwellTimeConfig;
+
+  /**
+   * Enable selective second-order (bigram) Markov transitions.
+   *
+   * When enabled, the engine records bigram states ("A→B") alongside
+   * unigram states, but only for transitions whose unigram "from" state
+   * has been observed at least `bigramFrequencyThreshold` times.
+   * This prevents state-space explosion while capturing the most
+   * informative two-step patterns.
+   *
+   * Bigram states share the same `maxStates` cap and are subject
+   * to LFU pruning, so memory is bounded.
+   *
+   * Default: false.
+   */
+  enableBigrams?: boolean;
+
+  /**
+   * Minimum outgoing transition count on the unigram "from" state
+   * before bigram states are recorded for that transition.
+   * Only relevant when `enableBigrams` is true.
+   * Default: 5.
+   */
+  bigramFrequencyThreshold?: number;
 }
 
 /**
@@ -190,6 +274,22 @@ function quantizeProbability(probability: number): number {
  */
 function dequantizeProbability(value: number): number {
   return (value & 0xff) / 255;
+}
+
+/**
+ * Convert a Uint8Array to a base64 string using chunked
+ * String.fromCharCode to avoid O(n) string concatenation.
+ * Processes in 32 KiB chunks to stay well within the
+ * maximum argument count for Function.prototype.apply.
+ */
+function uint8ToBase64(bytes: Uint8Array): string {
+  const CHUNK = 0x8000; // 32 KiB
+  const parts: string[] = [];
+  for (let i = 0; i < bytes.length; i += CHUNK) {
+    const slice = bytes.subarray(i, Math.min(i + CHUNK, bytes.length));
+    parts.push(String.fromCharCode.apply(null, slice as unknown as number[]));
+  }
+  return btoa(parts.join(''));
 }
 
 /**
@@ -287,11 +387,7 @@ export class BloomFilter {
   }
 
   toBase64(): string {
-    let binary = '';
-    for (let i = 0; i < this.bits.length; i += 1) {
-      binary += String.fromCharCode(this.bits[i]);
-    }
-    return btoa(binary);
+    return uint8ToBase64(this.bits);
   }
 
   static fromBase64(base64: string, config: BloomFilterConfig = {}): BloomFilter {
@@ -966,6 +1062,10 @@ class EventEmitter<Events extends object> {
     if (!set) return;
     set.forEach((listener) => listener(payload));
   }
+
+  removeAll(): void {
+    this.listeners.clear();
+  }
 }
 
 /**
@@ -999,9 +1099,40 @@ export class IntentManager {
   private readonly timer: TimerAdapter;
   private readonly onError?: (err: Error) => void;
   private readonly botProtection: boolean;
+  private readonly eventCooldownMs: number;
+
+  /* Dwell-time anomaly detection */
+  private readonly dwellTimeEnabled: boolean;
+  private readonly dwellTimeMinSamples: number;
+  private readonly dwellTimeZScoreThreshold: number;
+  /**
+   * Per-state Welford accumulators: [count, mean, m2].
+   *
+   * **Session-scoped — intentionally not persisted.**
+   * Persisting per-state timing distributions across page reloads would
+   * meaningfully increase the cross-session fingerprinting surface area,
+   * which conflicts with the library's privacy-first design goal.
+   * As a result, the learning phase (governed by `minSamples`) restarts
+   * on every new `IntentManager` instance.  Increase `minSamples` if
+   * short sessions cause excessive false positives.
+   */
+  private readonly dwellStats = new Map<string, [number, number, number]>();
+
+  /* Selective bigram (2nd-order) Markov */
+  private readonly enableBigrams: boolean;
+  private readonly bigramFrequencyThreshold: number;
+
+  /** Timestamp of the last emission per cooldown-gated event type */
+  private lastEmittedAt: Record<'high_entropy' | 'trajectory_anomaly' | 'dwell_time_anomaly', number> = {
+    high_entropy: -Infinity,
+    trajectory_anomaly: -Infinity,
+    dwell_time_anomaly: -Infinity,
+  };
 
   private persistTimer: TimerHandle | null = null;
   private previousState: string | null = null;
+  /** Timestamp (ms, from timer.now()) when previousState was entered */
+  private previousStateEnteredAt: number = 0;
   private recentTrajectory: string[] = [];
 
   /* Dirty-flag persistence: only persist when state actually changed */
@@ -1024,6 +1155,16 @@ export class IntentManager {
     this.timer = config.timer ?? new BrowserTimerAdapter();
     this.onError = config.onError;
     this.botProtection = config.botProtection ?? true;
+    this.eventCooldownMs = config.eventCooldownMs ?? 0;
+
+    // Dwell-time config
+    this.dwellTimeEnabled = config.dwellTime?.enabled ?? false;
+    this.dwellTimeMinSamples = config.dwellTime?.minSamples ?? 10;
+    this.dwellTimeZScoreThreshold = config.dwellTime?.zScoreThreshold ?? 2.5;
+
+    // Bigram config
+    this.enableBigrams = config.enableBigrams ?? false;
+    this.bigramFrequencyThreshold = config.bigramFrequencyThreshold ?? 5;
 
     const graphConfig: MarkovGraphConfig = {
       ...config.graph,
@@ -1078,6 +1219,13 @@ export class IntentManager {
     const from = this.previousState;
     this.previousState = state;
 
+    // Dwell-time: evaluate how long the user stayed on the *previous* state
+    if (this.dwellTimeEnabled && from && !this.isSuspectedBot) {
+      const dwellMs = now - this.previousStateEnteredAt;
+      this.evaluateDwellTime(from, dwellMs);
+    }
+    this.previousStateEnteredAt = now;
+
     this.recentTrajectory.push(state);
     // Keep a short tail to bound memory and compute costs.
     if (this.recentTrajectory.length > MAX_WINDOW_LENGTH) this.recentTrajectory.shift();
@@ -1086,6 +1234,18 @@ export class IntentManager {
       const incrementStart = this.benchmark.now();
       this.graph.incrementTransition(from, state);
       this.benchmark.record('incrementTransition', incrementStart);
+
+      // Selective bigram: record "A→B" → "B→C" transition when the unigram
+      // from-state has been observed enough times to be statistically meaningful.
+      if (this.enableBigrams && this.recentTrajectory.length >= 3) {
+        const prev2 = this.recentTrajectory[this.recentTrajectory.length - 3];
+        const bigramFrom = `${prev2}\u2192${from}`;
+        const bigramTo = `${from}\u2192${state}`;
+        // Only record bigrams when the unigram from-state is well-established
+        if (this.graph.rowTotal(from) >= this.bigramFrequencyThreshold) {
+          this.graph.incrementTransition(bigramFrom, bigramTo);
+        }
+      }
 
       // Mark dirty: new transition was added
       this.isDirty = true;
@@ -1118,6 +1278,7 @@ export class IntentManager {
   resetSession(): void {
     this.recentTrajectory = [];
     this.previousState = null;
+    this.previousStateEnteredAt = 0;
   }
 
   exportGraph(): SerializedMarkovGraph {
@@ -1130,6 +1291,21 @@ export class IntentManager {
       this.persistTimer = null;
     }
     this.persist();
+  }
+
+  /**
+   * Tear down the manager: flush any pending state to storage,
+   * cancel the debounce timer, and remove all event listeners.
+   *
+   * Call this in SPA cleanup paths (React `useEffect` teardown,
+   * Vue `onUnmounted`, Angular `ngOnDestroy`) to prevent memory
+   * leaks from retained listener references.
+   *
+   * After `destroy()` the instance should be discarded.
+   */
+  destroy(): void {
+    this.flushNow();
+    this.emitter.removeAll();
   }
 
   getPerformanceReport(): PerformanceReport {
@@ -1161,11 +1337,15 @@ export class IntentManager {
     const normalizedEntropy = this.graph.normalizedEntropyForState(state);
 
     if (normalizedEntropy >= this.graph.highEntropyThreshold) {
-      this.emitter.emit('high_entropy', {
-        state,
-        entropy,
-        normalizedEntropy,
-      });
+      const now = this.timer.now();
+      if (this.eventCooldownMs <= 0 || now - this.lastEmittedAt.high_entropy >= this.eventCooldownMs) {
+        this.lastEmittedAt.high_entropy = now;
+        this.emitter.emit('high_entropy', {
+          state,
+          entropy,
+          normalizedEntropy,
+        });
+      }
     }
 
     this.benchmark.record('entropyComputation', start);
@@ -1246,16 +1426,76 @@ export class IntentManager {
     //    side-channels (EntropyGuard deltas) can be folded into the score.
 
     if (shouldEmit) {
-      this.emitter.emit('trajectory_anomaly', {
-        stateFrom: from,
-        stateTo: to,
-        realLogLikelihood: real,
-        expectedBaselineLogLikelihood: expected,
-        zScore,
-      });
+      const now = this.timer.now();
+      if (this.eventCooldownMs <= 0 || now - this.lastEmittedAt.trajectory_anomaly >= this.eventCooldownMs) {
+        this.lastEmittedAt.trajectory_anomaly = now;
+        this.emitter.emit('trajectory_anomaly', {
+          stateFrom: from,
+          stateTo: to,
+          realLogLikelihood: real,
+          expectedBaselineLogLikelihood: expected,
+          zScore,
+        });
+      }
     }
 
     this.benchmark.record('divergenceComputation', start);
+  }
+
+  /* ================================================================== */
+  /*  Dwell-Time Anomaly Detection                                       */
+  /* ================================================================== */
+
+  /**
+   * Evaluate dwell time on the *previous* state using Welford's online
+   * algorithm to maintain running mean and variance.  Fires a
+   * `dwell_time_anomaly` event when the z-score exceeds the configured
+   * threshold and enough samples have been collected.
+   *
+   * All computation is O(1) per call — no arrays or sorting.
+   */
+  private evaluateDwellTime(state: string, dwellMs: number): void {
+    // Ignore non-positive dwell times (first track, or clock issues)
+    if (dwellMs <= 0) return;
+
+    // Retrieve or initialise the Welford accumulator: [count, mean, m2]
+    let stats = this.dwellStats.get(state);
+    if (!stats) {
+      stats = [0, 0, 0];
+      this.dwellStats.set(state, stats);
+    }
+
+    // Welford online update
+    stats[0] += 1;                            // count
+    const delta = dwellMs - stats[1];
+    stats[1] += delta / stats[0];             // mean
+    const delta2 = dwellMs - stats[1];
+    stats[2] += delta * delta2;               // m2
+
+    // Need enough samples for a meaningful standard deviation
+    if (stats[0] < this.dwellTimeMinSamples) return;
+
+    const variance = stats[2] / stats[0];     // population variance
+    const std = Math.sqrt(variance);
+
+    // Guard: if std is zero (all identical dwell times) skip
+    if (std <= 0) return;
+
+    const zScore = (dwellMs - stats[1]) / std;
+
+    if (Math.abs(zScore) >= this.dwellTimeZScoreThreshold) {
+      const now = this.timer.now();
+      if (this.eventCooldownMs <= 0 || now - this.lastEmittedAt.dwell_time_anomaly >= this.eventCooldownMs) {
+        this.lastEmittedAt.dwell_time_anomaly = now;
+        this.emitter.emit('dwell_time_anomaly', {
+          state,
+          dwellMs,
+          meanMs: stats[1],
+          stdMs: std,
+          zScore,
+        });
+      }
+    }
   }
 
   private schedulePersist(): void {
@@ -1283,11 +1523,8 @@ export class IntentManager {
     const graphBytes = this.graph.toBinary();
 
     // Convert Uint8Array → base64 string for localStorage compatibility.
-    let graphBinary = '';
-    for (let i = 0; i < graphBytes.length; i += 1) {
-      graphBinary += String.fromCharCode(graphBytes[i]);
-    }
-    graphBinary = btoa(graphBinary);
+    // Uses chunked String.fromCharCode to avoid O(n) string concatenation.
+    const graphBinary = uint8ToBase64(graphBytes);
 
     // Build the minimal JSON envelope (two short strings, no deep trees).
     const payload: PersistedPayload = {

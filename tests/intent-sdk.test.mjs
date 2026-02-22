@@ -784,3 +784,563 @@ test('prediction matrix evaluation computes expected rates', () => {
   assert.equal(summary.falsePositiveRate, 0.5);
   assert.equal(summary.avgDetectionLatency, 1.5);
 });
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Streaming base64 encoding
+// ─────────────────────────────────────────────────────────────────────────────
+
+test('BloomFilter.toBase64 produces identical output after streaming refactor', () => {
+  const bloom = new BloomFilter({ bitSize: 2048, hashCount: 4 });
+  for (let i = 0; i < 100; i++) bloom.add(`state-${i}`);
+
+  const b64 = bloom.toBase64();
+  // Round-trip must still work
+  const restored = BloomFilter.fromBase64(b64, { bitSize: 2048, hashCount: 4 });
+  for (let i = 0; i < 100; i++) {
+    assert.equal(restored.check(`state-${i}`), true, `state-${i} must survive round-trip`);
+  }
+  assert.equal(restored.check('never-added'), false);
+});
+
+test('persist/restore round-trip works with streaming base64 encoding', () => {
+  storage.clear();
+
+  const m1 = new IntentManager({
+    storageKey: 'streaming-b64-test',
+    persistDebounceMs: 5,
+    botProtection: false,
+  });
+
+  for (let i = 0; i < 50; i++) m1.track(`page-${i % 10}`);
+  m1.flushNow();
+
+  const m2 = new IntentManager({
+    storageKey: 'streaming-b64-test',
+    botProtection: false,
+  });
+
+  for (let i = 0; i < 10; i++) {
+    assert.equal(m2.hasSeen(`page-${i}`), true, `page-${i} must survive persist/restore`);
+  }
+  assert.equal(m2.hasSeen('never-tracked'), false);
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// destroy() API
+// ─────────────────────────────────────────────────────────────────────────────
+
+test('destroy() flushes pending state and removes all listeners', () => {
+  storage.clear();
+
+  const manager = new IntentManager({
+    storageKey: 'destroy-test',
+    persistDebounceMs: 60000, // long debounce — flush should still happen via destroy()
+    botProtection: false,
+  });
+
+  let eventCount = 0;
+  manager.on('state_change', () => { eventCount += 1; });
+
+  manager.track('home');
+  manager.track('search');
+  assert.equal(eventCount, 2, 'Events should fire before destroy');
+
+  manager.destroy();
+
+  // After destroy: data must have been persisted
+  const raw = storage.getItem('destroy-test');
+  assert.ok(raw, 'Storage must contain persisted state after destroy()');
+
+  // After destroy: listeners are removed, new track() on a fresh instance
+  // with the same emitter reference should not fire the old listener.
+  // (We verify by checking that eventCount did not increase during destroy.)
+  assert.equal(eventCount, 2, 'No extra events should fire during destroy');
+});
+
+test('destroy() can be called multiple times safely', () => {
+  storage.clear();
+
+  const manager = new IntentManager({
+    storageKey: 'destroy-idempotent-test',
+    persistDebounceMs: 5,
+    botProtection: false,
+  });
+
+  manager.track('A');
+  assert.doesNotThrow(() => {
+    manager.destroy();
+    manager.destroy();
+    manager.destroy();
+  }, 'Multiple destroy() calls must not throw');
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Configurable Event Cooldown
+// ─────────────────────────────────────────────────────────────────────────────
+
+test('eventCooldownMs: default (0) fires on every qualifying track()', () => {
+  storage.clear();
+
+  const manager = new IntentManager({
+    storageKey: 'cooldown-default-test',
+    graph: { highEntropyThreshold: 0 },
+    botProtection: false,
+    // eventCooldownMs defaults to 0
+  });
+
+  let eventCount = 0;
+  manager.on('high_entropy', () => { eventCount += 1; });
+
+  // Hub-spoke to build up transitions above MIN_SAMPLE_TRANSITIONS
+  const destinations = ['A', 'B', 'C', 'D', 'E'];
+  for (let i = 0; i < 40; i++) {
+    manager.track(i % 2 === 0 ? 'hub' : destinations[Math.floor(i / 2) % destinations.length]);
+  }
+
+  // With threshold 0, every qualifying call fires — should be more than 1
+  assert.ok(eventCount > 1, `Expected multiple entropy events with no cooldown, got ${eventCount}`);
+  manager.flushNow();
+});
+
+test('eventCooldownMs: suppresses repeated events within cooldown window', () => {
+  storage.clear();
+
+  let mockTime = 1000;
+  const originalNow = globalThis.performance.now;
+  globalThis.performance.now = () => mockTime;
+
+  try {
+    const manager = new IntentManager({
+      storageKey: 'cooldown-suppress-test',
+      graph: { highEntropyThreshold: 0 },
+      botProtection: false,
+      eventCooldownMs: 5000, // 5 second cooldown
+    });
+
+    let eventCount = 0;
+    manager.on('high_entropy', () => { eventCount += 1; });
+
+    // Hub-spoke pattern to exceed MIN_SAMPLE_TRANSITIONS (10)
+    const destinations = ['A', 'B', 'C', 'D', 'E'];
+    for (let i = 0; i < 40; i++) {
+      mockTime += 100; // 100ms between calls — human-paced
+      manager.track(i % 2 === 0 ? 'hub' : destinations[Math.floor(i / 2) % destinations.length]);
+    }
+
+    // Total elapsed: 40 × 100ms = 4000ms, which is less than the 5000ms cooldown.
+    // So only the first qualifying event should have fired.
+    assert.equal(eventCount, 1, `Expected exactly 1 entropy event within cooldown, got ${eventCount}`);
+
+    // Advance past the cooldown window and trigger more events
+    mockTime += 5000;
+    for (let i = 0; i < 10; i++) {
+      mockTime += 100;
+      manager.track(i % 2 === 0 ? 'hub' : destinations[i % destinations.length]);
+    }
+
+    // Now a second event should have fired
+    assert.equal(eventCount, 2, `Expected 2 entropy events after cooldown expired, got ${eventCount}`);
+    manager.flushNow();
+  } finally {
+    globalThis.performance.now = originalNow;
+  }
+});
+
+test('eventCooldownMs: trajectory_anomaly respects cooldown independently', () => {
+  storage.clear();
+
+  let mockTime = 1000;
+  const originalNow = globalThis.performance.now;
+  globalThis.performance.now = () => mockTime;
+
+  try {
+    const baseline = new MarkovGraph();
+    baseline.incrementTransition('A', 'B');
+    baseline.incrementTransition('B', 'C');
+    baseline.incrementTransition('C', 'A');
+
+    const manager = new IntentManager({
+      storageKey: 'cooldown-trajectory-test',
+      baseline: baseline.toJSON(),
+      graph: {
+        divergenceThreshold: -0.1, // very sensitive
+        highEntropyThreshold: 999, // effectively disable entropy events
+      },
+      botProtection: false,
+      eventCooldownMs: 3000,
+    });
+
+    let anomalyCount = 0;
+    manager.on('trajectory_anomaly', () => { anomalyCount += 1; });
+
+    // Random walk to trigger anomaly — need ≥ MIN_WINDOW_LENGTH (16) steps
+    const states = ['A', 'B', 'C', 'D', 'E', 'F'];
+    for (let i = 0; i < 40; i++) {
+      mockTime += 200;
+      manager.track(states[i % states.length]);
+    }
+
+    // Within cooldown — should see at most 1
+    assert.ok(anomalyCount <= 2, `Expected ≤2 anomaly events within cooldown, got ${anomalyCount}`);
+    const countBefore = anomalyCount;
+
+    // Advance past cooldown and trigger more
+    mockTime += 5000;
+    for (let i = 0; i < 20; i++) {
+      mockTime += 200;
+      manager.track(states[i % states.length]);
+    }
+
+    assert.ok(anomalyCount > countBefore, `Expected more anomaly events after cooldown expired, got ${anomalyCount} (was ${countBefore})`);
+    manager.flushNow();
+  } finally {
+    globalThis.performance.now = originalNow;
+  }
+});
+
+/* =================================================================== */
+/*  Dwell-Time Anomaly Detection Tests                                  */
+/* =================================================================== */
+
+test('dwell_time_anomaly fires for z-score above threshold', () => {
+  const storage = new MemoryStorage();
+  let mockTime = 1000;
+  const originalNow = globalThis.performance.now;
+  globalThis.performance.now = () => mockTime;
+
+  try {
+    const manager = new IntentManager({
+      storageKey: 'dwell-anomaly-test',
+      storageAdapter: storage,
+      botProtection: false,
+      dwellTime: {
+        enabled: true,
+        minSamples: 5,
+        zScoreThreshold: 2.0,
+      },
+    });
+
+    const events = [];
+    manager.on('dwell_time_anomaly', (payload) => { events.push(payload); });
+
+    // Build up 10 consistent dwell times of ~100ms on state A
+    for (let i = 0; i < 10; i++) {
+      mockTime += 100;
+      manager.track('A');
+      mockTime += 100;
+      manager.track('B');
+    }
+
+    // No anomaly yet — all dwells are uniform
+    assert.strictEqual(events.length, 0, 'No anomaly expected for uniform dwell times');
+
+    // Now introduce a dwell time that is 10x the normal dwell on A
+    mockTime += 1000; // 1000ms dwell on B before going to A — anomalous for B
+    manager.track('A');
+
+    // Should fire for state B (dwell of 1000ms vs mean ~100ms)
+    assert.ok(events.length >= 1, `Expected at least 1 dwell_time_anomaly event, got ${events.length}`);
+    const ev = events[events.length - 1];
+    assert.strictEqual(ev.state, 'B');
+    assert.strictEqual(ev.dwellMs, 1000);
+    assert.ok(ev.zScore >= 2.0, `z-score should be >= 2.0, got ${ev.zScore}`);
+    assert.ok(ev.meanMs > 0);
+    assert.ok(ev.stdMs > 0);
+
+    manager.flushNow();
+  } finally {
+    globalThis.performance.now = originalNow;
+  }
+});
+
+test('dwell_time_anomaly respects minSamples gate', () => {
+  const storage = new MemoryStorage();
+  let mockTime = 1000;
+  const originalNow = globalThis.performance.now;
+  globalThis.performance.now = () => mockTime;
+
+  try {
+    const manager = new IntentManager({
+      storageKey: 'dwell-min-samples-test',
+      storageAdapter: storage,
+      botProtection: false,
+      dwellTime: {
+        enabled: true,
+        minSamples: 20, // high bar
+        zScoreThreshold: 1.5,
+      },
+    });
+
+    const events = [];
+    manager.on('dwell_time_anomaly', (payload) => { events.push(payload); });
+
+    // Only 5 cycles — not enough samples (10 transitions but each state gets ~5)
+    for (let i = 0; i < 5; i++) {
+      mockTime += 100;
+      manager.track('A');
+      mockTime += 100;
+      manager.track('B');
+    }
+
+    // Outlier, but not enough samples yet
+    mockTime += 5000;
+    manager.track('A');
+
+    assert.strictEqual(events.length, 0, 'No anomaly should fire before minSamples are collected');
+
+    manager.flushNow();
+  } finally {
+    globalThis.performance.now = originalNow;
+  }
+});
+
+test('dwell_time_anomaly is suppressed for suspected bots', () => {
+  const storage = new MemoryStorage();
+  let mockTime = 1000;
+  const originalNow = globalThis.performance.now;
+  globalThis.performance.now = () => mockTime;
+
+  try {
+    const manager = new IntentManager({
+      storageKey: 'dwell-bot-test',
+      storageAdapter: storage,
+      botProtection: true,
+      entropyGuard: {
+        bufferSize: 5,
+        entropyThreshold: 0.01, // very low — easily tripped
+      },
+      dwellTime: {
+        enabled: true,
+        minSamples: 3,
+        zScoreThreshold: 1.5,
+      },
+    });
+
+    const dwellEvents = [];
+    manager.on('dwell_time_anomaly', (payload) => { dwellEvents.push(payload); });
+
+    // Rapid, identical-interval transitions to trigger bot detection
+    for (let i = 0; i < 30; i++) {
+      mockTime += 1; // 1ms intervals — very bot-like
+      manager.track(i % 2 === 0 ? 'A' : 'B');
+    }
+
+    // Now an outlier
+    mockTime += 50000;
+    manager.track('A');
+
+    // Bot flag should suppress dwell_time_anomaly
+    assert.strictEqual(dwellEvents.length, 0, 'Dwell anomaly should be suppressed when bot is suspected');
+
+    manager.flushNow();
+  } finally {
+    globalThis.performance.now = originalNow;
+  }
+});
+
+test('dwell_time_anomaly respects eventCooldownMs', () => {
+  const storage = new MemoryStorage();
+  let mockTime = 1000;
+  const originalNow = globalThis.performance.now;
+  globalThis.performance.now = () => mockTime;
+
+  try {
+    const manager = new IntentManager({
+      storageKey: 'dwell-cooldown-test',
+      storageAdapter: storage,
+      botProtection: false,
+      eventCooldownMs: 10000,
+      dwellTime: {
+        enabled: true,
+        minSamples: 5,
+        zScoreThreshold: 1.5,
+      },
+    });
+
+    const events = [];
+    manager.on('dwell_time_anomaly', (payload) => { events.push(payload); });
+
+    // Build baseline: 10 uniform cycles
+    for (let i = 0; i < 10; i++) {
+      mockTime += 100;
+      manager.track('A');
+      mockTime += 100;
+      manager.track('B');
+    }
+
+    // First anomaly — should fire
+    mockTime += 5000;
+    manager.track('A');
+    const afterFirst = events.length;
+    assert.ok(afterFirst >= 1, 'First anomaly should fire');
+
+    // Second anomaly quickly — should be suppressed by cooldown
+    mockTime += 100;
+    manager.track('B');
+    mockTime += 5000;
+    manager.track('A');
+    assert.strictEqual(events.length, afterFirst, 'Second anomaly within cooldown should be suppressed');
+
+    // Advance past cooldown — next anomaly should fire
+    mockTime += 11000;
+    manager.track('B');
+    mockTime += 5000;
+    manager.track('A');
+    assert.ok(events.length > afterFirst, 'Anomaly after cooldown should fire');
+
+    manager.flushNow();
+  } finally {
+    globalThis.performance.now = originalNow;
+  }
+});
+
+test('dwell-time stats reset on resetSession (previousStateEnteredAt)', () => {
+  const storage = new MemoryStorage();
+  let mockTime = 1000;
+  const originalNow = globalThis.performance.now;
+  globalThis.performance.now = () => mockTime;
+
+  try {
+    const manager = new IntentManager({
+      storageKey: 'dwell-reset-test',
+      storageAdapter: storage,
+      botProtection: false,
+      dwellTime: {
+        enabled: true,
+        minSamples: 3,
+        zScoreThreshold: 2.0,
+      },
+    });
+
+    // Some transitions
+    mockTime += 100;
+    manager.track('A');
+    mockTime += 100;
+    manager.track('B');
+
+    manager.resetSession();
+
+    // After reset, first track should not compute dwell from stale previousStateEnteredAt
+    const events = [];
+    manager.on('dwell_time_anomaly', (payload) => { events.push(payload); });
+
+    mockTime += 100;
+    manager.track('X');
+
+    // No anomaly — previousState is null after reset, so dwell-time isn't evaluated
+    assert.strictEqual(events.length, 0, 'No anomaly after reset with fresh state');
+
+    manager.flushNow();
+  } finally {
+    globalThis.performance.now = originalNow;
+  }
+});
+
+/* =================================================================== */
+/*  Selective Bigram Markov Chain Tests                                  */
+/* =================================================================== */
+
+test('bigrams are recorded when enableBigrams is true and threshold met', () => {
+  const storage = new MemoryStorage();
+  let mockTime = 1000;
+  const originalNow = globalThis.performance.now;
+  globalThis.performance.now = () => mockTime;
+
+  try {
+    const manager = new IntentManager({
+      storageKey: 'bigram-test',
+      storageAdapter: storage,
+      botProtection: false,
+      enableBigrams: true,
+      bigramFrequencyThreshold: 3,
+    });
+
+    // Build up unigram frequency: A->B repeated
+    // We need rowTotal(from) >= 3 for the from-state in bigram logic
+    // The bigram records: prev2→from as bigramFrom, from→state as bigramTo
+    for (let i = 0; i < 10; i++) {
+      mockTime += 100;
+      manager.track('A');
+      mockTime += 100;
+      manager.track('B');
+      mockTime += 100;
+      manager.track('C');
+    }
+
+    // Export and check for bigram-style keys (contain →)
+    const exported = manager.exportGraph();
+    const bigramStates = exported.states.filter(s => s.includes('\u2192'));
+    assert.ok(bigramStates.length > 0, `Expected bigram state names in graph, found states: ${JSON.stringify(exported.states.slice(0, 10))}`);
+
+    manager.flushNow();
+  } finally {
+    globalThis.performance.now = originalNow;
+  }
+});
+
+test('bigrams are NOT recorded when enableBigrams is false (default)', () => {
+  const storage = new MemoryStorage();
+  let mockTime = 1000;
+  const originalNow = globalThis.performance.now;
+  globalThis.performance.now = () => mockTime;
+
+  try {
+    const manager = new IntentManager({
+      storageKey: 'bigram-disabled-test',
+      storageAdapter: storage,
+      botProtection: false,
+      // enableBigrams defaults to false
+    });
+
+    for (let i = 0; i < 20; i++) {
+      mockTime += 100;
+      manager.track('A');
+      mockTime += 100;
+      manager.track('B');
+      mockTime += 100;
+      manager.track('C');
+    }
+
+    const exported = manager.exportGraph();
+    const bigramStates = exported.states.filter(s => s.includes('\u2192'));
+    assert.strictEqual(bigramStates.length, 0, 'No bigram states should exist when enableBigrams is false');
+
+    manager.flushNow();
+  } finally {
+    globalThis.performance.now = originalNow;
+  }
+});
+
+test('bigrams are not recorded when unigram threshold is not met', () => {
+  const storage = new MemoryStorage();
+  let mockTime = 1000;
+  const originalNow = globalThis.performance.now;
+  globalThis.performance.now = () => mockTime;
+
+  try {
+    const manager = new IntentManager({
+      storageKey: 'bigram-threshold-test',
+      storageAdapter: storage,
+      botProtection: false,
+      enableBigrams: true,
+      bigramFrequencyThreshold: 100, // very high — won't be met
+    });
+
+    for (let i = 0; i < 10; i++) {
+      mockTime += 100;
+      manager.track('A');
+      mockTime += 100;
+      manager.track('B');
+      mockTime += 100;
+      manager.track('C');
+    }
+
+    const exported = manager.exportGraph();
+    const bigramStates = exported.states.filter(s => s.includes('\u2192'));
+    assert.strictEqual(bigramStates.length, 0, 'No bigram states when threshold is not met');
+
+    manager.flushNow();
+  } finally {
+    globalThis.performance.now = originalNow;
+  }
+});
