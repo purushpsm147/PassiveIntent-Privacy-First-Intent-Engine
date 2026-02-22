@@ -167,7 +167,7 @@ On each `track(state)`:
 6. If `enableBigrams` is true and the unigram from-state is well-established, record the bigram transition.
 7. Evaluate entropy signal (skipped if bot suspected, or below minimum sample gate).
 8. Evaluate trajectory anomaly (skipped if bot suspected, or below minimum window gate, or no baseline).
-9. Emit `state_change` (respects `eventCooldownMs`).
+9. Emit `state_change` (always emitted — cooldown applies only to anomaly channels).
 10. Schedule debounced persistence.
 
 During persistence:

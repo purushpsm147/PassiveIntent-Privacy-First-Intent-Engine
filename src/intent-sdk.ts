@@ -84,7 +84,12 @@ export interface DwellTimeConfig {
    * Minimum number of dwell-time samples on a state before
    * anomaly detection kicks in.  Prevents false signals
    * during the learning phase.
-   * Default: 5.
+   *
+   * Because dwell-time statistics are **session-scoped** (not persisted
+   * across page reloads — see privacy rationale on `IntentManager.dwellStats`),
+   * the learning phase restarts on every new instance.  Consider raising
+   * this value for applications where users frequently reload the page.
+   * Default: 10.
    */
   minSamples?: number;
 
@@ -195,8 +200,8 @@ export interface IntentManagerConfig {
 
   /**
    * Minimum interval (ms) between emissions of the same event type
-   * (`high_entropy` or `trajectory_anomaly`).  Prevents listener flooding
-   * during rage-click or rapid-navigation bursts.
+   * (`high_entropy`, `trajectory_anomaly`, or `dwell_time_anomaly`).
+   * Prevents listener flooding during rage-click or rapid-navigation bursts.
    *
    * Set to 0 to disable cooldown (fire on every qualifying `track()`).
    * Default: 0 (no cooldown — preserves backward-compatible behavior).
@@ -1100,7 +1105,17 @@ export class IntentManager {
   private readonly dwellTimeEnabled: boolean;
   private readonly dwellTimeMinSamples: number;
   private readonly dwellTimeZScoreThreshold: number;
-  /** Per-state Welford accumulators: [count, mean, m2] */
+  /**
+   * Per-state Welford accumulators: [count, mean, m2].
+   *
+   * **Session-scoped — intentionally not persisted.**
+   * Persisting per-state timing distributions across page reloads would
+   * meaningfully increase the cross-session fingerprinting surface area,
+   * which conflicts with the library's privacy-first design goal.
+   * As a result, the learning phase (governed by `minSamples`) restarts
+   * on every new `IntentManager` instance.  Increase `minSamples` if
+   * short sessions cause excessive false positives.
+   */
   private readonly dwellStats = new Map<string, [number, number, number]>();
 
   /* Selective bigram (2nd-order) Markov */
@@ -1144,7 +1159,7 @@ export class IntentManager {
 
     // Dwell-time config
     this.dwellTimeEnabled = config.dwellTime?.enabled ?? false;
-    this.dwellTimeMinSamples = config.dwellTime?.minSamples ?? 5;
+    this.dwellTimeMinSamples = config.dwellTime?.minSamples ?? 10;
     this.dwellTimeZScoreThreshold = config.dwellTime?.zScoreThreshold ?? 2.5;
 
     // Bigram config

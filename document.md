@@ -365,9 +365,12 @@ interface IntentManagerConfig {
   eventCooldownMs?: number;
 
   // Dwell-time anomaly detection settings
+  // NOTE: dwell-time accumulators are session-scoped and not persisted.
+  // The learning phase restarts on every page reload / new IntentManager instance.
   dwellTime?: {
     enabled?: boolean;          // default: false
     minSamples?: number;        // minimum observations before firing (default: 10)
+                                // raise this value for short-session applications
     zScoreThreshold?: number;   // |z| >= this fires the event (default: 2.5)
   };
 
@@ -572,7 +575,7 @@ flowchart LR
 | **EntropyGuard** | Bot / automation detector based on inter-call timing | Fixed-size circular buffer; zero heap allocations in hot path |
 | **DwellTimeDetector** | Per-state dwell-time anomaly detection via Welford's online algorithm | O(1) per call; Map of `[count, mean, m2]` tuples |
 | **Bigram Recorder** | Selective second-order Markov transitions (`A→B` → `B→C`) | Frequency-gated; shares graph with LFU pruning under `maxStates` |
-| **EventEmitter** | Typed mini event bus: `high_entropy`, `trajectory_anomaly`, `dwell_time_anomaly`, `state_change` | ~20 lines; no `EventTarget` dependency for SSR safety; per-channel cooldown |
+| **EventEmitter** | Typed mini event bus: `high_entropy`, `trajectory_anomaly`, `dwell_time_anomaly`, `state_change` | ~20 lines; no `EventTarget` dependency for SSR safety; per-channel cooldown applies to anomaly events only (`high_entropy`, `trajectory_anomaly`, `dwell_time_anomaly`); `state_change` is always emitted immediately |
 | **BenchmarkRecorder** | Optional per-operation p95/p99 latency sampler | Disabled by default; ring-buffer avoids unbounded growth |
 | **Persistence Layer** | Debounced, dirty-flag-gated `localStorage` write | Writes only on actual state change; binary format, not JSON |
 | **StorageAdapter / TimerAdapter** | Isomorphic interfaces wrapping `localStorage` and `setTimeout` | Swap for `MemoryStorageAdapter` in SSR / tests |
@@ -1010,6 +1013,8 @@ intent.on('dwell_time_anomaly', ({ state, dwellMs, meanMs, stdMs, zScore }) => {
 ```
 
 **Complements EntropyGuard:** EntropyGuard detects bots via timing regularity across states. Dwell-time detection catches anomalies within individual states — a user who normally spends 5s on `/product` but suddenly spends 45s, or rushes through in 200ms.
+
+**Session scope (intentional):** Dwell-time accumulators (`dwellStats`) are **not persisted to storage across page reloads**. This is a deliberate privacy decision: per-state timing distributions are more sensitive than transition counts and would meaningfully expand the cross-session fingerprinting surface area — directly contrary to the library's local-only design goal. As a result, the learning phase governed by `minSamples` restarts on every new `IntentManager` instance. If your application reloads frequently and you observe excessive false-positive `dwell_time_anomaly` events early in a session, raise `minSamples` (e.g. to 20–30) to require a more solid statistical baseline before the detector activates.
 
 ---
 
