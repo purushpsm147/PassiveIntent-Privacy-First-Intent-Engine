@@ -1,7 +1,7 @@
 /**
  * Amazon Clone E2E Tests
  * 
- * These tests verify the Privacy-First Intent Engine functionality
+ * These tests verify the EdgeSignal SDK functionality
  * in a realistic e-commerce shopping context.
  */
 

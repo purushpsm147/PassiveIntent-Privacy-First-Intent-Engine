@@ -1,4 +1,4 @@
-# Privacy-First Intent Engine
+# EdgeSignal: A Privacy-First Intent Engine
 
 A lightweight TypeScript SDK for on-device intent modeling.
 It combines a Bloom filter for fast membership checks and a sparse Markov graph for transition learning, entropy signals, and trajectory anomaly detection.
@@ -18,7 +18,7 @@ It combines a Bloom filter for fast membership checks and a sparse Markov graph 
 ## Install
 
 ```bash
-npm install privacy-first-intent-engine
+npm install edge-signal
 ```
 
 ## Quick usage
@@ -29,14 +29,14 @@ import {
   MarkovGraph,
   BrowserStorageAdapter,
   BrowserTimerAdapter,
-} from 'privacy-first-intent-engine';
+} from 'edge-signal';
 
 const baseline = new MarkovGraph();
 baseline.incrementTransition('/home', '/search');
 baseline.incrementTransition('/search', '/product');
 
 const intent = new IntentManager({
-  storageKey: 'ui-telepathy',
+  storageKey: 'edge-signal',
   persistDebounceMs: 1500,
   baseline: baseline.toJSON(),
   graph: {

@@ -6,7 +6,7 @@
  */
 
 /**
- * Privacy-First Intent Engine ("UI Telepathy")
+ * EdgeSignal
  * --------------------------------------------------------
  * Goals:
  * - Entirely local inference (no network/data egress)
@@ -1148,7 +1148,7 @@ export class IntentManager {
   private trackTimestampCount = 0;
 
   constructor(config: IntentManagerConfig = {}) {
-    this.storageKey = config.storageKey ?? 'ui-telepathy';
+    this.storageKey = config.storageKey ?? 'edge-signal';
     this.persistDebounceMs = config.persistDebounceMs ?? 2000;
     this.benchmark = new BenchmarkRecorder(config.benchmark);
     this.storage = config.storage ?? new BrowserStorageAdapter();

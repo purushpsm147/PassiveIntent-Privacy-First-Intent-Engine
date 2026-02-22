@@ -91,8 +91,8 @@ describe('Privacy-First Intent Sandbox', () => {
 
     cy.wait(600);
     cy.window().then((win) => {
-      const payload = win.localStorage.getItem('ui-telepathy');
-      expect(payload, 'ui-telepathy should be written to localStorage').to.be.a('string');
+      const payload = win.localStorage.getItem('edge-signal');
+      expect(payload, 'edge-signal should be written to localStorage').to.be.a('string');
 
       const parsed = JSON.parse(payload as string);
       expect(parsed).to.have.property('bloomBase64');
