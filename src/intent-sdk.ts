@@ -1276,8 +1276,10 @@ export class IntentManager {
     this.bigramFrequencyThreshold = config.bigramFrequencyThreshold ?? 5;
 
     // Telemetry: generate a short-lived, local-only session ID.
-    // crypto.randomUUID() is available in all modern browsers and Node ≥ 14.17.
-    // Fall back to a Math.random hex string for older runtimes.
+    // globalThis.crypto.randomUUID() is available in all modern browsers and
+    // Node ≥ 19 (unflagged). Node 14.17–18 exposed randomUUID() only via the
+    // built-in 'crypto' module (require('crypto')), NOT as a global, so those
+    // runtimes will correctly fall back to the Math.random path below.
     this.sessionId = (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function')
       ? crypto.randomUUID()
       : Math.random().toString(36).slice(2) + Math.random().toString(36).slice(2);

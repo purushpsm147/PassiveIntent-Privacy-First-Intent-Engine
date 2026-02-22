@@ -174,13 +174,22 @@ describe('Telemetry & Conversion Tracking API', () => {
       expect(firstId).to.be.a('string').with.length.greaterThan(0);
     });
 
-    // Navigate some routes — sessionId must not change
+    // Navigate some routes — sessionId must not change within the same lifecycle
     clickRoute('/home');
     clickRoute('/search');
 
     cy.window().then((win) => {
       const currentId = (win as any).__intentManager.getTelemetry().sessionId;
       expect(currentId).to.equal(firstId, 'sessionId must stay the same throughout a single page lifecycle');
+    });
+
+    // Reload the page — a new IntentManager is constructed, so sessionId must differ
+    cy.reload();
+
+    cy.window().then((win) => {
+      const reloadedId = (win as any).__intentManager.getTelemetry().sessionId;
+      expect(reloadedId).to.be.a('string').with.length.greaterThan(0);
+      expect(reloadedId).not.to.equal(firstId, 'sessionId must change after a page reload');
     });
   });
 
