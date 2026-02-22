@@ -6,11 +6,11 @@
  */
 
 /**
- * Privacy-First Intent Engine — Public API Barrel Export
+ * EdgeSignal — Public API Barrel Export
  * --------------------------------------------------------
  * Import everything you need from one clean entry-point:
  *
- *   import { IntentManager, BloomFilter, MarkovGraph } from 'privacy-first-intent-engine';
+ *   import { IntentManager, BloomFilter, MarkovGraph } from 'edge-signal';
  */
 
 /* ---- Core SDK ---- */

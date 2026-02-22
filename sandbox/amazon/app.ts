@@ -1,7 +1,7 @@
 /**
  * Amazon Clone - Intent Engine Integration
  * 
- * This demo showcases the Privacy-First Intent Engine in an
+ * This demo showcases the EdgeSignal SDK in an
  * e-commerce context, tracking user journeys through a realistic
  * shopping flow to detect:
  * - Rage clicks (high entropy)

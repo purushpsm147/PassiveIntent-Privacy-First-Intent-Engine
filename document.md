@@ -1,8 +1,8 @@
-# Privacy-First Intent Engine — Documentation
+# EdgeSignal — Documentation
 
-> **UI Telepathy** — on-device behavioral intent modeling with zero data egress.
+> **EdgeSignal** — on-device behavioral intent modeling with zero data egress.
 
-[![npm version](https://img.shields.io/npm/v/privacy-first-intent-engine.svg)](https://www.npmjs.com/package/privacy-first-intent-engine)
+[![npm version](https://img.shields.io/badge/npm-coming%20soon-lightgrey)](https://github.com/purushpsm147/EdgeSignal-Privacy-First-Intent-Engine)
 [![License: AGPL-3.0-only](https://img.shields.io/badge/license-AGPL--3.0--only-blue.svg)](./LICENSE)
 [![TypeScript](https://img.shields.io/badge/TypeScript-5.6-3178c6.svg)](https://www.typescriptlang.org/)
 
@@ -46,7 +46,7 @@ A tiny, tree-shakeable TypeScript SDK that learns how a user navigates your appl
 
 ## What It Is
 
-The Privacy-First Intent Engine is a **local behavioral inference library**. As a user navigates your application, it:
+The EdgeSignal SDK is a **local behavioral inference library**. As a user navigates your application, it:
 
 1. Records state transitions (page routes, UI milestones, custom events) into a sparse **Markov graph** stored in `localStorage`.
 2. Maintains a **Bloom filter** for O(1) membership tests ("has this user ever visited `/checkout`?").
@@ -118,15 +118,15 @@ Transition probabilities stored in the binary format are quantized to 8-bit prec
 ## Installation
 
 ```bash
-npm install privacy-first-intent-engine
+npm install edge-signal
 ```
 
 ```bash
-pnpm add privacy-first-intent-engine
+pnpm add edge-signal
 ```
 
 ```bash
-yarn add privacy-first-intent-engine
+yarn add edge-signal
 ```
 
 The package ships **zero runtime dependencies**.
@@ -136,7 +136,7 @@ The package ships **zero runtime dependencies**.
 ## Quick Start
 
 ```ts
-import { IntentManager } from 'privacy-first-intent-engine';
+import { IntentManager } from 'edge-signal';
 
 const intent = new IntentManager({
   storageKey: 'my-app-intent',   // localStorage key
@@ -211,7 +211,7 @@ interface StateChangePayload {
 Show a soft paywall only after a user has demonstrated genuine reading intent — not on their first visit.
 
 ```ts
-import { IntentManager } from 'privacy-first-intent-engine';
+import { IntentManager } from 'edge-signal';
 
 const intent = new IntentManager({ storageKey: 'editorial-intent' });
 
@@ -238,10 +238,15 @@ function onRouteChange(route: string) {
 
 ### 2. Hesitation Discount
 
-Offer a time-limited discount when a user shows trajectory anomaly behavior near the checkout funnel — the statistical signal of "I want to buy but I'm not sure."
+Detect genuine purchase hesitation by correlating two independent signals:
+
+- **Spatial signal** (`trajectory_anomaly`) — the user's path diverges from how typical converters navigate.
+- **Temporal signal** (`dwell_time_anomaly`) — the user is lingering statistically longer than their own previous visits to that state.
+
+A single signal is a weak proxy. Both firing **within the same short window** is a high-confidence indicator of "I want to buy but I'm not sure." This is the same multi-signal correlation approach used in UEBA and SIEM tooling to reduce false positives.
 
 ```ts
-import { IntentManager, SerializedMarkovGraph } from 'privacy-first-intent-engine';
+import { IntentManager, SerializedMarkovGraph } from 'edge-signal';
 
 // Calibrated baseline: what a converting session looks like.
 // Gather this from historical analytics, then embed it here.
@@ -265,12 +270,48 @@ const intent = new IntentManager({
     baselineMeanLL: -0.52,
     baselineStdLL: 0.18,
   },
+  // Enable temporal intent detection
+  dwellTime: {
+    enabled: true,
+    minSamples: 5,          // learn quickly within a session
+    zScoreThreshold: 2.0,   // lower individual threshold — the combo gate does the heavy lifting
+  },
+  eventCooldownMs: 15_000,  // prevent re-triggering within 15 s at the SDK level
 });
 
-intent.on('trajectory_anomaly', ({ zScore }) => {
-  // User's path diverges significantly from typical converters
-  if (isNearCheckout()) {
+// Time-bound correlation: both signals must fire within 30 seconds of each other.
+// Without this window, a trajectory anomaly on /home could pair with a dwell
+// anomaly on /terms-of-service ten minutes later — a spurious combination.
+let lastTrajectoryAnomaly = 0;
+let lastDwellAnomaly = 0;
+const CORRELATION_WINDOW_MS = 30_000; // 30 seconds
+
+function maybeShowDiscount(): void {
+  const now = Date.now();
+  const isCorrelated =
+    (now - lastTrajectoryAnomaly < CORRELATION_WINDOW_MS) &&
+    (now - lastDwellAnomaly < CORRELATION_WINDOW_MS);
+
+  if (isCorrelated && isNearCheckout()) {
     showHesitationDiscount('10% off — just for you. Offer expires in 10 min.');
+    // Reset timestamps to prevent spamming after the discount is shown
+    lastTrajectoryAnomaly = 0;
+    lastDwellAnomaly = 0;
+  }
+}
+
+intent.on('trajectory_anomaly', () => {
+  lastTrajectoryAnomaly = Date.now();
+  maybeShowDiscount();
+});
+
+intent.on('dwell_time_anomaly', ({ zScore }) => {
+  // Only positive z-scores mean lingering; negative means rushing through.
+  // Use a slightly relaxed threshold here (1.5) since the correlation window
+  // already filters coincidental pairings.
+  if (zScore > 1.5) {
+    lastDwellAnomaly = Date.now();
+    maybeShowDiscount();
   }
 });
 
@@ -283,6 +324,10 @@ function isNearCheckout(): boolean {
 
 Run `npm run test:perf:matrix` after pointing `scripts/scenario-matrix.mjs` at representative session replays from your analytics platform. It outputs the `baselineMeanLL` and `baselineStdLL` values to embed in your config.
 
+**Why dwell-time stats are session-scoped — a privacy feature, not a limitation:**
+
+Dwell-time statistics are held in memory only and are never persisted to `localStorage`. This is a deliberate privacy boundary. Permanently storing per-user temporal profiles (how long someone reads each page, across every visit, over months) would enable invasive behavioral fingerprinting — correlating reading speed and attention patterns to build a persistent identity. EdgeSignal intentionally keeps all temporal math strictly session-scoped. The warm-up period (`minSamples`) resets on every page load as a direct consequence of this guarantee. For checkout funnels this trade-off is acceptable, and arguably beneficial: the signal is always grounded in the current session's behaviour, not stale historical data from a different context.
+
 ---
 
 ### 3. Rage-Click Healer
@@ -290,7 +335,7 @@ Run `npm run test:perf:matrix` after pointing `scripts/scenario-matrix.mjs` at r
 Detect frantic, high-entropy navigation and surface a help prompt before the user bounces.
 
 ```ts
-import { IntentManager } from 'privacy-first-intent-engine';
+import { IntentManager } from 'edge-signal';
 
 const intent = new IntentManager({
   storageKey: 'support-intent',
@@ -324,7 +369,7 @@ useEffect(() => {
 
 ```ts
 interface IntentManagerConfig {
-  // Key written to the StorageAdapter (default: 'ui-telepathy')
+  // Key written to the StorageAdapter (default: 'edge-signal')
   storageKey?: string;
 
   // Milliseconds between storage writes (default: 2000)
@@ -391,7 +436,7 @@ interface IntentManagerConfig {
 Use the static helper to compute optimal parameters for your known state-space:
 
 ```ts
-import { BloomFilter } from 'privacy-first-intent-engine';
+import { BloomFilter } from 'edge-signal';
 
 const { bitSize, hashCount } = BloomFilter.computeOptimal(
   200,   // expected distinct states
@@ -412,7 +457,7 @@ filter.estimateCurrentFPR(150); // → ~0.004 (0.4 %)
 import {
   IntentManager,
   MemoryStorageAdapter,
-} from 'privacy-first-intent-engine';
+} from 'edge-signal';
 
 // Server-side rendering — no localStorage access, no persistence
 const intent = new IntentManager({
@@ -516,7 +561,7 @@ flowchart LR
         APP["app code\nrouter.afterEach / useEffect"]
     end
 
-    subgraph SDK["Privacy-First Intent Engine SDK"]
+    subgraph SDK["EdgeSignal SDK"]
         direction TB
         IM["IntentManager\n(Orchestrator)"]
 
@@ -1200,9 +1245,9 @@ The privacy properties of this library are not marketing copy. Here is how each 
 | **No network calls** | `grep -r "fetch\|XMLHttpRequest\|sendBeacon\|WebSocket" src/` returns zero results. The `package.json` has no runtime dependencies. The minified bundle can be audited in `dist/index.js`. |
 | **No fingerprinting** | No access to `navigator`, `screen`, `canvas`, `AudioContext`, or any known fingerprinting surface. EntropyGuard uses only `performance.now()` deltas from your own explicit `track()` calls. |
 | **No PII** | `track()` accepts a `string` label chosen entirely by the application. The library never reads cookies, URL query parameters, form fields, local storage keys other than `storageKey`, or any DOM content. |
-| **Local storage only** | Persistence routes exclusively through the `StorageAdapter` interface, which defaults to `window.localStorage`. Inspect the stored state at any time: `localStorage.getItem('ui-telepathy')`. |
+| **Local storage only** | Persistence routes exclusively through the `StorageAdapter` interface, which defaults to `window.localStorage`. Inspect the stored state at any time: `localStorage.getItem('edge-signal')`. |
 | **Transparent & auditable** | `src/` is the exact code that ships. `tsup` minifies but does not inject code. Source maps in `dist/` make the minified output human-readable. |
-| **User can clear state** | `localStorage.removeItem('ui-telepathy')` wipes all learned state. No server-side copy exists. |
+| **User can clear state** | `localStorage.removeItem('edge-signal')` wipes all learned state. No server-side copy exists. |
 
 ---
 

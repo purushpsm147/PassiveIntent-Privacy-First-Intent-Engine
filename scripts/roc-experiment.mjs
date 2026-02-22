@@ -233,7 +233,7 @@ const calRng        = new SeededRng(MASTER_SEED ^ 0xa5a5a5a5);
 const calibrated    = calibrateBaseline(baselineGraph, statePool, calRng);
 
 console.log('═══════════════════════════════════════════════════════════');
-console.log('  ROC / AUC Experiment — Privacy-First Intent Engine');
+console.log('  ROC / AUC Experiment — EdgeSignal');
 console.log('═══════════════════════════════════════════════════════════');
 console.log(`  State space:   ${STATE_SPACE}`);
 console.log(`  Baseline ε:    ${BASELINE_ENTROPY}`);

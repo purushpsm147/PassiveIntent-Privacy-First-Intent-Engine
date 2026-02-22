@@ -12,7 +12,7 @@ const baseline: SerializedMarkovGraph = {
 };
 
 const intentManager = new IntentManager({
-  storageKey: 'ui-telepathy',
+  storageKey: 'edge-signal',
   persistDebounceMs: 500,
   graph: {
     highEntropyThreshold: 0.8,
