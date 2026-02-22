@@ -55,7 +55,7 @@ We do not currently operate a paid bug bounty program. We do, however, credit al
 The following are **in scope** for security reports:
 
 - The `edge-signal` npm package (`src/`)
-- The public SDK API surface (`IntentSDK`, adapters, configuration)
+- The public SDK API surface (`IntentManager`, adapters, configuration)
 - Data leakage or privacy violations stemming from SDK behaviour
 
 The following are **out of scope**:
