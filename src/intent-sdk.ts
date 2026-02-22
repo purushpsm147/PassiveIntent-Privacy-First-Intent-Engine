@@ -1727,9 +1727,13 @@ export class IntentManager {
     }
 
     // LFU prune before serializing — keeps storage bounded.
+    // Wrap in try-finally so engineHealth is always restored even if prune() throws.
     this.engineHealth = 'pruning_active';
-    this.graph.prune();
-    this.engineHealth = 'healthy';
+    try {
+      this.graph.prune();
+    } finally {
+      this.engineHealth = 'healthy';
+    }
 
     // Binary-encode the graph: avoids JSON.stringify on potentially
     // large objects, keeping the main thread free of heavy work.
