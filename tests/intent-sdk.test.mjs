@@ -1344,3 +1344,638 @@ test('bigrams are not recorded when unigram threshold is not met', () => {
     globalThis.performance.now = originalNow;
   }
 });
+
+/* =================================================================== */
+/*  Telemetry & Conversion Tracking API                                  */
+/* =================================================================== */
+
+test('getTelemetry() returns initial GDPR-safe snapshot before any track() call', () => {
+  storage.clear();
+  const manager = new IntentManager({
+    storageKey: 'telemetry-initial-test',
+    storage,
+    botProtection: false,
+  });
+
+  const t = manager.getTelemetry();
+
+  // sessionId: non-empty string — format is crypto.randomUUID() or Math.random fallback
+  assert.equal(typeof t.sessionId, 'string', 'sessionId must be a string');
+  assert.ok(t.sessionId.length > 0, 'sessionId must not be empty');
+
+  // Counters start at zero
+  assert.equal(t.transitionsEvaluated, 0, 'transitionsEvaluated starts at 0');
+  assert.equal(t.anomaliesFired, 0, 'anomaliesFired starts at 0');
+
+  // Default healthy state
+  assert.equal(t.botStatus, 'human', 'botStatus starts as human');
+  assert.equal(t.engineHealth, 'healthy', 'engineHealth starts as healthy');
+});
+
+test('getTelemetry() transitionsEvaluated is 0 for the first track() call (no prior state)', () => {
+  storage.clear();
+  const manager = new IntentManager({
+    storageKey: 'telemetry-first-track-test',
+    storage,
+    botProtection: false,
+  });
+
+  manager.track('A');
+  assert.equal(manager.getTelemetry().transitionsEvaluated, 0,
+    'First track() has no prior state, so no transition is evaluated');
+
+  manager.track('B');
+  assert.equal(manager.getTelemetry().transitionsEvaluated, 1,
+    'Second track() produces the first A→B transition');
+
+  manager.track('C');
+  assert.equal(manager.getTelemetry().transitionsEvaluated, 2,
+    'Third track() produces B→C');
+
+  manager.flushNow();
+});
+
+test('getTelemetry() sessionId is stable within a single IntentManager instance', () => {
+  storage.clear();
+  const manager = new IntentManager({
+    storageKey: 'telemetry-session-stable-test',
+    storage,
+    botProtection: false,
+  });
+
+  const id1 = manager.getTelemetry().sessionId;
+  manager.track('home');
+  manager.track('search');
+  const id2 = manager.getTelemetry().sessionId;
+
+  assert.equal(id1, id2, 'sessionId must not change within a single instance lifetime');
+  manager.flushNow();
+});
+
+test('getTelemetry() sessionId differs across IntentManager instances (unique per page load)', () => {
+  storage.clear();
+  const m1 = new IntentManager({ storageKey: 'telemetry-session-unique-a', storage, botProtection: false });
+  const m2 = new IntentManager({ storageKey: 'telemetry-session-unique-b', storage, botProtection: false });
+
+  // crypto.randomUUID() or the Math.random fallback should produce distinct values
+  assert.notEqual(m1.getTelemetry().sessionId, m2.getTelemetry().sessionId,
+    'Two distinct IntentManager instances must have different sessionIds');
+  m1.flushNow();
+  m2.flushNow();
+});
+
+test('getTelemetry() anomaliesFired increments when high_entropy fires', () => {
+  storage.clear();
+  const manager = new IntentManager({
+    storageKey: 'telemetry-entropy-test',
+    storage,
+    botProtection: false,
+    graph: { highEntropyThreshold: 0 }, // fire on any non-zero entropy
+  });
+
+  const received = [];
+  manager.on('high_entropy', (p) => received.push(p));
+
+  // Hub-spoke: build ≥10 outgoing edges from 'hub' to pass MIN_SAMPLE_TRANSITIONS gate,
+  // then continue; at threshold=0 every qualifying entropy evaluation fires.
+  const dests = ['A', 'B', 'C', 'D', 'E'];
+  for (let i = 0; i < 30; i++) {
+    manager.track(i % 2 === 0 ? 'hub' : dests[i % dests.length]);
+  }
+
+  const t = manager.getTelemetry();
+  assert.ok(t.anomaliesFired > 0, `anomaliesFired must be > 0 after high_entropy events, got ${t.anomaliesFired}`);
+  assert.equal(t.anomaliesFired, received.length,
+    'anomaliesFired must equal the number of high_entropy events actually delivered');
+
+  manager.flushNow();
+});
+
+test('getTelemetry() anomaliesFired increments when trajectory_anomaly fires', () => {
+  storage.clear();
+  let mockTime = 1000;
+  const originalNow = globalThis.performance.now;
+  globalThis.performance.now = () => mockTime;
+
+  try {
+    // Build a simple baseline: A→B→C→A
+    const baselineGraph = new MarkovGraph();
+    for (let i = 0; i < 5; i++) {
+      baselineGraph.incrementTransition('A', 'B');
+      baselineGraph.incrementTransition('B', 'C');
+      baselineGraph.incrementTransition('C', 'A');
+    }
+
+    const manager = new IntentManager({
+      storageKey: 'telemetry-trajectory-test',
+      storage,
+      botProtection: false,
+      baseline: baselineGraph.toJSON(),
+      graph: {
+        // Very aggressive threshold + calibration so almost any deviation triggers
+        divergenceThreshold: 0.1,
+        baselineMeanLL: 0,
+        baselineStdLL: 0.01,
+      },
+    });
+
+    const received = [];
+    manager.on('trajectory_anomaly', (p) => received.push(p));
+
+    // Navigate a completely different path (X, Y, Z, W) — high divergence from A→B→C baseline.
+    // Need ≥16 transitions to pass MIN_WINDOW_LENGTH guard.
+    const states = ['X', 'Y', 'Z', 'W'];
+    for (let i = 0; i < 20; i++) {
+      mockTime += 100;
+      manager.track(states[i % states.length]);
+    }
+
+    const t = manager.getTelemetry();
+    assert.ok(t.anomaliesFired > 0, `anomaliesFired must be > 0 after trajectory_anomaly events, got ${t.anomaliesFired}`);
+    assert.equal(t.anomaliesFired, received.length,
+      'anomaliesFired must equal the number of trajectory_anomaly events actually delivered');
+
+    manager.flushNow();
+  } finally {
+    globalThis.performance.now = originalNow;
+  }
+});
+
+test('getTelemetry() anomaliesFired increments when dwell_time_anomaly fires', () => {
+  storage.clear();
+  let mockTime = 1000;
+  const originalNow = globalThis.performance.now;
+  globalThis.performance.now = () => mockTime;
+
+  try {
+    const manager = new IntentManager({
+      storageKey: 'telemetry-dwell-test',
+      storage,
+      botProtection: false,
+      dwellTime: { enabled: true, minSamples: 3, zScoreThreshold: 1.5 },
+    });
+
+    const received = [];
+    manager.on('dwell_time_anomaly', (p) => received.push(p));
+
+    // Build baseline: dwell ~100 ms on A each time
+    for (let i = 0; i < 5; i++) {
+      mockTime += 100; manager.track('A');
+      mockTime += 100; manager.track('B');
+    }
+
+    const snapshotBefore = manager.getTelemetry().anomaliesFired;
+
+    // Spike: dwell 5000 ms on A — should produce a high positive z-score
+    mockTime += 5000; manager.track('A');
+    mockTime += 100;  manager.track('B');
+
+    assert.ok(manager.getTelemetry().anomaliesFired > snapshotBefore,
+      'anomaliesFired must increment after dwell_time_anomaly fires');
+    assert.equal(received.length, manager.getTelemetry().anomaliesFired - snapshotBefore,
+      'delta in anomaliesFired must equal number of dwell_time_anomaly events delivered');
+
+    manager.flushNow();
+  } finally {
+    globalThis.performance.now = originalNow;
+  }
+});
+
+test('getTelemetry() anomaliesFired does NOT increment when event is suppressed by eventCooldownMs', () => {
+  storage.clear();
+  const manager = new IntentManager({
+    storageKey: 'telemetry-cooldown-test',
+    storage,
+    botProtection: false,
+    graph: { highEntropyThreshold: 0 },
+    eventCooldownMs: 60_000, // 60-second cooldown — only first event passes in sync tests
+  });
+
+  const received = [];
+  manager.on('high_entropy', (p) => received.push(p));
+
+  const dests = ['A', 'B', 'C', 'D', 'E'];
+  for (let i = 0; i < 50; i++) {
+    manager.track(i % 2 === 0 ? 'hub' : dests[i % dests.length]);
+  }
+
+  // Cooldown means at most 1 event fires regardless of how many qualifying evaluations occur
+  assert.ok(received.length <= 1,
+    `With 60s cooldown, at most 1 high_entropy event should fire; got ${received.length}`);
+  assert.equal(manager.getTelemetry().anomaliesFired, received.length,
+    'anomaliesFired must match the number of events that actually passed the cooldown gate');
+
+  manager.flushNow();
+});
+
+test('getTelemetry() botStatus reflects EntropyGuard classification', () => {
+  storage.clear();
+
+  let mockTime = 0;
+  const originalNow = globalThis.performance.now;
+  globalThis.performance.now = () => mockTime;
+
+  try {
+    const manager = new IntentManager({
+      storageKey: 'telemetry-botstatus-test',
+      storage,
+      botProtection: true,
+    });
+
+    // Initially human
+    assert.equal(manager.getTelemetry().botStatus, 'human');
+
+    // Rapid synchronous calls: all deltas are 0ms which is < BOT_MIN_DELTA_MS (50ms)
+    for (let i = 0; i < 15; i++) {
+      manager.track(i % 2 === 0 ? 'X' : 'Y');
+    }
+
+    assert.equal(manager.getTelemetry().botStatus, 'suspected_bot',
+      'botStatus must be suspected_bot after rapid-fire track() calls');
+
+    // Now advance time so each call is 200ms apart — bot flag should clear
+    for (let i = 0; i < 12; i++) {
+      mockTime += 200;
+      manager.track(i % 2 === 0 ? 'X' : 'Y');
+    }
+
+    assert.equal(manager.getTelemetry().botStatus, 'human',
+      'botStatus must recover to human after human-paced interactions fill the buffer');
+
+    manager.flushNow();
+  } finally {
+    globalThis.performance.now = originalNow;
+  }
+});
+
+test('getTelemetry() engineHealth is healthy after a normal persist / prune cycle', () => {
+  storage.clear();
+
+  // maxStates=3 forces prune on every persist with enough states
+  const manager = new IntentManager({
+    storageKey: 'telemetry-health-prune-test',
+    storage,
+    botProtection: false,
+    graph: { maxStates: 3 },
+    persistDebounceMs: 1,
+  });
+
+  // Add 5 states to force LFU pruning threshold
+  ['A', 'B', 'C', 'D', 'E'].forEach(s => manager.track(s));
+  manager.flushNow(); // triggers prune() internally
+
+  // After prune completes, engineHealth must settle back to 'healthy'
+  assert.equal(manager.getTelemetry().engineHealth, 'healthy',
+    'engineHealth must be healthy after prune cycle completes');
+});
+
+test('getTelemetry() engineHealth transitions to quota_exceeded on QuotaExceededError', () => {
+  storage.clear();
+
+  // A storage adapter that throws QuotaExceededError on setItem
+  const quotaStorage = {
+    getItem: (key) => storage.getItem(key),
+    setItem: (_key, _value) => {
+      const err = new Error('The quota has been exceeded.');
+      err.name = 'QuotaExceededError';
+      throw err;
+    },
+  };
+
+  const manager = new IntentManager({
+    storageKey: 'telemetry-quota-test',
+    storage: quotaStorage,
+    botProtection: false,
+  });
+
+  manager.track('home');
+  manager.track('search');
+  manager.flushNow(); // triggers persist() which throws QuotaExceededError
+
+  assert.equal(manager.getTelemetry().engineHealth, 'quota_exceeded',
+    'engineHealth must be quota_exceeded after a QuotaExceededError from storage');
+});
+
+test('trackConversion() emits a conversion event with the full payload', () => {
+  storage.clear();
+  const manager = new IntentManager({
+    storageKey: 'telemetry-conversion-full-test',
+    storage,
+    botProtection: false,
+  });
+
+  const received = [];
+  manager.on('conversion', (p) => received.push(p));
+
+  manager.trackConversion({ type: 'purchase', value: 49.99, currency: 'USD' });
+
+  assert.equal(received.length, 1, 'conversion event must fire exactly once');
+  assert.equal(received[0].type, 'purchase');
+  assert.equal(received[0].value, 49.99);
+  assert.equal(received[0].currency, 'USD');
+});
+
+test('trackConversion() emits with type-only payload (value and currency are optional)', () => {
+  storage.clear();
+  const manager = new IntentManager({
+    storageKey: 'telemetry-conversion-minimal-test',
+    storage,
+    botProtection: false,
+  });
+
+  const received = [];
+  manager.on('conversion', (p) => received.push(p));
+
+  manager.trackConversion({ type: 'signup' });
+
+  assert.equal(received.length, 1, 'conversion event must fire exactly once');
+  assert.equal(received[0].type, 'signup');
+  assert.equal(received[0].value, undefined, 'value must be undefined when not supplied');
+  assert.equal(received[0].currency, undefined, 'currency must be undefined when not supplied');
+});
+
+test('trackConversion() does not affect transitionsEvaluated or anomaliesFired', () => {
+  storage.clear();
+  const manager = new IntentManager({
+    storageKey: 'telemetry-conversion-no-side-effects-test',
+    storage,
+    botProtection: false,
+  });
+
+  manager.track('A');
+  manager.track('B');
+  const snapshotBefore = manager.getTelemetry();
+
+  manager.trackConversion({ type: 'test' });
+  manager.trackConversion({ type: 'test' });
+
+  const snapshotAfter = manager.getTelemetry();
+
+  assert.equal(snapshotAfter.transitionsEvaluated, snapshotBefore.transitionsEvaluated,
+    'trackConversion() must not increment transitionsEvaluated');
+  assert.equal(snapshotAfter.anomaliesFired, snapshotBefore.anomaliesFired,
+    'trackConversion() must not increment anomaliesFired');
+  assert.equal(snapshotAfter.sessionId, snapshotBefore.sessionId,
+    'trackConversion() must not change sessionId');
+
+  manager.flushNow();
+});
+
+/* ================================================================== */
+/*  bot_detected & hesitation_detected Events                          */
+/* ================================================================== */
+
+test('bot_detected fires on the false→true EntropyGuard transition', () => {
+  storage.clear();
+
+  const manager = new IntentManager({
+    storageKey: 'bot-detected-fires-test',
+    storage,
+    botProtection: true,
+  });
+
+  const detected = [];
+  manager.on('bot_detected', (p) => detected.push(p));
+
+  // 60 rapid-fire synchronous track() calls produce near-zero inter-call
+  // deltas, pushing the EntropyGuard window score past BOT_SCORE_THRESHOLD.
+  const states = ['A', 'B', 'C', 'D', 'E', 'F'];
+  for (let i = 0; i < 60; i++) {
+    manager.track(states[i % states.length]);
+  }
+
+  assert.ok(detected.length >= 1,
+    `Expected bot_detected to fire at least once, got ${detected.length}`);
+  assert.ok(typeof detected[0].state === 'string',
+    'bot_detected payload must have a string state property');
+  manager.flushNow();
+});
+
+test('bot_detected fires at most once per false→true transition (not on every rapid call while suspected)', () => {
+  storage.clear();
+
+  const manager = new IntentManager({
+    storageKey: 'bot-detected-once-test',
+    storage,
+    botProtection: true,
+  });
+
+  let fireCount = 0;
+  manager.on('bot_detected', () => { fireCount += 1; });
+
+  const states = ['A', 'B'];
+  for (let i = 0; i < 60; i++) {
+    manager.track(states[i % states.length]);
+  }
+
+  assert.equal(fireCount, 1,
+    `bot_detected must fire exactly once per false→true transition, got ${fireCount}`);
+  manager.flushNow();
+});
+
+test('hesitation_detected fires when trajectory_anomaly and positive dwell_time_anomaly both fire within the correlation window', () => {
+  storage.clear();
+  let mockTime = 1000;
+  const originalNow = globalThis.performance.now;
+  globalThis.performance.now = () => mockTime;
+
+  try {
+    // Baseline: A→B→C loop. Live navigation of X/Y/Z/W diverges from this.
+    const baselineGraph = new MarkovGraph();
+    for (let i = 0; i < 5; i++) {
+      baselineGraph.incrementTransition('A', 'B');
+      baselineGraph.incrementTransition('B', 'C');
+      baselineGraph.incrementTransition('C', 'A');
+    }
+
+    const manager = new IntentManager({
+      storageKey: 'hesitation-fires-test',
+      storage,
+      botProtection: false,
+      baseline: baselineGraph.toJSON(),
+      graph: { divergenceThreshold: 0.1, baselineMeanLL: 0, baselineStdLL: 0.01 },
+      dwellTime: { enabled: true, minSamples: 5, zScoreThreshold: 1.5 },
+      hesitationCorrelationWindowMs: 60_000,
+    });
+
+    const hesitations = [];
+    const trajFires = [];
+    const dwellFires = [];
+    manager.on('hesitation_detected', (p) => hesitations.push(p));
+    manager.on('trajectory_anomaly', () => trajFires.push(1));
+    manager.on('dwell_time_anomaly', () => dwellFires.push(1));
+
+    // 20 tracks of X/Y/Z at 100ms each → builds dwell stats (≥5 samples per state)
+    // and fills trajectory window (MIN_WINDOW_LENGTH = 16).
+    const loop = ['X', 'Y', 'Z'];
+    for (let i = 0; i < 20; i++) {
+      mockTime += 100;
+      manager.track(loop[i % 3]);
+    }
+
+    // Anomalous: 5 000ms dwell on the previous X/Y/Z state, then navigate to W
+    // (completely off-baseline A→B→C path).
+    // → evaluateDwellTime: dwell_time_anomaly fires with positive z-score
+    // → evaluateTrajectory: trajectory_anomaly fires
+    // → maybeEmitHesitation: both timestamps match → hesitation_detected fires
+    mockTime += 5000;
+    manager.track('W');
+
+    assert.ok(hesitations.length >= 1,
+      `Expected ≥1 hesitation_detected, got ${hesitations.length}. ` +
+      `trajectory_anomaly: ${trajFires.length}, dwell_time_anomaly: ${dwellFires.length}`);
+    const h = hesitations[0];
+    // hesitation_detected fires from evaluateDwellTime's maybeEmitHesitation call,
+    // so state = the state where the user lingered (the 'from' state of the final track).
+    assert.ok(typeof h.state === 'string' && h.state.length > 0, 'state must be a non-empty string');
+    assert.ok(typeof h.trajectoryZScore === 'number', 'trajectoryZScore must be a number');
+    assert.ok(typeof h.dwellZScore === 'number', 'dwellZScore must be a number');
+    assert.ok(h.dwellZScore > 0, 'dwellZScore must be positive (lingering, not rushing)');
+
+    manager.flushNow();
+  } finally {
+    globalThis.performance.now = originalNow;
+  }
+});
+
+test('hesitation_detected does NOT fire when only trajectory_anomaly fires (dwellTime not enabled)', () => {
+  storage.clear();
+  let mockTime = 1000;
+  const originalNow = globalThis.performance.now;
+  globalThis.performance.now = () => mockTime;
+
+  try {
+    const baselineGraph = new MarkovGraph();
+    for (let i = 0; i < 5; i++) {
+      baselineGraph.incrementTransition('A', 'B');
+      baselineGraph.incrementTransition('B', 'C');
+      baselineGraph.incrementTransition('C', 'A');
+    }
+
+    const manager = new IntentManager({
+      storageKey: 'hesitation-no-dwell-test',
+      storage,
+      botProtection: false,
+      baseline: baselineGraph.toJSON(),
+      graph: { divergenceThreshold: 0.1, baselineMeanLL: 0, baselineStdLL: 0.01 },
+      // dwellTime intentionally NOT enabled
+      hesitationCorrelationWindowMs: 60_000,
+    });
+
+    const hesitations = [];
+    manager.on('hesitation_detected', (p) => hesitations.push(p));
+
+    const loop = ['X', 'Y', 'Z'];
+    for (let i = 0; i < 25; i++) {
+      mockTime += 100;
+      manager.track(loop[i % 3]);
+    }
+
+    assert.equal(hesitations.length, 0,
+      `hesitation_detected must NOT fire without dwell_time_anomaly, got ${hesitations.length}`);
+
+    manager.flushNow();
+  } finally {
+    globalThis.performance.now = originalNow;
+  }
+});
+
+test('hesitation_detected does NOT fire when dwell_time_anomaly has negative z-score (rushing, not lingering)', () => {
+  storage.clear();
+  let mockTime = 10_000;
+  const originalNow = globalThis.performance.now;
+  globalThis.performance.now = () => mockTime;
+
+  try {
+    const baselineGraph = new MarkovGraph();
+    for (let i = 0; i < 5; i++) {
+      baselineGraph.incrementTransition('A', 'B');
+      baselineGraph.incrementTransition('B', 'C');
+      baselineGraph.incrementTransition('C', 'A');
+    }
+
+    const manager = new IntentManager({
+      storageKey: 'hesitation-negative-zscore-test',
+      storage,
+      botProtection: false,
+      baseline: baselineGraph.toJSON(),
+      graph: { divergenceThreshold: 0.1, baselineMeanLL: 0, baselineStdLL: 0.01 },
+      // Build up stats with 1 000ms "normal" dwell; then rush through (10ms) → negative z-score
+      dwellTime: { enabled: true, minSamples: 5, zScoreThreshold: 1.5 },
+      hesitationCorrelationWindowMs: 60_000,
+    });
+
+    const hesitations = [];
+    manager.on('hesitation_detected', (p) => hesitations.push(p));
+
+    const loop = ['X', 'Y', 'Z'];
+    for (let i = 0; i < 20; i++) {
+      mockTime += 1000; // long dwell — establishes 1 000ms as "normal"
+      manager.track(loop[i % 3]);
+    }
+
+    // Rush through: 10ms dwell on previous state → negative z-score → must NOT contribute to hesitation
+    mockTime += 10;
+    manager.track('W');
+
+    assert.equal(hesitations.length, 0,
+      `hesitation_detected must NOT fire for negative z-score (rushing), got ${hesitations.length}`);
+
+    manager.flushNow();
+  } finally {
+    globalThis.performance.now = originalNow;
+  }
+});
+
+test('low-level events (trajectory_anomaly, dwell_time_anomaly) still fire independently when hesitation_detected fires', () => {
+  storage.clear();
+  let mockTime = 1000;
+  const originalNow = globalThis.performance.now;
+  globalThis.performance.now = () => mockTime;
+
+  try {
+    const baselineGraph = new MarkovGraph();
+    for (let i = 0; i < 5; i++) {
+      baselineGraph.incrementTransition('A', 'B');
+      baselineGraph.incrementTransition('B', 'C');
+      baselineGraph.incrementTransition('C', 'A');
+    }
+
+    const manager = new IntentManager({
+      storageKey: 'hesitation-lowlevel-cofire-test',
+      storage,
+      botProtection: false,
+      baseline: baselineGraph.toJSON(),
+      graph: { divergenceThreshold: 0.1, baselineMeanLL: 0, baselineStdLL: 0.01 },
+      dwellTime: { enabled: true, minSamples: 5, zScoreThreshold: 1.5 },
+      hesitationCorrelationWindowMs: 60_000,
+    });
+
+    const trajFires = [];
+    const dwellFires = [];
+    const hesitationFires = [];
+    manager.on('trajectory_anomaly', () => trajFires.push(1));
+    manager.on('dwell_time_anomaly', () => dwellFires.push(1));
+    manager.on('hesitation_detected', () => hesitationFires.push(1));
+
+    const loop = ['X', 'Y', 'Z'];
+    for (let i = 0; i < 20; i++) {
+      mockTime += 100;
+      manager.track(loop[i % 3]);
+    }
+    mockTime += 5000;
+    manager.track('W');
+
+    // Only assert the composition constraint when hesitation actually fired
+    if (hesitationFires.length > 0) {
+      assert.ok(trajFires.length >= 1,
+        'trajectory_anomaly must have fired alongside hesitation_detected');
+      assert.ok(dwellFires.length >= 1,
+        'dwell_time_anomaly must have fired alongside hesitation_detected');
+    }
+
+    manager.flushNow();
+  } finally {
+    globalThis.performance.now = originalNow;
+  }
+});

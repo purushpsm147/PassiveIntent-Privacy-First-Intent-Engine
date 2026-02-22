@@ -32,7 +32,44 @@ export type {
   PerformanceReport,
 } from './performance-instrumentation.js';
 
-export type IntentEventName = 'high_entropy' | 'trajectory_anomaly' | 'state_change' | 'dwell_time_anomaly';
+export type IntentEventName = 'high_entropy' | 'trajectory_anomaly' | 'state_change' | 'dwell_time_anomaly' | 'conversion' | 'bot_detected' | 'hesitation_detected';
+
+/**
+ * Payload for a conversion event.
+ * No PII is required — `type` is an application-defined label (e.g. 'purchase', 'signup').
+ * `value` and `currency` are optional and never leave the device.
+ */
+export interface ConversionPayload {
+  /** Application-defined conversion label. Must not contain user identifiers. */
+  type: string;
+  /** Optional monetary value of the conversion. */
+  value?: number;
+  /** ISO 4217 currency code, e.g. 'USD'. Only meaningful when `value` is set. */
+  currency?: string;
+}
+
+/**
+ * GDPR-compliant telemetry snapshot.
+ * All fields are aggregate counters or derived status flags — no raw
+ * behavioral data, no state labels, and no user-identifying information.
+ */
+export interface EdgeSignalTelemetry {
+  /**
+   * Short-lived, purely local session identifier generated with
+   * `crypto.randomUUID()` (or a Math.random fallback).
+   * Never persisted, never transmitted. Useful for correlating
+   * in-memory events within a single page lifetime.
+   */
+  sessionId: string;
+  /** Total number of state transitions evaluated this session. */
+  transitionsEvaluated: number;
+  /** Whether the current session is classified as human or a suspected bot. */
+  botStatus: 'human' | 'suspected_bot';
+  /** Total number of anomaly events emitted (high_entropy + trajectory_anomaly + dwell_time_anomaly). */
+  anomaliesFired: number;
+  /** Current operational health of the engine. */
+  engineHealth: 'healthy' | 'pruning_active' | 'quota_exceeded';
+}
 
 export interface HighEntropyPayload {
   state: string;
@@ -66,11 +103,46 @@ export interface DwellTimeAnomalyPayload {
   zScore: number;
 }
 
+/**
+ * Emitted on the false → true transition of EntropyGuard's bot classification.
+ * Fires at most once per detection event (not on every track() call while bot is active).
+ * Payload reuses the same fields as HighEntropyPayload for easy forwarding.
+ */
+export interface BotDetectedPayload {
+  /** The state being tracked when bot classification was triggered. */
+  state: string;
+}
+
+/**
+ * Emitted when both a spatial (`trajectory_anomaly`) and a temporal
+ * (`dwell_time_anomaly` with positive z-score) signal fire within the
+ * `hesitationCorrelationWindowMs` window.
+ *
+ * This is the high-level convenience event for hesitation detection.
+ * The low-level `trajectory_anomaly` and `dwell_time_anomaly` events
+ * still fire independently for power users who need granular control.
+ */
+export interface HesitationDetectedPayload {
+  /**
+   * The state that completed the dual-signal correlation window.
+   * Typically the state where the user dwelled anomalously (the 'from' state
+   * of the transition that triggered `dwell_time_anomaly`).
+   */
+  state: string;
+  /** Z-score from the trajectory anomaly that contributed. */
+  trajectoryZScore: number;
+  /** Z-score from the dwell-time anomaly that contributed (always positive). */
+  dwellZScore: number;
+}
+
 export interface IntentEventMap {
   high_entropy: HighEntropyPayload;
   trajectory_anomaly: TrajectoryAnomalyPayload;
   state_change: StateChangePayload;
   dwell_time_anomaly: DwellTimeAnomalyPayload;
+  conversion: ConversionPayload;
+  bot_detected: BotDetectedPayload;
+  hesitation_detected: HesitationDetectedPayload;
 }
 
 export interface DwellTimeConfig {
@@ -207,6 +279,17 @@ export interface IntentManagerConfig {
    * Default: 0 (no cooldown — preserves backward-compatible behavior).
    */
   eventCooldownMs?: number;
+
+  /**
+   * Time window (ms) within which both a `trajectory_anomaly` AND a positive
+   * `dwell_time_anomaly` must fire for the composite `hesitation_detected`
+   * event to be emitted.
+   *
+   * Increase this value on slow-paced funnels (e.g. B2B quote flows);
+   * decrease it for fast e-commerce checkouts.
+   * Default: 30 000 (30 seconds).
+   */
+  hesitationCorrelationWindowMs?: number;
 
   /**
    * Dwell-time anomaly detection configuration.
@@ -1147,6 +1230,29 @@ export class IntentManager {
   /** Number of timestamps recorded (up to BOT_DETECTION_WINDOW) */
   private trackTimestampCount = 0;
 
+  /* ================================================================== */
+  /*  GDPR-Compliant Telemetry                                           */
+  /* ================================================================== */
+
+  /**
+   * Short-lived session identifier. Generated once at construction.
+   * Never persisted to storage and never transmitted.
+   */
+  private readonly sessionId: string;
+  /** Aggregate count of state transitions evaluated this session. */
+  private transitionsEvaluated = 0;
+  /** Aggregate count of anomaly events emitted this session. */
+  private anomaliesFired = 0;
+  /** Operational health flag — mutated by persist() and the quota error handler. */
+  private engineHealth: EdgeSignalTelemetry['engineHealth'] = 'healthy';
+
+  /* Hesitation detection: timestamps and z-scores from the last contributing signals */
+  private lastTrajectoryAnomalyAt = -Infinity;
+  private lastTrajectoryAnomalyZScore = 0;
+  private lastDwellAnomalyAt = -Infinity;
+  private lastDwellAnomalyZScore = 0;
+  private readonly hesitationCorrelationWindowMs: number;
+
   constructor(config: IntentManagerConfig = {}) {
     this.storageKey = config.storageKey ?? 'edge-signal';
     this.persistDebounceMs = config.persistDebounceMs ?? 2000;
@@ -1156,6 +1262,7 @@ export class IntentManager {
     this.onError = config.onError;
     this.botProtection = config.botProtection ?? true;
     this.eventCooldownMs = config.eventCooldownMs ?? 0;
+    this.hesitationCorrelationWindowMs = config.hesitationCorrelationWindowMs ?? 30_000;
 
     // Dwell-time config
     this.dwellTimeEnabled = config.dwellTime?.enabled ?? false;
@@ -1165,6 +1272,13 @@ export class IntentManager {
     // Bigram config
     this.enableBigrams = config.enableBigrams ?? false;
     this.bigramFrequencyThreshold = config.bigramFrequencyThreshold ?? 5;
+
+    // Telemetry: generate a short-lived, local-only session ID.
+    // crypto.randomUUID() is available in all modern browsers and Node ≥ 14.17.
+    // Fall back to a Math.random hex string for older runtimes.
+    this.sessionId = (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function')
+      ? crypto.randomUUID()
+      : Math.random().toString(36).slice(2) + Math.random().toString(36).slice(2);
 
     const graphConfig: MarkovGraphConfig = {
       ...config.graph,
@@ -1206,7 +1320,7 @@ export class IntentManager {
 
     // EntropyGuard: record timestamp and evaluate for bot-like patterns
     if (this.botProtection) {
-      this.recordTrackTimestamp(now);
+      this.recordTrackTimestamp(now, state);
     }
 
     // Check if state is new to the Bloom filter (for dirty-flag tracking)
@@ -1231,6 +1345,8 @@ export class IntentManager {
     if (this.recentTrajectory.length > MAX_WINDOW_LENGTH) this.recentTrajectory.shift();
 
     if (from) {
+      this.transitionsEvaluated += 1;
+
       const incrementStart = this.benchmark.now();
       this.graph.incrementTransition(from, state);
       this.benchmark.record('incrementTransition', incrementStart);
@@ -1308,6 +1424,54 @@ export class IntentManager {
     this.emitter.removeAll();
   }
 
+  /**
+   * Returns a GDPR-compliant telemetry snapshot for the current session.
+   *
+   * All fields are aggregate counters or derived status flags.
+   * No raw behavioral data, no state labels, and no user-identifying
+   * information is included. Safe to send to your own analytics endpoint
+   * without triggering GDPR personal-data obligations.
+   *
+   * ```ts
+   * const t = intent.getTelemetry();
+   * // { sessionId: 'a1b2...', transitionsEvaluated: 42, botStatus: 'human',
+   * //   anomaliesFired: 3, engineHealth: 'healthy' }
+   * ```
+   */
+  getTelemetry(): EdgeSignalTelemetry {
+    return {
+      sessionId: this.sessionId,
+      transitionsEvaluated: this.transitionsEvaluated,
+      botStatus: this.isSuspectedBot ? 'suspected_bot' : 'human',
+      anomaliesFired: this.anomaliesFired,
+      engineHealth: this.engineHealth,
+    };
+  }
+
+  /**
+   * Record a conversion event and emit it through the event bus.
+   *
+   * Use this to measure the ROI of intent-driven interventions (e.g.
+   * whether a hesitation discount actually led to a purchase).
+   *
+   * ```ts
+   * intent.on('conversion', ({ type, value, currency }) => {
+   *   // All local — log to your own backend if needed
+   *   console.log(`Conversion: ${type} ${value} ${currency}`);
+   * });
+   *
+   * // After a purchase completes:
+   * intent.trackConversion({ type: 'purchase', value: 49.99, currency: 'USD' });
+   * ```
+   *
+   * **Privacy note:** `type` must not contain user identifiers.
+   * This event never leaves the device unless your `conversion` listener
+   * explicitly sends it — which remains entirely under your control.
+   */
+  trackConversion(payload: ConversionPayload): void {
+    this.emitter.emit('conversion', payload);
+  }
+
   getPerformanceReport(): PerformanceReport {
     const serialized = this.graph.toJSON();
     return this.benchmark.report({
@@ -1340,6 +1504,7 @@ export class IntentManager {
       const now = this.timer.now();
       if (this.eventCooldownMs <= 0 || now - this.lastEmittedAt.high_entropy >= this.eventCooldownMs) {
         this.lastEmittedAt.high_entropy = now;
+        this.anomaliesFired += 1;
         this.emitter.emit('high_entropy', {
           state,
           entropy,
@@ -1429,6 +1594,7 @@ export class IntentManager {
       const now = this.timer.now();
       if (this.eventCooldownMs <= 0 || now - this.lastEmittedAt.trajectory_anomaly >= this.eventCooldownMs) {
         this.lastEmittedAt.trajectory_anomaly = now;
+        this.anomaliesFired += 1;
         this.emitter.emit('trajectory_anomaly', {
           stateFrom: from,
           stateTo: to,
@@ -1436,6 +1602,9 @@ export class IntentManager {
           expectedBaselineLogLikelihood: expected,
           zScore,
         });
+        this.lastTrajectoryAnomalyAt = now;
+        this.lastTrajectoryAnomalyZScore = zScore;
+        this.maybeEmitHesitation(to);
       }
     }
 
@@ -1487,6 +1656,7 @@ export class IntentManager {
       const now = this.timer.now();
       if (this.eventCooldownMs <= 0 || now - this.lastEmittedAt.dwell_time_anomaly >= this.eventCooldownMs) {
         this.lastEmittedAt.dwell_time_anomaly = now;
+        this.anomaliesFired += 1;
         this.emitter.emit('dwell_time_anomaly', {
           state,
           dwellMs,
@@ -1494,8 +1664,39 @@ export class IntentManager {
           stdMs: std,
           zScore,
         });
+        // Only lingering (positive z-score) contributes to hesitation.
+        if (zScore > 0) {
+          this.lastDwellAnomalyAt = now;
+          this.lastDwellAnomalyZScore = zScore;
+          this.maybeEmitHesitation(state);
+        }
       }
     }
+  }
+
+  /**
+   * Emit `hesitation_detected` when a `trajectory_anomaly` and a positive
+   * `dwell_time_anomaly` have both fired within `hesitationCorrelationWindowMs`.
+   * Called from both evaluateTrajectory and evaluateDwellTime after they update
+   * their respective timestamps.
+   */
+  private maybeEmitHesitation(state: string): void {
+    const now = this.timer.now();
+    const correlated =
+      now - this.lastTrajectoryAnomalyAt < this.hesitationCorrelationWindowMs &&
+      now - this.lastDwellAnomalyAt < this.hesitationCorrelationWindowMs;
+
+    if (!correlated) return;
+
+    // Reset timestamps to prevent re-triggering until both signals fire again.
+    this.lastTrajectoryAnomalyAt = -Infinity;
+    this.lastDwellAnomalyAt = -Infinity;
+
+    this.emitter.emit('hesitation_detected', {
+      state,
+      trajectoryZScore: this.lastTrajectoryAnomalyZScore,
+      dwellZScore: this.lastDwellAnomalyZScore,
+    });
   }
 
   private schedulePersist(): void {
@@ -1516,7 +1717,9 @@ export class IntentManager {
     }
 
     // LFU prune before serializing — keeps storage bounded.
+    this.engineHealth = 'pruning_active';
     this.graph.prune();
+    this.engineHealth = 'healthy';
 
     // Binary-encode the graph: avoids JSON.stringify on potentially
     // large objects, keeping the main thread free of heavy work.
@@ -1538,8 +1741,13 @@ export class IntentManager {
     } catch (err) {
       // QuotaExceededError, SecurityError, or Private Browsing restrictions.
       // Surface through the optional error callback; never crash the main thread.
-      if (this.onError && err instanceof Error) {
-        this.onError(err);
+      if (err instanceof Error) {
+        if (err.name === 'QuotaExceededError' || err.message.includes('quota')) {
+          this.engineHealth = 'quota_exceeded';
+        }
+        if (this.onError) {
+          this.onError(err);
+        }
       }
     }
   }
@@ -1552,7 +1760,7 @@ export class IntentManager {
    * Record a track() timestamp and evaluate for bot-like patterns.
    * Uses a fixed-size circular buffer to avoid allocations in the hot path.
    */
-  private recordTrackTimestamp(timestamp: number): void {
+  private recordTrackTimestamp(timestamp: number, state: string): void {
     // Store timestamp in circular buffer
     this.trackTimestamps[this.trackTimestampIndex] = timestamp;
     this.trackTimestampIndex = (this.trackTimestampIndex + 1) % BOT_DETECTION_WINDOW;
@@ -1568,7 +1776,7 @@ export class IntentManager {
     // Always re-evaluate: the sliding window naturally decays old bot signals
     // as new human-like timestamps fill the buffer, allowing recovery from
     // false positives (e.g. a fast-navigating-then-slowing-down user).
-    this.evaluateBotPatterns();
+    this.evaluateBotPatterns(state);
   }
 
   /**
@@ -1581,7 +1789,7 @@ export class IntentManager {
    * positives from permanently silencing events for users who navigate
    * quickly at first and then slow to normal browsing speed.
    */
-  private evaluateBotPatterns(): void {
+  private evaluateBotPatterns(state: string): void {
     const count = this.trackTimestampCount;
     if (count < 2) return;
 
@@ -1629,7 +1837,13 @@ export class IntentManager {
     // Window-bounded decision: flag OR recover based solely on recent behavior.
     // As human-paced calls replace fast ones in the circular buffer the score
     // drops automatically, clearing the flag without any explicit timer.
+    const wasSuspected = this.isSuspectedBot;
     this.isSuspectedBot = windowBotScore >= BOT_SCORE_THRESHOLD;
+
+    // Emit bot_detected only on the false → true transition to avoid flooding.
+    if (this.isSuspectedBot && !wasSuspected) {
+      this.emitter.emit('bot_detected', { state });
+    }
   }
 
   private restore(graphConfig: MarkovGraphConfig): { bloom: BloomFilter; graph: MarkovGraph } | null {

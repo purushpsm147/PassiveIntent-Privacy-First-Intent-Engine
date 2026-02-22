@@ -13,6 +13,7 @@
       .toast { background: #111827; color: white; padding: 10px; border-radius: 8px; box-shadow: 0 6px 18px rgba(0,0,0,.2); }
       .toast.entropy { background: #b91c1c; }
       .toast.anomaly { background: #1d4ed8; }
+      .toast.conversion { background: #15803d; }
     </style>
   </head>
   <body>
@@ -27,6 +28,10 @@
       <button data-route="/checkout">/checkout</button>
       <button data-route="/help">/help</button>
       <button data-route="/return-policy">/return-policy</button>
+    </div>
+
+    <div style="margin-top: 12px;">
+      <button data-cy="convert-btn" id="convert-btn" style="background:#15803d;color:white;border:none;padding:8px 16px;border-radius:6px;cursor:pointer;">Track Conversion</button>
     </div>
 
     <div id="active-route">Current Route: none</div>

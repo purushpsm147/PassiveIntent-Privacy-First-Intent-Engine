@@ -27,7 +27,7 @@ const activeRoute = document.getElementById('active-route') as HTMLDivElement;
 const routes = document.getElementById('routes') as HTMLDivElement;
 const toastRegion = document.getElementById('toast-region') as HTMLDivElement;
 
-const showToast = (message: string, kind: 'entropy' | 'anomaly') => {
+const showToast = (message: string, kind: 'entropy' | 'anomaly' | 'conversion') => {
   const toast = document.createElement('div');
   toast.className = `toast ${kind}`;
   toast.dataset.cy = `${kind}-toast`;
@@ -46,6 +46,15 @@ intentManager.on('high_entropy', () => {
 
 intentManager.on('trajectory_anomaly', () => {
   showToast('Hesitation Detected -> Show 10% Discount!', 'anomaly');
+});
+
+intentManager.on('conversion', ({ type }) => {
+  showToast(`Conversion Tracked: ${type}`, 'conversion');
+});
+
+const convertBtn = document.getElementById('convert-btn') as HTMLButtonElement;
+convertBtn?.addEventListener('click', () => {
+  intentManager.trackConversion({ type: 'purchase', value: 1, currency: 'USD' });
 });
 
 routes.addEventListener('click', (event: Event) => {

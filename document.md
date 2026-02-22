@@ -1,12 +1,16 @@
 # EdgeSignal — Documentation
 
-> **EdgeSignal** — on-device behavioral intent modeling with zero data egress.
+> **EdgeSignal** — privacy-first, on-device behavioral intent modeling with zero data egress. No server. No consent banner. No GDPR exposure.
 
 [![npm version](https://img.shields.io/badge/npm-coming%20soon-lightgrey)](https://github.com/purushpsm147/EdgeSignal-Privacy-First-Intent-Engine)
 [![License: AGPL-3.0-only](https://img.shields.io/badge/license-AGPL--3.0--only-blue.svg)](./LICENSE)
 [![TypeScript](https://img.shields.io/badge/TypeScript-5.6-3178c6.svg)](https://www.typescriptlang.org/)
+[![Privacy: Zero Egress](https://img.shields.io/badge/privacy-zero--egress-brightgreen)](https://github.com/purushpsm147/EdgeSignal-Privacy-First-Intent-Engine#privacy--gdpr-compliance)
+[![GDPR: No Personal Data](https://img.shields.io/badge/GDPR-no%20personal%20data-brightgreen)](https://github.com/purushpsm147/EdgeSignal-Privacy-First-Intent-Engine#privacy--gdpr-compliance)
 
 A tiny, tree-shakeable TypeScript SDK that learns how a user navigates your application and fires events when behavior becomes anomalous — all without sending a single byte to a server. It works in browsers, Node.js, Deno, Bun, Edge Workers, and SSR frameworks.
+
+**The core privacy guarantee:** EdgeSignal processes no personal data. It never observes who the user is — only the anonymous sequence of state labels your application explicitly provides. Because no personal data ever leaves the device, EdgeSignal falls outside the primary scope of GDPR data processing obligations and requires no consent banner, no cookie notice, no Data Processing Agreement, and no server-side data deletion workflow.
 
 ---
 
@@ -21,6 +25,7 @@ A tiny, tree-shakeable TypeScript SDK that learns how a user navigates your appl
    - [Dynamic Paywall](#1-dynamic-paywall)
    - [Hesitation Discount](#2-hesitation-discount)
    - [Rage-Click Healer](#3-rage-click-healer)
+   - [GA4 Bridge — Proving ROI Without Sending Behavioral Data](#4-ga4-bridge--proving-roi-without-sending-behavioral-data)
 7. [Configuration Reference](#configuration-reference)
 8. [Testing Guide](#testing-guide)
 9. [Technical Deep Dive](#technical-deep-dive)
@@ -39,7 +44,12 @@ A tiny, tree-shakeable TypeScript SDK that learns how a user navigates your appl
    - [LFU Pruning](#lfu-pruning)
 10. [Performance](#performance)
 11. [Bundle Size](#bundle-size)
-12. [Privacy Claims — Verified](#privacy-claims--verified)
+12. [Privacy & GDPR Compliance](#privacy--gdpr-compliance)
+   - [Verified Privacy Claims](#verified-privacy-claims)
+   - [GDPR Article Mapping](#gdpr-article-mapping)
+   - [No Consent Required](#no-consent-required)
+   - [CCPA / ePrivacy](#ccpa--eprivacy)
+   - [EdgeSignal vs. Traditional Analytics](#edgesignal-vs-traditional-analytics)
 13. [License](#license)
 
 ---
@@ -200,6 +210,22 @@ interface StateChangePayload {
   from: string | null; // null on the first track() call
   to: string;
 }
+
+// Fired by intent.trackConversion() — application-controlled
+interface ConversionPayload {
+  type: string;       // e.g. 'purchase', 'signup', 'trial_start'
+  value?: number;     // optional monetary value
+  currency?: string;  // ISO 4217 code, e.g. 'USD'
+}
+
+// Returned by intent.getTelemetry() — aggregate counters only, no raw data
+interface EdgeSignalTelemetry {
+  sessionId: string;                                        // local UUID, never transmitted
+  transitionsEvaluated: number;                            // total track() calls with a prior state
+  botStatus: 'human' | 'suspected_bot';                   // current EntropyGuard classification
+  anomaliesFired: number;                                  // sum of high_entropy + trajectory_anomaly + dwell_time_anomaly
+  engineHealth: 'healthy' | 'pruning_active' | 'quota_exceeded'; // storage health
+}
 ```
 
 ---
@@ -237,6 +263,8 @@ function onRouteChange(route: string) {
 ---
 
 ### 2. Hesitation Discount
+
+> **TL;DR for simple integrations:** If you just want to show a discount when hesitation is detected, listen to `hesitation_detected` — the SDK handles the dual-signal correlation internally. The full recipe below is for power users who need access to the raw `zScore` values or custom window logic.
 
 Detect genuine purchase hesitation by correlating two independent signals:
 
@@ -328,6 +356,8 @@ Run `npm run test:perf:matrix` after pointing `scripts/scenario-matrix.mjs` at r
 
 Dwell-time statistics are held in memory only and are never persisted to `localStorage`. This is a deliberate privacy boundary. Permanently storing per-user temporal profiles (how long someone reads each page, across every visit, over months) would enable invasive behavioral fingerprinting — correlating reading speed and attention patterns to build a persistent identity. EdgeSignal intentionally keeps all temporal math strictly session-scoped. The warm-up period (`minSamples`) resets on every page load as a direct consequence of this guarantee. For checkout funnels this trade-off is acceptable, and arguably beneficial: the signal is always grounded in the current session's behaviour, not stale historical data from a different context.
 
+**GDPR note:** Traditional hesitation-detection solutions — heatmap tools, session replay platforms, A/B testing SDKs — stream interaction data to third-party servers, triggering GDPR Article 6 lawful-basis requirements, consent obligations under ePrivacy, and third-party processor agreements. This recipe achieves the same commercial outcome (discount trigger) with **zero data egress**. Nothing collected here is personal data under GDPR Article 4(1). No consent banner is required. No cookie notice applies. The entire inference lives and dies inside the user's browser tab.
+
 ---
 
 ### 3. Rage-Click Healer
@@ -362,6 +392,104 @@ useEffect(() => {
   intent.track(location.pathname);
 }, [location.pathname]);
 ```
+
+---
+
+### 4. GA4 Bridge — Proving ROI Without Sending Behavioral Data
+
+This recipe shows how to connect EdgeSignal's local event bus to Google Analytics 4 so you can measure bot mitigation, hesitation interventions, and assisted conversions — all **without sending any behavioral or personally identifiable data to GA4**.
+
+> **Event name reference**
+>
+> | What you want to detect | Simple API | Low-level (power users) |
+> |---|---|---|
+> | Bot traffic intercepted | `bot_detected` ✅ | `high_entropy` + `getTelemetry().botStatus` guard |
+> | User hesitation detected | `hesitation_detected` ✅ | `trajectory_anomaly` + `dwell_time_anomaly` dual-signal |
+> | Conversion completed | `trackConversion()` / `conversion` | same |
+
+```ts
+import { IntentManager } from 'edge-signal';
+
+const intent = new IntentManager({
+  storageKey: 'shop-intent',
+  botProtection: true,
+  dwellTime: { enabled: true, minSamples: 5, zScoreThreshold: 2.0 },
+  eventCooldownMs: 15_000,
+  hesitationCorrelationWindowMs: 30_000, // both signals must fire within 30 s
+});
+
+// ─── 1. Bot Mitigation — Proves server-cost / fraud savings ───────────────────
+//
+// bot_detected fires on the false→true transition of EntropyGuard's bot
+// classification. No boilerplate guard needed.
+intent.on('bot_detected', ({ state }) => {
+  // GA4 receives a dimensionless aggregate count — no PII, no behavioral data.
+  window.gtag('event', 'edgesignal_bot_mitigated', {
+    event_category: 'security',
+  });
+  // Optionally gate the checkout flow here to prevent fraud.
+});
+
+// ─── 2. Hesitation Intervention — Proves conversion-rate ROI ──────────────────
+//
+// hesitation_detected fires when trajectory_anomaly (spatial) AND
+// dwell_time_anomaly with positive z-score (temporal) both fire within
+// hesitationCorrelationWindowMs. The SDK handles the correlation window
+// internally — no timestamp boilerplate required.
+intent.on('hesitation_detected', ({ state, dwellZScore }) => {
+  // Show the user a discount UI
+  showDiscountModal();
+
+  // Tell GA4 that EdgeSignal triggered an intervention.
+  window.gtag('event', 'edgesignal_intervention_triggered', {
+    intervention_type: '10_percent_discount',
+  });
+});
+
+// ─── 3. Close the Loop — Assisted-conversion attribution ─────────────────────
+//
+// Call this from your checkout success handler.
+function onCheckoutComplete(orderTotal: number): void {
+  // Record the conversion inside EdgeSignal's local event bus.
+  intent.trackConversion({ type: 'purchase', value: orderTotal, currency: 'USD' });
+
+  // Poll the telemetry snapshot to see whether EdgeSignal contributed.
+  // getTelemetry() returns an in-memory object — no network call, no PII.
+  const { anomaliesFired, sessionId } = intent.getTelemetry();
+
+  if (anomaliesFired > 0) {
+    // At least one hesitation or entropy signal fired this session —
+    // EdgeSignal likely influenced the outcome.
+    window.gtag('event', 'edgesignal_assisted_conversion', {
+      value: orderTotal,
+      // sessionId is a page-load-scoped random UUID — safe to log as a
+      // correlation key because it is never stored, never transmitted by the
+      // SDK itself, and expires when the tab closes.
+      session_correlation_id: sessionId,
+    });
+  } else {
+    // Conversion happened without any anomaly signal — organic buy.
+    window.gtag('event', 'edgesignal_organic_conversion', {
+      value: orderTotal,
+    });
+  }
+}
+```
+
+**What GA4 receives — and what it does NOT receive:**
+
+| Data sent to GA4 | Contains PII? | Contains behavioral data? |
+|---|---|---|
+| `edgesignal_bot_mitigated` event name + category | No | No — a count signal only |
+| `edgesignal_intervention_triggered` + `intervention_type` | No | No — an enum label, not a path sequence |
+| `edgesignal_assisted_conversion` + `value` | No | No — a purchase value you already send to GA4 for revenue reporting |
+| `session_correlation_id` (random UUID) | No — not linkable to identity | No |
+
+The Markov graph, Bloom filter, transition sequences, dwell-time measurements, entropy scores, and raw event payloads **never leave the device**. GA4 only sees dimensionless count signals that tell you whether EdgeSignal worked — not _how_ it worked or _who_ it worked on.
+
+**GDPR standing of this pattern:**
+
+EdgeSignal itself has no GDPR obligations (zero personal data). Sending the events above to GA4 does not create new obligations beyond those you already have for using GA4, because none of the values are personal data. You should still ensure GA4 is configured with IP anonymisation enabled and that your privacy policy references GA4 as a measurement processor, but that obligation exists independently of EdgeSignal.
 
 ---
 
@@ -408,6 +536,11 @@ interface IntentManagerConfig {
   // Minimum milliseconds between repeated emissions of the same event type.
   // Default: 0 (no cooldown). Set to e.g. 3000 to suppress event flooding.
   eventCooldownMs?: number;
+
+  // Time window (ms) within which both trajectory_anomaly and a positive
+  // dwell_time_anomaly must fire to emit hesitation_detected.
+  // Default: 30_000 (30 seconds).
+  hesitationCorrelationWindowMs?: number;
 
   // Dwell-time anomaly detection settings
   // NOTE: dwell-time accumulators are session-scoped and not persisted.
@@ -992,6 +1125,8 @@ const intent = new IntentManager({
 | Event cooldown | Per-channel cooldown gating via `eventCooldownMs` |
 | Benchmarking | `BenchmarkRecorder` with per-operation ring-buffer sample accumulators |
 | Error handling | All `try/catch` blocks route to `onError?: (err: Error) => void`; never throws |
+| Telemetry | `getTelemetry()` returns `EdgeSignalTelemetry` — aggregate counters only, no raw states or PII |
+| Conversion tracking | `trackConversion(payload)` emits a `conversion` event through the local event bus; nothing leaves the device |
 
 **Session reset:**
 
@@ -1015,6 +1150,38 @@ intent.flushNow();
 // Flush pending state, cancel timers, remove all event listeners.
 // Call in SPA cleanup paths (React useEffect teardown, Vue onUnmounted, Angular ngOnDestroy).
 intent.destroy();
+```
+
+**Telemetry snapshot:**
+
+```ts
+// Returns aggregate counters for the current session. GDPR-safe: no PII, no raw states.
+// Useful for measuring bot-mitigation ROI or anomaly rate on your own backend.
+const t = intent.getTelemetry();
+// {
+//   sessionId: 'a1b2c3d4-...',   ← local UUID, never persisted or transmitted
+//   transitionsEvaluated: 42,
+//   botStatus: 'human',
+//   anomaliesFired: 3,
+//   engineHealth: 'healthy'      ← also: 'pruning_active' | 'quota_exceeded'
+// }
+```
+
+**Conversion tracking:**
+
+```ts
+// Record a conversion event. Emits through the local EventEmitter only.
+// 'type' must be an application-defined label — never a user identifier.
+intent.on('conversion', ({ type, value, currency }) => {
+  // Entirely under your control — you decide whether/how to forward this.
+  myAnalytics.send({ event: 'conversion', type, value, currency,
+    ...intent.getTelemetry() }); // attach telemetry for ROI analysis
+});
+
+// After a successful purchase:
+intent.trackConversion({ type: 'purchase', value: 49.99, currency: 'USD' });
+// After a free signup:
+intent.trackConversion({ type: 'signup' });
 ```
 
 ---
@@ -1236,7 +1403,13 @@ If you only use `BloomFilter` and `MarkovGraph` directly (no `IntentManager`), t
 
 ---
 
-## Privacy Claims — Verified
+## Privacy & GDPR Compliance
+
+EdgeSignal's privacy guarantee is architectural, not policy-based. It is enforced by the absence of certain code paths, not by configuration or legal agreements. This section documents what that means technically and under GDPR, CCPA, and ePrivacy.
+
+---
+
+### Verified Privacy Claims
 
 The privacy properties of this library are not marketing copy. Here is how each claim is enforced and verifiable:
 
@@ -1248,6 +1421,140 @@ The privacy properties of this library are not marketing copy. Here is how each 
 | **Local storage only** | Persistence routes exclusively through the `StorageAdapter` interface, which defaults to `window.localStorage`. Inspect the stored state at any time: `localStorage.getItem('edge-signal')`. |
 | **Transparent & auditable** | `src/` is the exact code that ships. `tsup` minifies but does not inject code. Source maps in `dist/` make the minified output human-readable. |
 | **User can clear state** | `localStorage.removeItem('edge-signal')` wipes all learned state. No server-side copy exists. |
+| **Temporal data is non-persistent** | Dwell-time accumulators (`dwellStats`) are held in memory only and never written to `localStorage`. Per-state timing distributions cannot be reconstructed across sessions. |
+| **Zero runtime dependencies** | The dependency graph is empty — no transitive code paths can introduce egress, telemetry, or tracking. |
+
+---
+
+### GDPR Article Mapping
+
+Because EdgeSignal processes no personal data as defined under GDPR Article 4(1), the majority of GDPR obligations simply do not attach. The table below maps each relevant GDPR article to EdgeSignal's behavior:
+
+| GDPR Article | Requirement | EdgeSignal status |
+|---|---|---|
+| **Art. 4(1)** — Personal data definition | Data relating to an identified or identifiable natural person | **Not applicable.** State labels are application-defined strings (e.g. `/checkout`). No user identifier, IP address, device ID, or biometric is ever processed. |
+| **Art. 5(1)(a)** — Lawfulness, fairness, transparency | Processing must have a lawful basis | **Not triggered.** No personal data is processed, so no lawful basis is required. |
+| **Art. 5(1)(b)** — Purpose limitation | Data collected for specified purposes only | **Not triggered.** No personal data is collected. |
+| **Art. 5(1)(c)** — Data minimisation | Only data adequate and necessary for the purpose | **Satisfied by design.** The library stores transition counts and anonymous timing statistics. No user-identifying field exists in the data model. |
+| **Art. 5(1)(e)** — Storage limitation | Data retained no longer than necessary | **Satisfied.** Dwell-time statistics are session-scoped and never persisted. The Markov graph stores only aggregate counts, not timestamped event logs. |
+| **Art. 6** — Lawful basis for processing | Consent, contract, legitimate interest, etc. | **Not required.** GDPR Article 6 applies only to personal data processing. EdgeSignal does not process personal data. |
+| **Art. 7** — Conditions for consent | Freely given, specific, informed, unambiguous | **No consent banner required.** No personal data is collected, so ePrivacy / PECR consent for analytics cookies does not apply to this SDK. |
+| **Art. 13/14** — Information obligations | Privacy notice must disclose processing | **No disclosure required** for EdgeSignal itself. Your existing privacy notice need not reference this SDK unless you pass personal data as state labels (which you should not do). |
+| **Art. 17** — Right to erasure | Users can request deletion of their data | **Trivially satisfied.** `localStorage.removeItem('edge-signal')` is the complete deletion path. No server-side data exists to delete. |
+| **Art. 20** — Right to data portability | Users can receive their data in machine-readable form | **Not triggered.** No personal data is processed. |
+| **Art. 25** — Privacy by design and by default | Privacy protections built into the system architecture | **Satisfied by architecture.** Zero-egress design, session-scoped temporal data, and absence of fingerprinting APIs are hardcoded behaviors, not configuration choices. |
+| **Art. 28** — Data processor agreement | Written contract required with processors | **No DPA required.** EdgeSignal is a client-side library, not a data processor. No personal data is transferred to any third party. |
+| **Art. 33/34** — Breach notification | Controller must notify supervisory authority within 72h | **Not triggered.** There is no server-side data store to breach. A user's `localStorage` being compromised is outside the scope of GDPR breach notification obligations for your organization. |
+
+> **Important caveat:** If your application passes personal data as state labels — for example `intent.track(user.email)` or `intent.track('/user/'+userId)` — GDPR obligations re-attach immediately. EdgeSignal's privacy guarantee depends entirely on the state labels remaining anonymous. Route paths and UI milestone names (`'/checkout'`, `'video-played'`) are inherently anonymous. User identifiers are not.
+
+---
+
+### No Consent Required
+
+Under GDPR and ePrivacy (the EU Cookie Directive), consent is required for:
+
+1. **Storing information on a user's device** when that information is used to track them across sessions for analytics or marketing purposes.
+2. **Processing personal data** for behavioral profiling.
+
+EdgeSignal falls into neither category:
+
+- The `localStorage` entry it writes contains only aggregate transition counts and anonymous navigation statistics. It contains no user identifier and cannot be used across origins or shared with third parties.
+- No personal data is processed at any point.
+
+The net result: **no cookie banner, no consent prompt, and no opt-out mechanism is legally required** for EdgeSignal itself under GDPR, UK GDPR, or ePrivacy. You should confirm this with your own legal counsel for your specific jurisdiction and use case, but the technical basis is sound.
+
+---
+
+### CCPA / ePrivacy
+
+| Regulation | Status |
+|---|---|
+| **CCPA / CPRA** (California) | EdgeSignal does not "sell" or "share" personal information as defined under CCPA. No data leaves the device. No opt-out mechanism is required for this SDK. |
+| **ePrivacy Directive / PECR** (EU / UK) | Analytics cookies require consent when used to track user behavior. EdgeSignal's `localStorage` write does not track the user across sessions in a cross-site or cross-service manner and contains no personal data — placing it in the same category as strictly-necessary functional storage rather than analytics cookies. |
+| **LGPD** (Brazil) | No personal data is processed; no legal basis or data subject rights obligations are triggered. |
+| **PIPEDA** (Canada) | No personal information is collected or disclosed. |
+
+---
+
+### EdgeSignal vs. Traditional Analytics
+
+The table below compares EdgeSignal against a typical behavioral analytics platform (heatmaps, session replay, A/B testing) from a compliance perspective:
+
+| Dimension | Traditional analytics SDK | EdgeSignal |
+|---|---|---|
+| Data leaves the device | Yes — streamed to third-party servers | **No** — all computation is local |
+| Personal data processed | Yes — IP address, user ID, device fingerprint | **No** — anonymous state labels only |
+| GDPR lawful basis required | Yes — typically legitimate interest or consent | **No** |
+| Consent banner required | Yes — under ePrivacy / PECR | **No** |
+| Data Processing Agreement required | Yes — with the analytics vendor | **No** |
+| Data breach notification risk | Yes — server-side data store is in scope | **No** — nothing to breach |
+| DSAR (data subject access request) exposure | Yes — must retrieve and potentially delete user data | **No** — no server-side user data exists |
+| Cross-border data transfer (SCCs, adequacy) | Yes — if vendor servers are outside EEA | **No** — data never crosses a border |
+| Third-party script risk | Yes — vendor JS loaded from CDN | **No** — bundled locally, auditable |
+| User can delete their data | Only via vendor portal / API | **Yes** — `localStorage.removeItem('edge-signal')` |
+
+---
+
+### Telemetry & Conversion Tracking API — GDPR Analysis
+
+The `getTelemetry()` and `trackConversion()` APIs were designed to let B2B clients measure the ROI of local intent detection (conversion rates, bot-mitigation effectiveness) without creating any GDPR obligations that do not already exist. Here is the formal analysis.
+
+#### `getTelemetry()` — Field-by-field personal data assessment
+
+| Field | Type | Personal data under GDPR Art. 4(1)? | Reasoning |
+|---|---|---|---|
+| `sessionId` | Random UUID per page load | **No** | Generated client-side with `crypto.randomUUID()`. Never persisted to `localStorage`, never transmitted, and not linkable to any user identity or device. Regenerated on every page reload, making cross-session correlation impossible. |
+| `transitionsEvaluated` | Integer counter | **No** | An aggregate count of state transitions evaluated. Contains no information about which states were visited, their sequence, or any user-identifying context. |
+| `botStatus` | `'human' \| 'suspected_bot'` | **No** | A binary runtime classification derived solely from anonymous inter-call timing deltas. Does not identify who the user is — only whether the call pattern resembles automation. |
+| `anomaliesFired` | Integer counter | **No** | An aggregate count of anomaly events emitted. Does not expose which event types fired, on which states, at what times, or in what sequence. |
+| `engineHealth` | String enum | **No** | A storage-layer status flag (`healthy`, `pruning_active`, `quota_exceeded`). Reflects browser storage state, not user behaviour. |
+
+**All five fields are aggregate counts or derived status flags. None relates to an identified or identifiable natural person.** GDPR Art. 4(1) does not apply, and no processing obligations under Arts. 5, 6, 7, 13, 17, or 28 are triggered by calling `getTelemetry()`.
+
+#### `trackConversion()` — GDPR standing of the `ConversionPayload`
+
+The `ConversionPayload` is `{ type: string, value?: number, currency?: string }`. Whether this constitutes personal data depends entirely on what your application supplies as `type`:
+
+| Usage | Personal data? | Guidance |
+|---|---|---|
+| `trackConversion({ type: 'purchase', value: 49.99, currency: 'USD' })` | **No** | `type` is an event category, not a user identifier. `value` and `currency` are denominations, not identity signals. |
+| `trackConversion({ type: 'user-123-purchased' })` | **Yes** | Encoding a user identifier into `type` makes the payload personal data. Do not do this. |
+| `trackConversion({ type: user.email })` | **Yes** | An email address is unambiguously personal data under GDPR Art. 4(1). Do not do this. |
+
+**The SDK cannot enforce this constraint at runtime.** It is a documentation boundary. The same caveat applies to `track()` state labels.
+
+#### The `conversion` event remains local by default
+
+`trackConversion()` emits through the in-process `EventEmitter`. **No data leaves the device unless your `conversion` listener explicitly sends it.** Whether that transmission creates GDPR obligations depends on what you send and where — EdgeSignal itself is not the data controller or processor for any forwarding you choose to add.
+
+A GDPR-safe pattern for ROI reporting:
+
+```ts
+intent.on('conversion', ({ type, value, currency }) => {
+  // Safe: getTelemetry() fields are aggregate counters, not personal data.
+  // The conversion payload is safe as long as 'type' is not a user identifier.
+  fetch('/api/analytics', {
+    method: 'POST',
+    body: JSON.stringify({
+      event: 'conversion',
+      type,   // e.g. 'purchase' — safe
+      value,
+      currency,
+      ...intent.getTelemetry(), // safe: all aggregate / status fields
+    }),
+  });
+});
+```
+
+This pattern does not require a consent banner, does not require a Data Processing Agreement with EdgeSignal (there is none — it is a bundled library), and does not expose behavioral profiles or user identifiers.
+
+#### Summary
+
+| API | Egress by default | Contains personal data | GDPR obligations triggered |
+|---|---|---|---|
+| `getTelemetry()` | **No** — returns a local object | **No** | None |
+| `trackConversion()` | **No** — emits locally only | **Only if you encode a user identifier in `type`** | None by default; depends on what your listener does |
 
 ---
 
