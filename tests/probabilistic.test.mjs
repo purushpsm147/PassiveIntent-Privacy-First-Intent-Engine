@@ -154,8 +154,3 @@ test('adversarial trajectory sessions keep anomaly true positive rate above 0.8'
   // Random navigation should trigger anomalies with high probability when calibrated.
   assert.ok(detected / sessions > 0.8, `Expected TPR > 0.8, got ${detected}/${sessions} = ${(detected/sessions).toFixed(2)}`);
 });
-
-// ─────────────────────────────────────────────────────────────────────────────
-// EntropyGuard — Bot Protection
-// ─────────────────────────────────────────────────────────────────────────────
-
