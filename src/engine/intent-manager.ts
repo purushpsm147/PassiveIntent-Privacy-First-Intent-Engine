@@ -224,6 +224,11 @@ export class IntentManager {
       ? crypto.randomUUID()
       : Math.random().toString(36).slice(2) + Math.random().toString(36).slice(2);
 
+    // Merge baseline statistics: the top-level convenience aliases
+    // (config.baselineMeanLL / config.baselineStdLL) take precedence over the
+    // nested graph config equivalents.  Both paths are supported for backward
+    // compatibility — see IntentManagerConfig in types/events.ts for the full
+    // rationale and precedence documentation.
     const graphConfig: MarkovGraphConfig = {
       ...config.graph,
       baselineMeanLL: config.baselineMeanLL ?? config.graph?.baselineMeanLL,

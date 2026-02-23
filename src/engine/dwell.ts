@@ -37,13 +37,15 @@ export interface DwellStats {
  * undefined (i.e. first observation for a state).
  */
 export function updateDwellStats(current: DwellStats | undefined, dwellMs: number): DwellStats {
-  const stats = current ?? { count: 0, meanMs: 0, m2: 0 };
-  stats.count += 1;
-  const delta = dwellMs - stats.meanMs;
-  stats.meanMs += delta / stats.count;
-  const delta2 = dwellMs - stats.meanMs;
-  stats.m2 += delta * delta2;
-  return stats;
+  const previousCount = current?.count ?? 0;
+  const previousMean = current?.meanMs ?? 0;
+  const previousM2 = current?.m2 ?? 0;
+  const count = previousCount + 1;
+  const delta = dwellMs - previousMean;
+  const meanMs = previousMean + delta / count;
+  const delta2 = dwellMs - meanMs;
+  const m2 = previousM2 + delta * delta2;
+  return { count, meanMs, m2 };
 }
 
 /**

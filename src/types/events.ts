@@ -104,11 +104,19 @@ export interface MarkovGraphConfig {
    * Pre-computed mean of average per-step log-likelihood over a representative
    * set of *normal* sessions.  Required together with `baselineStdLL` to enable
    * Z-score calibration.  When absent, the raw `divergenceThreshold` is used instead.
+   *
+   * Can also be supplied as `IntentManagerConfig.baselineMeanLL` (the top-level
+   * convenience alias).  If both are provided, **the top-level alias takes
+   * precedence** — see `IntentManagerConfig.baselineMeanLL` for details.
    */
   baselineMeanLL?: number;
   /**
    * Pre-computed standard deviation of average per-step log-likelihood over
    * normal sessions.  Pair with `baselineMeanLL`.
+   *
+   * Can also be supplied as `IntentManagerConfig.baselineStdLL` (the top-level
+   * convenience alias).  If both are provided, **the top-level alias takes
+   * precedence** — see `IntentManagerConfig.baselineStdLL` for details.
    */
   baselineStdLL?: number;
   /** Laplace smoothing probability applied to unseen transitions. Default: 0.01. */
@@ -124,9 +132,26 @@ export interface MarkovGraphConfig {
 export interface IntentManagerConfig {
   bloom?: BloomFilterConfig;
   graph?: MarkovGraphConfig;
-  /** Convenience alias — sets `graph.baselineMeanLL` without nesting. */
+  /**
+   * Convenience alias for `graph.baselineMeanLL`.
+   *
+   * **Precedence:** when this top-level field and `graph.baselineMeanLL` are
+   * both set, _this field wins_.  The constructor merges them as:
+   * ```ts
+   * baselineMeanLL: config.baselineMeanLL ?? config.graph?.baselineMeanLL
+   * ```
+   * Rationale: this alias was added so callers that derive the statistics
+   * externally (e.g. from a calibration script) can pass them flat rather
+   * than constructing a nested `graph` object.  Both paths are intentionally
+   * supported for backward compatibility — do not remove either.
+   */
   baselineMeanLL?: number;
-  /** Convenience alias — sets `graph.baselineStdLL` without nesting. */
+  /**
+   * Convenience alias for `graph.baselineStdLL`.
+   *
+   * **Precedence:** when this top-level field and `graph.baselineStdLL` are
+   * both set, _this field wins_ (same merge rule as `baselineMeanLL` above).
+   */
   baselineStdLL?: number;
   /** localStorage key used to persist the Bloom filter and Markov graph. Default: `'edge-signal'`. */
   storageKey?: string;

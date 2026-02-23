@@ -100,7 +100,9 @@ export class EntropyGuard {
       }
       variance /= deltas.length;
 
-      if (variance >= 0 && variance < BOT_MAX_VARIANCE) {
+      // variance is always ≥ 0 (sum of squares / count), so only the upper
+      // bound matters: low variance means unnaturally regular timing.
+      if (variance < BOT_MAX_VARIANCE) {
         windowBotScore += 1;
       }
     }
