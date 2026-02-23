@@ -13,6 +13,7 @@ import { base64ToUint8, uint8ToBase64 } from '../persistence/codec.js';
 import { BloomFilter } from '../core/bloom.js';
 import { MarkovGraph } from '../core/markov.js';
 import { EntropyGuard } from './entropy-guard.js';
+import { dwellStd, updateDwellStats } from './dwell.js';
 import type { SerializedMarkovGraph } from '../core/markov.js';
 import type {
   BotDetectedPayload,
@@ -136,7 +137,7 @@ export class IntentManager {
    * on every new `IntentManager` instance.  Increase `minSamples` if
    * short sessions cause excessive false positives.
    */
-  private readonly dwellStats = new Map<string, [number, number, number]>();
+  private readonly dwellStats = new Map<string, { count: number; meanMs: number; m2: number }>();
 
   /* Selective bigram (2nd-order) Markov */
   private readonly enableBigrams: boolean;
@@ -587,30 +588,18 @@ export class IntentManager {
     // Ignore non-positive dwell times (first track, or clock issues)
     if (dwellMs <= 0) return;
 
-    // Retrieve or initialise the Welford accumulator: [count, mean, m2]
-    let stats = this.dwellStats.get(state);
-    if (!stats) {
-      stats = [0, 0, 0];
-      this.dwellStats.set(state, stats);
-    }
-
-    // Welford online update
-    stats[0] += 1;                            // count
-    const delta = dwellMs - stats[1];
-    stats[1] += delta / stats[0];             // mean
-    const delta2 = dwellMs - stats[1];
-    stats[2] += delta * delta2;               // m2
+    const updated = updateDwellStats(this.dwellStats.get(state), dwellMs);
+    this.dwellStats.set(state, updated);
 
     // Need enough samples for a meaningful standard deviation
-    if (stats[0] < this.dwellTimeMinSamples) return;
+    if (updated.count < this.dwellTimeMinSamples) return;
 
-    const variance = stats[2] / stats[0];     // population variance
-    const std = Math.sqrt(variance);
+    const std = dwellStd(updated);
 
     // Guard: if std is zero (all identical dwell times) skip
     if (std <= 0) return;
 
-    const zScore = (dwellMs - stats[1]) / std;
+    const zScore = (dwellMs - updated.meanMs) / std;
 
     if (Math.abs(zScore) >= this.dwellTimeZScoreThreshold) {
       const now = this.timer.now();
@@ -620,7 +609,7 @@ export class IntentManager {
         this.emitter.emit('dwell_time_anomaly', {
           state,
           dwellMs,
-          meanMs: stats[1],
+          meanMs: updated.meanMs,
           stdMs: std,
           zScore,
         });
@@ -731,11 +720,7 @@ export class IntentManager {
       if (!parsed.graphBinary) return null;
 
       const bloom = BloomFilter.fromBase64(parsed.bloomBase64);
-      const binaryStr = atob(parsed.graphBinary);
-      const bytes = new Uint8Array(binaryStr.length);
-      for (let i = 0; i < binaryStr.length; i += 1) {
-        bytes[i] = binaryStr.charCodeAt(i);
-      }
+      const bytes = base64ToUint8(parsed.graphBinary);
       const graph = MarkovGraph.fromBinary(bytes, graphConfig);
 
       return { bloom, graph };

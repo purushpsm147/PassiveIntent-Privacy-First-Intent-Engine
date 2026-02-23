@@ -122,3 +122,20 @@ Primary blockers are:
 - modularized code/test structure,
 - explicit engineering standards,
 - automated security/quality reporting.
+
+
+## Progress update (post-review implementation)
+
+### Completed since initial review
+
+- CI quality gate workflow added for push/PR with typecheck, build, tests, perf assertion, and package integrity verification.
+- Monolithic `src/intent-sdk.ts` split into modular core/engine/persistence/types files while preserving public API barrel exports.
+- Binary codec documentation added (`BINARY_CODEC_SPEC.md`) and guarded with a golden fixture contract test.
+- Test suite split into layered files (unit-fast, integration-contract, probabilistic), then expanded with compatibility-matrix and property-based tests.
+- Copyright/license headers restored across modular logic files.
+
+### Still pending from review
+
+- Expand CONTRIBUTING into an engineering playbook (workflow, branch strategy, PR checklist, test expectations).
+- Add automated security scanning workflow(s) and dependency/code scanning.
+- Add explicit coverage policy/threshold reporting in CI.
