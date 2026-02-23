@@ -7,10 +7,6 @@ import {
   IntentManager,
   MarkovGraph,
 } from '../dist/src/intent-sdk.js';
-import {
-  BenchmarkSimulationEngine,
-  evaluatePredictionMatrix,
-} from '../dist/src/intent-sdk-performance.js';
 import { MemoryStorage, setupTestEnvironment, storage } from './helpers/test-env.mjs';
 
 setupTestEnvironment();
