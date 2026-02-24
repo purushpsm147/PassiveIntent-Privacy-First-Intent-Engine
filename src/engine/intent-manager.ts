@@ -265,7 +265,8 @@ export class IntentManager {
 
     // A/B holdout assignment: randomly place the session in 'control' or 'treatment'
     // based on holdoutConfig.percentage (0–100 chance of being control).
-    const holdoutPct = config.holdoutConfig?.percentage ?? 0;
+    // The percentage is clamped to [0, 100] to guard against invalid config values.
+    const holdoutPct = Math.min(100, Math.max(0, config.holdoutConfig?.percentage ?? 0));
     this.assignmentGroup = Math.random() * 100 < holdoutPct ? 'control' : 'treatment';
 
     // Merge baseline statistics: the top-level convenience aliases

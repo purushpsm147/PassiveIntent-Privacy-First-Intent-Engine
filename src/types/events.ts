@@ -220,6 +220,9 @@ export interface IntentManagerConfig {
    * group.  For example, `{ percentage: 10 }` routes ~10 % of sessions to
    * control and ~90 % to treatment.
    *
+   * Values outside the 0–100 range are clamped: negative values behave like 0
+   * (always treatment) and values above 100 behave like 100 (always control).
+   *
    * Sessions in the **control** group still perform all entropy, trajectory,
    * and dwell-time calculations and increment the telemetry counters, but
    * will **not** emit `high_entropy`, `trajectory_anomaly`,
