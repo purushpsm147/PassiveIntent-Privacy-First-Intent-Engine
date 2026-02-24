@@ -1906,3 +1906,80 @@ test('holdoutConfig: treatment group still emits high_entropy normally', () => {
   assert.ok(emitted.length > 0, 'treatment group must emit high_entropy events');
   manager.flushNow();
 });
+
+test('incrementCounter: starts at 0 and increments by 1 by default', () => {
+  storage.clear();
+  const manager = new IntentManager({ storageKey: 'counter-basic-test', storage, botProtection: false });
+
+  assert.equal(manager.getCounter('articles_read'), 0, 'counter starts at 0');
+  assert.equal(manager.incrementCounter('articles_read'), 1);
+  assert.equal(manager.incrementCounter('articles_read'), 2);
+  assert.equal(manager.getCounter('articles_read'), 2);
+  manager.flushNow();
+});
+
+test('incrementCounter: supports custom increment amounts', () => {
+  storage.clear();
+  const manager = new IntentManager({ storageKey: 'counter-by-test', storage, botProtection: false });
+
+  manager.incrementCounter('score', 10);
+  manager.incrementCounter('score', 5);
+  assert.equal(manager.getCounter('score'), 15);
+  manager.flushNow();
+});
+
+test('incrementCounter: multiple counters are independent', () => {
+  storage.clear();
+  const manager = new IntentManager({ storageKey: 'counter-multi-test', storage, botProtection: false });
+
+  manager.incrementCounter('articles_read');
+  manager.incrementCounter('articles_read');
+  manager.incrementCounter('videos_watched');
+
+  assert.equal(manager.getCounter('articles_read'), 2);
+  assert.equal(manager.getCounter('videos_watched'), 1);
+  assert.equal(manager.getCounter('never_touched'), 0);
+  manager.flushNow();
+});
+
+test('resetCounter: resets the counter to 0', () => {
+  storage.clear();
+  const manager = new IntentManager({ storageKey: 'counter-reset-test', storage, botProtection: false });
+
+  manager.incrementCounter('articles_read', 5);
+  assert.equal(manager.getCounter('articles_read'), 5);
+
+  manager.resetCounter('articles_read');
+  assert.equal(manager.getCounter('articles_read'), 0, 'counter must be 0 after reset');
+
+  // Can increment again after reset
+  manager.incrementCounter('articles_read');
+  assert.equal(manager.getCounter('articles_read'), 1);
+  manager.flushNow();
+});
+
+test('resetCounter: resetting an unknown counter is a no-op', () => {
+  storage.clear();
+  const manager = new IntentManager({ storageKey: 'counter-reset-noop-test', storage, botProtection: false });
+
+  assert.doesNotThrow(() => manager.resetCounter('nonexistent'));
+  assert.equal(manager.getCounter('nonexistent'), 0);
+  manager.flushNow();
+});
+
+test('incrementCounter: empty key is rejected with onError and returns 0', () => {
+  storage.clear();
+  const errors = [];
+  const manager = new IntentManager({
+    storageKey: 'counter-empty-key-test',
+    storage,
+    botProtection: false,
+    onError: (err) => errors.push(err.message),
+  });
+
+  const result = manager.incrementCounter('');
+  assert.equal(result, 0, 'must return 0 for empty key');
+  assert.equal(errors.length, 1);
+  assert.ok(errors[0].includes('empty string'), `Expected 'empty string' in error, got: "${errors[0]}"`);
+  manager.flushNow();
+});

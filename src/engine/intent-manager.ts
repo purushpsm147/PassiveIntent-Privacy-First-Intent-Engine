@@ -199,6 +199,20 @@ export class IntentManager {
   /* Dirty-flag persistence: only persist when state actually changed */
   private isDirty = false;
 
+  /* ================================================================== */
+  /*  Deterministic Counters                                             */
+  /* ================================================================== */
+
+  /**
+   * Exact named counters — session-scoped, never persisted.
+   *
+   * Unlike the probabilistic Bloom filter, these counters are fully
+   * deterministic: `getCounter()` always returns the precise count.
+   * Use them for exact business metrics such as "articles read" or
+   * "items added to cart" where false positives are unacceptable.
+   */
+  private counters = new Map<string, number>();
+
   /* EntropyGuard: bot detection state */
   private readonly entropyGuard = new EntropyGuard();
 
@@ -538,6 +552,71 @@ export class IntentManager {
    */
   trackConversion(payload: ConversionPayload): void {
     this.emitter.emit('conversion', payload);
+  }
+
+  /**
+   * Increment a named counter by `by` (default 1) and return the new value.
+   *
+   * Counters are deterministic: unlike the probabilistic Bloom filter, they
+   * track exact counts with no false positives.  Use them for business
+   * metrics such as "articles read", "items added to cart", or any case
+   * where an exact integer matters.
+   *
+   * Counters are session-scoped and never persisted to storage.
+   *
+   * ```ts
+   * intent.incrementCounter('articles_read');        // 1
+   * intent.incrementCounter('articles_read');        // 2
+   * intent.incrementCounter('articles_read', 3);     // 5
+   * ```
+   *
+   * @param key - Identifier for the counter. Must not be an empty string.
+   * @param by  - Amount to add. Defaults to 1. Must be a finite number.
+   * @returns   The new counter value after incrementing.
+   */
+  incrementCounter(key: string, by = 1): number {
+    if (key === '') {
+      if (this.onError) {
+        this.onError(new Error('IntentManager.incrementCounter(): key must not be an empty string'));
+      }
+      return 0;
+    }
+    const next = (this.counters.get(key) ?? 0) + by;
+    this.counters.set(key, next);
+    return next;
+  }
+
+  /**
+   * Return the current value of a named counter, or 0 if it has never been
+   * incremented.
+   *
+   * ```ts
+   * intent.getCounter('articles_read'); // 0 before any increments
+   * ```
+   *
+   * @param key - Identifier for the counter.
+   */
+  getCounter(key: string): number {
+    return this.counters.get(key) ?? 0;
+  }
+
+  /**
+   * Reset a named counter to 0.
+   *
+   * After this call `getCounter(key)` returns 0.  The counter entry is
+   * removed from internal storage rather than being set to 0, keeping the
+   * map compact.
+   *
+   * ```ts
+   * intent.incrementCounter('articles_read', 5);
+   * intent.resetCounter('articles_read');
+   * intent.getCounter('articles_read'); // 0
+   * ```
+   *
+   * @param key - Identifier for the counter to reset.
+   */
+  resetCounter(key: string): void {
+    this.counters.delete(key);
   }
 
   getPerformanceReport(): PerformanceReport {
