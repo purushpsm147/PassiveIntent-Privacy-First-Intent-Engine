@@ -2288,3 +2288,213 @@ test('IntentManager.predictNextStates uses default threshold of 0.3', () => {
   assert.ok(!hints.some(({ state }) => state === '/rare'), '/rare should be excluded at 0.3 threshold');
   manager.flushNow();
 });
+
+// ── BroadcastSync tests ──────────────────────────────────────────────────
+
+import {
+  BroadcastSync,
+  MAX_STATE_LENGTH,
+} from '../dist/src/intent-sdk.js';
+
+test('BroadcastSync: MAX_STATE_LENGTH is 256', () => {
+  assert.equal(MAX_STATE_LENGTH, 256);
+});
+
+test('BroadcastSync.applyRemote updates graph and bloom without broadcasting', () => {
+  const graph = new MarkovGraph();
+  const bloom = new BloomFilter({ bitSize: 256, hashCount: 3 });
+  const sync = new BroadcastSync('edgesignal-test-applyremote', graph, bloom);
+
+  sync.applyRemote('/home', '/products');
+
+  assert.equal(graph.getProbability('/home', '/products'), 1);
+  assert.ok(bloom.check('/home'));
+  assert.ok(bloom.check('/products'));
+
+  sync.close();
+});
+
+test('BroadcastSync: isValidSyncMessage rejects oversized state via applyRemote bypass', () => {
+  // We test the validation indirectly through handleMessage by posting an oversized payload.
+  // Create two channels on the same name so one can receive from the other.
+  const channelName = 'edgesignal-test-validation';
+
+  const graph = new MarkovGraph();
+  const bloom = new BloomFilter({ bitSize: 256, hashCount: 3 });
+  const receiver = new BroadcastSync(channelName, graph, bloom);
+
+  // Sender channel posts directly
+  const sender = new BroadcastChannel(channelName);
+
+  // Test: oversized 'from' state (257 chars) must be dropped
+  const longState = 'x'.repeat(MAX_STATE_LENGTH + 1);
+  sender.postMessage({ type: 'transition', from: longState, to: '/home' });
+
+  // Allow the message to be processed
+  return new Promise((resolve) => {
+    setTimeout(() => {
+      // Graph should not have been updated — message was dropped
+      assert.equal(graph.getProbability(longState, '/home'), 0);
+      sender.close();
+      receiver.close();
+      resolve();
+    }, 50);
+  });
+});
+
+test('BroadcastSync: valid remote transition is applied to graph and bloom', () => {
+  const channelName = 'edgesignal-test-valid-transition';
+
+  const graph = new MarkovGraph();
+  const bloom = new BloomFilter({ bitSize: 256, hashCount: 3 });
+  const receiver = new BroadcastSync(channelName, graph, bloom);
+
+  const sender = new BroadcastChannel(channelName);
+  sender.postMessage({ type: 'transition', from: '/a', to: '/b' });
+
+  return new Promise((resolve) => {
+    setTimeout(() => {
+      assert.equal(graph.getProbability('/a', '/b'), 1);
+      assert.ok(bloom.check('/a'));
+      assert.ok(bloom.check('/b'));
+      sender.close();
+      receiver.close();
+      resolve();
+    }, 50);
+  });
+});
+
+test('BroadcastSync: malformed payload (missing type) is silently dropped', () => {
+  const channelName = 'edgesignal-test-malformed';
+
+  const graph = new MarkovGraph();
+  const bloom = new BloomFilter({ bitSize: 256, hashCount: 3 });
+  const receiver = new BroadcastSync(channelName, graph, bloom);
+
+  const sender = new BroadcastChannel(channelName);
+  sender.postMessage({ from: '/a', to: '/b' }); // no 'type' field
+
+  return new Promise((resolve) => {
+    setTimeout(() => {
+      assert.equal(graph.getProbability('/a', '/b'), 0);
+      sender.close();
+      receiver.close();
+      resolve();
+    }, 50);
+  });
+});
+
+test('BroadcastSync: empty from/to is rejected', () => {
+  const channelName = 'edgesignal-test-empty-states';
+
+  const graph = new MarkovGraph();
+  const bloom = new BloomFilter({ bitSize: 256, hashCount: 3 });
+  const receiver = new BroadcastSync(channelName, graph, bloom);
+
+  const sender = new BroadcastChannel(channelName);
+  sender.postMessage({ type: 'transition', from: '', to: '/b' });
+
+  return new Promise((resolve) => {
+    setTimeout(() => {
+      // '' is the tombstone sentinel — must never reach the graph
+      assert.equal(graph.totalTransitions(), 0);
+      sender.close();
+      receiver.close();
+      resolve();
+    }, 50);
+  });
+});
+
+test('BroadcastSync: non-object payload is silently dropped', () => {
+  const channelName = 'edgesignal-test-nonobject';
+
+  const graph = new MarkovGraph();
+  const bloom = new BloomFilter({ bitSize: 256, hashCount: 3 });
+  const receiver = new BroadcastSync(channelName, graph, bloom);
+
+  const sender = new BroadcastChannel(channelName);
+  sender.postMessage('not-an-object');
+
+  return new Promise((resolve) => {
+    setTimeout(() => {
+      assert.equal(graph.totalTransitions(), 0);
+      sender.close();
+      receiver.close();
+      resolve();
+    }, 50);
+  });
+});
+
+test('IntentManager: crossTabSync:true creates active BroadcastSync channel', () => {
+  storage.clear();
+  const manager = new IntentManager({
+    storageKey: 'cross-tab-active',
+    storage,
+    botProtection: false,
+    crossTabSync: true,
+  });
+  // Just verify no errors are thrown and the manager initializes correctly.
+  manager.track('/home');
+  manager.track('/products');
+  assert.ok(manager.hasSeen('/home'));
+  assert.ok(manager.hasSeen('/products'));
+  manager.flushNow();
+  manager.destroy(); // should close BroadcastChannel without throwing
+});
+
+test('IntentManager: crossTabSync:false (default) does not broadcast', () => {
+  storage.clear();
+  // Create a receiver watching the channel that would be used if crossTabSync were enabled
+  const channelName = 'edgesignal-sync:cross-tab-off';
+  const received = [];
+  const listener = new BroadcastChannel(channelName);
+  listener.onmessage = (e) => received.push(e.data);
+
+  const manager = new IntentManager({
+    storageKey: 'cross-tab-off',
+    storage,
+    botProtection: false,
+    crossTabSync: false,
+  });
+  manager.track('/home');
+  manager.track('/products');
+  manager.flushNow();
+
+  return new Promise((resolve) => {
+    setTimeout(() => {
+      assert.equal(received.length, 0, 'No messages should be broadcast when crossTabSync is false');
+      listener.close();
+      manager.destroy();
+      resolve();
+    }, 50);
+  });
+});
+
+test('IntentManager: crossTabSync broadcasts transitions from non-bot sessions', () => {
+  storage.clear();
+  const channelName = 'edgesignal-sync:cross-tab-broadcast';
+  const received = [];
+  const listener = new BroadcastChannel(channelName);
+  listener.onmessage = (e) => received.push(e.data);
+
+  const manager = new IntentManager({
+    storageKey: 'cross-tab-broadcast',
+    storage,
+    botProtection: false,
+    crossTabSync: true,
+  });
+  manager.track('/home');
+  manager.track('/products');
+  manager.flushNow();
+
+  return new Promise((resolve) => {
+    setTimeout(() => {
+      assert.ok(received.length > 0, 'At least one transition should be broadcast');
+      assert.ok(received.every((msg) => msg.type === 'transition'));
+      assert.ok(received.some((msg) => msg.from === '/home' && msg.to === '/products'));
+      listener.close();
+      manager.destroy();
+      resolve();
+    }, 50);
+  });
+});

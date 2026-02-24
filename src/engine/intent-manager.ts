@@ -15,6 +15,7 @@ import { MarkovGraph } from '../core/markov.js';
 import { EntropyGuard } from './entropy-guard.js';
 import { dwellStd, updateDwellStats } from './dwell.js';
 import { normalizeRouteState } from '../utils/route-normalizer.js';
+import { BroadcastSync } from '../sync/broadcast-sync.js';
 import type { SerializedMarkovGraph } from '../core/markov.js';
 import type {
   BotDetectedPayload,
@@ -217,6 +218,9 @@ export class IntentManager {
   /* EntropyGuard: bot detection state */
   private readonly entropyGuard = new EntropyGuard();
 
+  /* Cross-tab synchronization via BroadcastChannel */
+  private readonly broadcastSync: BroadcastSync | null;
+
   /* ================================================================== */
   /*  GDPR-Compliant Telemetry                                           */
   /* ================================================================== */
@@ -300,6 +304,13 @@ export class IntentManager {
     this.bloom = restored?.bloom ?? new BloomFilter(config.bloom);
     this.graph = restored?.graph ?? new MarkovGraph(graphConfig);
     this.baseline = config.baseline ? MarkovGraph.fromJSON(config.baseline, graphConfig) : null;
+
+    // Cross-tab synchronization — only initialized when explicitly opted in.
+    // The channel name is derived from storageKey so that multiple independent
+    // IntentManager instances (different storageKeys) never share messages.
+    this.broadcastSync = (config.crossTabSync === true)
+      ? new BroadcastSync(`edgesignal-sync:${this.storageKey}`, this.graph, this.bloom)
+      : null;
 
     this.trackStages = [
       this.runBotProtectionStage,
@@ -460,6 +471,14 @@ export class IntentManager {
       this.isDirty = true;
       this.evaluateEntropy(ctx.state);
       this.evaluateTrajectory(ctx.from, ctx.state);
+
+      // Broadcast this transition to other tabs only when the local EntropyGuard
+      // has NOT flagged the session as a bot.  This prevents a local bot script
+      // from amplifying noisy transitions into every other open tab.
+      if (this.broadcastSync && !this.entropyGuard.suspected) {
+        this.broadcastSync.broadcast(ctx.from, ctx.state);
+      }
+
       return;
     }
 
@@ -564,6 +583,7 @@ export class IntentManager {
     if (this.visibilityChangeListener !== null) {
       document.removeEventListener('visibilitychange', this.visibilityChangeListener);
     }
+    this.broadcastSync?.close();
   }
 
   /**

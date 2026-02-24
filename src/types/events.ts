@@ -232,4 +232,28 @@ export interface IntentManagerConfig {
    * The assigned group is exposed via `getTelemetry().assignmentGroup`.
    */
   holdoutConfig?: { percentage: number };
+  /**
+   * Enable optional cross-tab synchronization via the
+   * [BroadcastChannel API](https://developer.mozilla.org/en-US/docs/Web/API/BroadcastChannel).
+   *
+   * When `true`, every locally-verified state transition is broadcast to all
+   * other tabs that share the same `storageKey`-derived channel name, and
+   * incoming remote transitions update the local Markov graph and Bloom filter
+   * so that prefetch hints stay accurate across a multi-tab session.
+   *
+   * **Security invariants (always enforced):**
+   * - Incoming payloads are strictly validated: `from`/`to` must be non-empty
+   *   strings ≤ 256 characters — malformed or oversized messages are silently
+   *   dropped to prevent heap amplification / model poisoning from a compromised tab.
+   * - Remote transitions are applied **without re-broadcasting**, eliminating
+   *   the infinite-loop amplification that would occur if received messages were
+   *   forwarded back to the channel.
+   * - Transitions are only broadcast after passing the local `EntropyGuard`
+   *   check, so a local bot script cannot flood all open tabs.
+   *
+   * No-op in SSR / non-browser environments where `BroadcastChannel` is absent.
+   *
+   * Default: `false`.
+   */
+  crossTabSync?: boolean;
 }
