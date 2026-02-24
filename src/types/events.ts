@@ -7,7 +7,7 @@
 
 import type { BenchmarkConfig } from '../performance-instrumentation.js';
 import type { SerializedMarkovGraph } from '../core/markov.js';
-import type { StorageAdapter, TimerAdapter } from '../adapters.js';
+import type { AsyncStorageAdapter, StorageAdapter, TimerAdapter } from '../adapters.js';
 
 export type IntentEventName =
   | 'high_entropy'
@@ -168,6 +168,22 @@ export interface IntentManagerConfig {
   benchmark?: BenchmarkConfig;
   /** Override the storage backend (useful for tests or custom persistence layers). */
   storage?: StorageAdapter;
+  /**
+   * Async storage backend for environments where I/O is inherently asynchronous
+   * (React Native AsyncStorage, Capacitor Preferences, IndexedDB wrappers, etc.).
+   *
+   * When provided, use `IntentManager.createAsync(config)` to initialize the
+   * engine — the factory awaits the initial `getItem` before constructing the
+   * instance so that the synchronous `track()` hot-path is never blocked.
+   *
+   * The `persist()` method detects this adapter and handles `setItem` as a
+   * fire-and-forget promise, guarded by an in-flight write flag to prevent
+   * overlapping writes.
+   *
+   * Cannot be combined with `storage` — if both are provided `asyncStorage`
+   * takes precedence for writes; `storage` is ignored.
+   */
+  asyncStorage?: AsyncStorageAdapter;
   /** Override the timer backend (useful for deterministic tests). */
   timer?: TimerAdapter;
   /** Non-fatal error callback — surfaces storage errors and invalid `track('')` calls. */

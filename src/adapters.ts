@@ -26,6 +26,23 @@ export interface StorageAdapter {
 }
 
 /**
+ * Async storage adapter for environments where storage I/O is inherently
+ * asynchronous (React Native AsyncStorage, Capacitor Preferences, IndexedDB
+ * wrappers, etc.).
+ *
+ * Use `IntentManager.createAsync(config)` to initialize the engine with an
+ * async backend — the factory awaits the initial `getItem` call before
+ * constructing the engine, preserving the synchronous hot-path for `track()`.
+ *
+ * The synchronous `StorageAdapter` interface remains the default for
+ * browser `localStorage`-backed use cases.
+ */
+export interface AsyncStorageAdapter {
+  getItem(key: string): Promise<string | null>;
+  setItem(key: string, value: string): Promise<void>;
+}
+
+/**
  * localStorage-backed adapter.
  * Falls back to no-ops when `window` or `localStorage` is unavailable
  * (e.g. SSR, Web Workers, or restrictive iframes).

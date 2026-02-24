@@ -8,7 +8,7 @@
 import { BenchmarkRecorder } from '../performance-instrumentation.js';
 import type { BenchmarkConfig, PerformanceReport } from '../performance-instrumentation.js';
 import { BrowserStorageAdapter, BrowserTimerAdapter } from '../adapters.js';
-import type { StorageAdapter, TimerAdapter, TimerHandle } from '../adapters.js';
+import type { AsyncStorageAdapter, StorageAdapter, TimerAdapter, TimerHandle } from '../adapters.js';
 import { base64ToUint8, uint8ToBase64 } from '../persistence/codec.js';
 import { BloomFilter } from '../core/bloom.js';
 import { MarkovGraph } from '../core/markov.js';
@@ -126,6 +126,15 @@ export class IntentManager {
   private readonly persistDebounceMs: number;
   private readonly benchmark: BenchmarkRecorder;
   private readonly storage: StorageAdapter;
+  /** Async storage backend — present only when created via `createAsync`. */
+  private readonly asyncStorage: AsyncStorageAdapter | null;
+  /**
+   * Guards against overlapping async `setItem` calls.
+   * When `true`, a promise-based write is already in flight;
+   * subsequent `persist()` calls return early and rely on `isDirty` to
+   * ensure the accumulated state is saved once the in-flight write completes.
+   */
+  private isAsyncWriting = false;
   private readonly timer: TimerAdapter;
   private readonly onError?: (err: Error) => void;
   private readonly botProtection: boolean;
@@ -254,6 +263,10 @@ export class IntentManager {
     this.persistDebounceMs = config.persistDebounceMs ?? 2000;
     this.benchmark = new BenchmarkRecorder(config.benchmark);
     this.storage = config.storage ?? new BrowserStorageAdapter();
+    this.asyncStorage = config.asyncStorage ?? null;
+    // When asyncStorage is set, it is used for all writes (in persist()).
+    // The sync storage adapter is only consulted by restore() to read the
+    // pre-loaded payload (injected by createAsync); its setItem is never called.
     this.timer = config.timer ?? new BrowserTimerAdapter();
     this.onError = config.onError;
     this.botProtection = config.botProtection ?? true;
@@ -358,6 +371,54 @@ export class IntentManager {
     listener: (payload: IntentEventMap[K]) => void,
   ): () => void {
     return this.emitter.on(event, listener);
+  }
+
+  /**
+   * Async factory for environments with asynchronous storage backends
+   * (React Native AsyncStorage, Capacitor Preferences, IndexedDB wrappers, etc.).
+   *
+   * `createAsync` awaits the initial `getItem` call to pre-load any persisted
+   * Bloom filter + Markov graph **before** constructing the engine, so that
+   * the synchronous `track()` hot-path is never blocked by I/O.  Once the
+   * initial read completes, the engine is instantiated synchronously using
+   * a lightweight bridge adapter that vends the pre-read payload to
+   * `restore()` — no further synchronous storage access is performed.
+   *
+   * Subsequent `persist()` calls use `config.asyncStorage.setItem()` in a
+   * fire-and-forget manner, guarded by an in-flight write flag to prevent
+   * overlapping writes.
+   *
+   * ```ts
+   * const adapter: AsyncStorageAdapter = {
+   *   getItem: (key) => AsyncStorage.getItem(key),
+   *   setItem: (key, value) => AsyncStorage.setItem(key, value),
+   * };
+   * const intent = await IntentManager.createAsync({ asyncStorage: adapter });
+   * ```
+   *
+   * @throws {Error} When `config.asyncStorage` is not provided.
+   */
+  static async createAsync(config: IntentManagerConfig): Promise<IntentManager> {
+    if (!config.asyncStorage) {
+      throw new Error('IntentManager.createAsync() requires config.asyncStorage');
+    }
+    const storageKey = config.storageKey ?? 'edge-signal';
+    // Await the single I/O call up-front so the constructor stays synchronous.
+    const raw = await config.asyncStorage.getItem(storageKey);
+
+    // Build a minimal sync bridge that serves the pre-read payload to restore()
+    // and is otherwise a no-op for setItem (async writes go through asyncStorage
+    // inside persist()).
+    // Note: `storage` is explicitly omitted from the spread so that if the
+    // caller also set `config.storage`, we don't inadvertently trigger the
+    // "both adapters provided" warning in the constructor.
+    const preloadBridge: StorageAdapter = {
+      // getItem is invoked exactly once — by restore() in the constructor.
+      getItem: () => raw,
+      setItem: () => { /* writes handled async in persist() */ },
+    };
+    const { storage: _omit, ...restConfig } = config;
+    return new IntentManager({ ...restConfig, storage: preloadBridge });
   }
 
   /**
@@ -984,19 +1045,52 @@ export class IntentManager {
       bloomBase64: this.bloom.toBase64(),
       graphBinary,
     };
-    try {
-      this.storage.setItem(this.storageKey, JSON.stringify(payload));
-      // Reset dirty flag after successful save
+
+    if (this.asyncStorage) {
+      // ── Async path ────────────────────────────────────────────────────────
+      // Guard: if a write is already in flight, return early.  isDirty remains
+      // true, so when the in-flight promise settles and the next schedulePersist
+      // fires, the accumulated state will be saved.
+      if (this.isAsyncWriting) return;
+
+      this.isAsyncWriting = true;
+      // Optimistically clear isDirty now that we've captured the current state
+      // into `payload`.  If the write fails we restore the flag.
       this.isDirty = false;
-    } catch (err) {
-      // QuotaExceededError, SecurityError, or Private Browsing restrictions.
-      // Surface through the optional error callback; never crash the main thread.
-      if (err instanceof Error) {
-        if (err.name === 'QuotaExceededError' || err.message.toLowerCase().includes('quota')) {
-          this.engineHealth = 'quota_exceeded';
-        }
-        if (this.onError) {
-          this.onError(err);
+
+      this.asyncStorage.setItem(this.storageKey, JSON.stringify(payload))
+        .then(() => {
+          this.isAsyncWriting = false;
+        })
+        .catch((err: unknown) => {
+          this.isAsyncWriting = false;
+          // Restore dirty flag so the data is retried on the next persist cycle.
+          this.isDirty = true;
+          if (err instanceof Error) {
+            if (err.name === 'QuotaExceededError' || err.message.toLowerCase().includes('quota')) {
+              this.engineHealth = 'quota_exceeded';
+            }
+            if (this.onError) {
+              this.onError(err);
+            }
+          }
+        });
+    } else {
+      // ── Sync path (existing behaviour, unchanged) ─────────────────────────
+      try {
+        this.storage.setItem(this.storageKey, JSON.stringify(payload));
+        // Reset dirty flag after successful save
+        this.isDirty = false;
+      } catch (err) {
+        // QuotaExceededError, SecurityError, or Private Browsing restrictions.
+        // Surface through the optional error callback; never crash the main thread.
+        if (err instanceof Error) {
+          if (err.name === 'QuotaExceededError' || err.message.toLowerCase().includes('quota')) {
+            this.engineHealth = 'quota_exceeded';
+          }
+          if (this.onError) {
+            this.onError(err);
+          }
         }
       }
     }

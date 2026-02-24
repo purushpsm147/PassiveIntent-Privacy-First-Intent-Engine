@@ -2498,3 +2498,141 @@ test('IntentManager: crossTabSync broadcasts transitions from non-bot sessions',
     }, 50);
   });
 });
+
+// ── AsyncStorageAdapter / IntentManager.createAsync tests ───────────────
+
+test('IntentManager.createAsync() throws when asyncStorage is absent', async () => {
+  await assert.rejects(
+    () => IntentManager.createAsync({ storage: storage }),
+    /requires config\.asyncStorage/,
+  );
+});
+
+test('IntentManager.createAsync() initializes from async storage and tracks state', async () => {
+  storage.clear();
+
+  let stored = null;
+  const asyncStorage = {
+    getItem: async (_key) => stored,
+    setItem: async (_key, value) => { stored = value; },
+  };
+
+  const manager = await IntentManager.createAsync({
+    storageKey: 'async-init',
+    asyncStorage,
+    botProtection: false,
+  });
+
+  manager.track('/home');
+  manager.track('/products');
+  assert.ok(manager.hasSeen('/home'));
+  assert.ok(manager.hasSeen('/products'));
+  manager.flushNow();
+
+  // Give async setItem a microtask to settle
+  await new Promise((r) => setTimeout(r, 20));
+  assert.ok(stored !== null, 'async setItem should have been called');
+  manager.destroy();
+});
+
+test('IntentManager.createAsync() restores persisted state from async storage', async () => {
+  // --- Phase 1: persist something via createAsync ---
+  let stored = null;
+  const asyncStorage = {
+    getItem: async (_key) => stored,
+    setItem: async (_key, value) => { stored = value; },
+  };
+
+  const m1 = await IntentManager.createAsync({
+    storageKey: 'async-restore',
+    asyncStorage,
+    botProtection: false,
+  });
+  m1.track('/home');
+  m1.track('/products');
+  m1.flushNow();
+  await new Promise((r) => setTimeout(r, 20));
+  assert.ok(stored !== null);
+  m1.destroy();
+
+  // --- Phase 2: create a fresh instance and verify it sees the persisted data ---
+  const m2 = await IntentManager.createAsync({
+    storageKey: 'async-restore',
+    asyncStorage,
+    botProtection: false,
+  });
+  assert.ok(m2.hasSeen('/home'), 'restored instance should know /home was seen');
+  assert.ok(m2.hasSeen('/products'), 'restored instance should know /products was seen');
+  m2.destroy();
+});
+
+test('IntentManager async persist: isDirty reset on success, overlapping writes are coalesced', async () => {
+  const writes = [];
+  // Slow async storage to keep a write "in flight" long enough to test coalescing
+  const asyncStorage = {
+    getItem: async () => null,
+    setItem: async (key, value) => {
+      writes.push(value);
+      await new Promise((r) => setTimeout(r, 30)); // simulate latency
+    },
+  };
+
+  const manager = await IntentManager.createAsync({
+    storageKey: 'async-coalesce',
+    asyncStorage,
+    botProtection: false,
+    persistDebounceMs: 0,
+  });
+
+  manager.track('/a');
+  manager.track('/b');
+  manager.flushNow(); // triggers first async write (in-flight)
+
+  manager.track('/c');
+  manager.flushNow(); // should be coalesced — write is still in flight
+
+  // Wait for first write to complete
+  await new Promise((r) => setTimeout(r, 50));
+
+  // Only one write should have landed so far (second was coalesced)
+  assert.equal(writes.length, 1, 'second persist while in-flight should be coalesced');
+
+  // Trigger another flush now that isAsyncWriting is false; this should write
+  // the accumulated dirty state (which includes /c).
+  manager.flushNow();
+  await new Promise((r) => setTimeout(r, 50));
+
+  assert.equal(writes.length, 2, 'dirty state accumulated during in-flight write should be saved on next flush');
+  // The second write should contain /c's transition
+  const secondPayload = JSON.parse(writes[1]);
+  assert.ok(secondPayload.graphBinary, 'second write should include graph data');
+
+  manager.destroy();
+});
+
+test('IntentManager async persist: isDirty restored on error, onError is called', async () => {
+  const errors = [];
+  const asyncStorage = {
+    getItem: async () => null,
+    setItem: async () => { throw new Error('storage unavailable'); },
+  };
+
+  const manager = await IntentManager.createAsync({
+    storageKey: 'async-error',
+    asyncStorage,
+    botProtection: false,
+    persistDebounceMs: 0,
+    onError: (err) => errors.push(err),
+  });
+
+  manager.track('/home');
+  manager.track('/products');
+  manager.flushNow();
+
+  await new Promise((r) => setTimeout(r, 20));
+
+  assert.ok(errors.length > 0, 'onError should be called on async setItem failure');
+  assert.ok(errors[0].message.includes('storage unavailable'));
+
+  manager.destroy();
+});

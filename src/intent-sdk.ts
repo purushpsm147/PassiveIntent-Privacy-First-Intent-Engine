@@ -56,3 +56,5 @@ export type {
   OperationStats,
   PerformanceReport,
 } from './performance-instrumentation.js';
+
+export type { StorageAdapter, AsyncStorageAdapter } from './adapters.js';
