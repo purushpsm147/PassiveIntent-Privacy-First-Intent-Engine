@@ -14,6 +14,7 @@ import { BloomFilter } from '../core/bloom.js';
 import { MarkovGraph } from '../core/markov.js';
 import { EntropyGuard } from './entropy-guard.js';
 import { dwellStd, updateDwellStats } from './dwell.js';
+import { normalizeRouteState } from '../utils/route-normalizer.js';
 import type { SerializedMarkovGraph } from '../core/markov.js';
 import type {
   BotDetectedPayload,
@@ -350,8 +351,24 @@ export class IntentManager {
 
   /**
    * Track a page view or custom state transition.
+   *
+   * The `state` argument is automatically normalized via `normalizeRouteState()`
+   * before any processing.  This means you can pass raw URL strings directly —
+   * query strings, hash fragments, trailing slashes, UUIDs, and MongoDB
+   * ObjectIDs are all stripped or replaced so the engine always receives a
+   * stable, canonical state label.
+   *
+   * ```ts
+   * intent.track('/users/550e8400-e29b-41d4-a716-446655440000/profile?tab=bio');
+   * // internally treated as: '/users/:id/profile'
+   * ```
    */
   track(state: string): void {
+    // Normalize first: strip query strings, hash fragments, trailing slashes,
+    // and replace dynamic ID segments (UUIDs, MongoDB ObjectIDs) with ':id'.
+    // This allows callers to pass raw window.location.href / pathname values.
+    state = normalizeRouteState(state);
+
     // Guard: '' is reserved internally as a tombstone marker.
     // Silently drop the call and surface a non-fatal error rather than letting
     // MarkovGraph.ensureState() throw and potentially crash the host app.

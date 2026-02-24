@@ -28,6 +28,7 @@
 export { BloomFilter } from './core/bloom.js';
 export { MarkovGraph } from './core/markov.js';
 export { IntentManager } from './engine/intent-manager.js';
+export { normalizeRouteState } from './utils/route-normalizer.js';
 
 export type {
   IntentEventName,

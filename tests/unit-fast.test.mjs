@@ -2088,3 +2088,101 @@ test('normalizeRouteState: /checkout/ and /checkout resolve to the same state', 
 test('normalizeRouteState: /checkout/?step=2 and /checkout resolve to the same state', () => {
   assert.equal(normalizeRouteState('/checkout/?step=2'), normalizeRouteState('/checkout'));
 });
+
+// ─── Integration: normalizeRouteState exported from barrel ───────────────────
+import { normalizeRouteState as normalizeFromBarrel } from '../dist/src/intent-sdk.js';
+
+test('normalizeRouteState is re-exported from the intent-sdk barrel', () => {
+  assert.equal(typeof normalizeFromBarrel, 'function');
+  assert.equal(normalizeFromBarrel('/checkout/'), '/checkout');
+});
+
+// ─── Integration: IntentManager.track() auto-normalizes URLs ─────────────────
+test('track() auto-normalizes: strips query string before processing', () => {
+  storage.clear();
+  const manager = new IntentManager({ storageKey: 'track-norm-query', storage, botProtection: false });
+  const changes = [];
+  manager.on('state_change', ({ to }) => changes.push(to));
+
+  manager.track('/search?q=shoes');
+  assert.equal(changes[0], '/search', 'state_change.to must be the normalized path');
+  assert.ok(manager.hasSeen('/search'), 'hasSeen must use the normalized key');
+  assert.ok(!manager.hasSeen('/search?q=shoes'), 'raw URL must not be stored in Bloom filter');
+  manager.flushNow();
+});
+
+test('track() auto-normalizes: strips hash fragment before processing', () => {
+  storage.clear();
+  const manager = new IntentManager({ storageKey: 'track-norm-hash', storage, botProtection: false });
+  const changes = [];
+  manager.on('state_change', ({ to }) => changes.push(to));
+
+  manager.track('/about#team');
+  assert.equal(changes[0], '/about');
+  assert.ok(manager.hasSeen('/about'));
+  manager.flushNow();
+});
+
+test('track() auto-normalizes: removes trailing slash', () => {
+  storage.clear();
+  const manager = new IntentManager({ storageKey: 'track-norm-slash', storage, botProtection: false });
+
+  manager.track('/checkout/');
+  manager.track('/checkout');
+  // Both calls land on the same normalized state '/checkout'.
+  // The second call is a self-transition (from='/checkout' to='/checkout')
+  // which still counts as a state_change event.
+  assert.ok(manager.hasSeen('/checkout'));
+  assert.ok(!manager.hasSeen('/checkout/'), 'trailing-slash variant must not be stored');
+  manager.flushNow();
+});
+
+test('track() auto-normalizes: replaces UUID segments with :id', () => {
+  storage.clear();
+  const manager = new IntentManager({ storageKey: 'track-norm-uuid', storage, botProtection: false });
+  const changes = [];
+  manager.on('state_change', ({ to }) => changes.push(to));
+
+  manager.track('/users/550e8400-e29b-41d4-a716-446655440000/profile');
+  assert.equal(changes[0], '/users/:id/profile');
+  assert.ok(manager.hasSeen('/users/:id/profile'));
+  manager.flushNow();
+});
+
+test('track() auto-normalizes: two different UUIDs map to the same canonical state', () => {
+  storage.clear();
+  const manager = new IntentManager({ storageKey: 'track-norm-uuid2', storage, botProtection: false });
+  const changes = [];
+  manager.on('state_change', ({ to }) => changes.push(to));
+
+  manager.track('/users/550e8400-e29b-41d4-a716-446655440000/profile');
+  manager.track('/users/6ba7b810-9dad-41d1-80b4-00c04fd430c8/profile');
+  // Both arrive as '/users/:id/profile'
+  assert.equal(changes[0], '/users/:id/profile');
+  assert.equal(changes[1], '/users/:id/profile');
+  manager.flushNow();
+});
+
+test('track() auto-normalizes: replaces MongoDB ObjectID segments with :id', () => {
+  storage.clear();
+  const manager = new IntentManager({ storageKey: 'track-norm-mongo', storage, botProtection: false });
+  const changes = [];
+  manager.on('state_change', ({ to }) => changes.push(to));
+
+  manager.track('/products/507f1f77bcf86cd799439011/reviews');
+  assert.equal(changes[0], '/products/:id/reviews');
+  manager.flushNow();
+});
+
+test('track() auto-normalizes: plain semantic states are unchanged', () => {
+  storage.clear();
+  const manager = new IntentManager({ storageKey: 'track-norm-plain', storage, botProtection: false });
+  const changes = [];
+  manager.on('state_change', ({ to }) => changes.push(to));
+
+  manager.track('home');
+  manager.track('checkout');
+  assert.equal(changes[0], 'home');
+  assert.equal(changes[1], 'checkout');
+  manager.flushNow();
+});
