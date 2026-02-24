@@ -1820,3 +1820,369 @@ test('visibilitychange: no listener is attached in non-browser (SSR) environment
     globalThis.document = originalDocument;
   }
 });
+
+test('holdoutConfig: assignmentGroup defaults to treatment when holdoutConfig is absent', () => {
+  storage.clear();
+  const manager = new IntentManager({
+    storageKey: 'holdout-default-test',
+    storage,
+    botProtection: false,
+  });
+  const telemetry = manager.getTelemetry();
+  assert.equal(telemetry.assignmentGroup, 'treatment');
+  manager.flushNow();
+});
+
+test('holdoutConfig: percentage:100 always assigns to control group', () => {
+  storage.clear();
+  // With percentage: 100, every session must be in control
+  const manager = new IntentManager({
+    storageKey: 'holdout-100-test',
+    storage,
+    botProtection: false,
+    holdoutConfig: { percentage: 100 },
+  });
+  assert.equal(manager.getTelemetry().assignmentGroup, 'control');
+  manager.flushNow();
+});
+
+test('holdoutConfig: percentage:0 always assigns to treatment group', () => {
+  storage.clear();
+  // With percentage: 0, every session must be in treatment
+  const manager = new IntentManager({
+    storageKey: 'holdout-0-test',
+    storage,
+    botProtection: false,
+    holdoutConfig: { percentage: 0 },
+  });
+  assert.equal(manager.getTelemetry().assignmentGroup, 'treatment');
+  manager.flushNow();
+});
+
+test('holdoutConfig: control group suppresses high_entropy emit but still increments anomaliesFired', () => {
+  storage.clear();
+  const manager = new IntentManager({
+    storageKey: 'holdout-entropy-test',
+    storage,
+    botProtection: false,
+    holdoutConfig: { percentage: 100 }, // always control
+    graph: { highEntropyThreshold: 0 }, // fire on any entropy
+  });
+
+  const emitted = [];
+  manager.on('high_entropy', (p) => emitted.push(p));
+
+  // Build >= MIN_SAMPLE_TRANSITIONS (10) outgoing edges from 'hub'
+  const dests = ['A', 'B', 'C', 'D', 'E'];
+  for (let i = 0; i < 30; i++) {
+    manager.track(i % 2 === 0 ? 'hub' : dests[Math.floor(i / 2) % dests.length]);
+  }
+
+  // No event emitted for control group
+  assert.equal(emitted.length, 0, 'control group must not emit high_entropy');
+  // But anomaliesFired must have been incremented
+  assert.ok(manager.getTelemetry().anomaliesFired > 0, 'control group must still increment anomaliesFired');
+  manager.flushNow();
+});
+
+test('holdoutConfig: treatment group still emits high_entropy normally', () => {
+  storage.clear();
+  const manager = new IntentManager({
+    storageKey: 'holdout-treatment-entropy-test',
+    storage,
+    botProtection: false,
+    holdoutConfig: { percentage: 0 }, // always treatment
+    graph: { highEntropyThreshold: 0 },
+  });
+
+  const emitted = [];
+  manager.on('high_entropy', (p) => emitted.push(p));
+
+  const dests = ['A', 'B', 'C', 'D', 'E'];
+  for (let i = 0; i < 30; i++) {
+    manager.track(i % 2 === 0 ? 'hub' : dests[Math.floor(i / 2) % dests.length]);
+  }
+
+  assert.ok(emitted.length > 0, 'treatment group must emit high_entropy events');
+  manager.flushNow();
+});
+
+test('incrementCounter: starts at 0 and increments by 1 by default', () => {
+  storage.clear();
+  const manager = new IntentManager({ storageKey: 'counter-basic-test', storage, botProtection: false });
+
+  assert.equal(manager.getCounter('articles_read'), 0, 'counter starts at 0');
+  assert.equal(manager.incrementCounter('articles_read'), 1);
+  assert.equal(manager.incrementCounter('articles_read'), 2);
+  assert.equal(manager.getCounter('articles_read'), 2);
+  manager.flushNow();
+});
+
+test('incrementCounter: supports custom increment amounts', () => {
+  storage.clear();
+  const manager = new IntentManager({ storageKey: 'counter-by-test', storage, botProtection: false });
+
+  manager.incrementCounter('score', 10);
+  manager.incrementCounter('score', 5);
+  assert.equal(manager.getCounter('score'), 15);
+  manager.flushNow();
+});
+
+test('incrementCounter: multiple counters are independent', () => {
+  storage.clear();
+  const manager = new IntentManager({ storageKey: 'counter-multi-test', storage, botProtection: false });
+
+  manager.incrementCounter('articles_read');
+  manager.incrementCounter('articles_read');
+  manager.incrementCounter('videos_watched');
+
+  assert.equal(manager.getCounter('articles_read'), 2);
+  assert.equal(manager.getCounter('videos_watched'), 1);
+  assert.equal(manager.getCounter('never_touched'), 0);
+  manager.flushNow();
+});
+
+test('resetCounter: resets the counter to 0', () => {
+  storage.clear();
+  const manager = new IntentManager({ storageKey: 'counter-reset-test', storage, botProtection: false });
+
+  manager.incrementCounter('articles_read', 5);
+  assert.equal(manager.getCounter('articles_read'), 5);
+
+  manager.resetCounter('articles_read');
+  assert.equal(manager.getCounter('articles_read'), 0, 'counter must be 0 after reset');
+
+  // Can increment again after reset
+  manager.incrementCounter('articles_read');
+  assert.equal(manager.getCounter('articles_read'), 1);
+  manager.flushNow();
+});
+
+test('resetCounter: resetting an unknown counter is a no-op', () => {
+  storage.clear();
+  const manager = new IntentManager({ storageKey: 'counter-reset-noop-test', storage, botProtection: false });
+
+  assert.doesNotThrow(() => manager.resetCounter('nonexistent'));
+  assert.equal(manager.getCounter('nonexistent'), 0);
+  manager.flushNow();
+});
+
+test('incrementCounter: empty key is rejected with onError and returns 0', () => {
+  storage.clear();
+  const errors = [];
+  const manager = new IntentManager({
+    storageKey: 'counter-empty-key-test',
+    storage,
+    botProtection: false,
+    onError: (err) => errors.push(err.message),
+  });
+
+  const result = manager.incrementCounter('');
+  assert.equal(result, 0, 'must return 0 for empty key');
+  assert.equal(errors.length, 1);
+  assert.ok(errors[0].includes('empty string'), `Expected 'empty string' in error, got: "${errors[0]}"`);
+  manager.flushNow();
+});
+
+// ─── normalizeRouteState ─────────────────────────────────────────────────────
+import { normalizeRouteState } from '../dist/src/utils/route-normalizer.js';
+
+test('normalizeRouteState: plain path is returned unchanged', () => {
+  assert.equal(normalizeRouteState('/checkout'), '/checkout');
+  assert.equal(normalizeRouteState('/products/featured'), '/products/featured');
+  assert.equal(normalizeRouteState('/'), '/');
+});
+
+test('normalizeRouteState: strips query string', () => {
+  assert.equal(normalizeRouteState('/search?q=shoes&page=2'), '/search');
+  assert.equal(normalizeRouteState('/home?'), '/home');
+});
+
+test('normalizeRouteState: strips hash fragment', () => {
+  assert.equal(normalizeRouteState('/about#team'), '/about');
+  assert.equal(normalizeRouteState('/docs#section-3'), '/docs');
+});
+
+test('normalizeRouteState: strips both query string and hash fragment', () => {
+  assert.equal(normalizeRouteState('/profile?tab=bio#social'), '/profile');
+  assert.equal(normalizeRouteState('/page?a=1#top'), '/page');
+});
+
+test('normalizeRouteState: removes trailing slash', () => {
+  assert.equal(normalizeRouteState('/checkout/'), '/checkout');
+  assert.equal(normalizeRouteState('/products/featured/'), '/products/featured');
+});
+
+test('normalizeRouteState: preserves the bare root slash', () => {
+  assert.equal(normalizeRouteState('/'), '/');
+});
+
+test('normalizeRouteState: trailing slash + query/hash stripped then slash removed', () => {
+  assert.equal(normalizeRouteState('/checkout/?step=2'), '/checkout');
+  assert.equal(normalizeRouteState('/checkout/#confirm'), '/checkout');
+});
+
+test('normalizeRouteState: replaces v4 UUID in path segment with :id', () => {
+  assert.equal(
+    normalizeRouteState('/users/550e8400-e29b-41d4-a716-446655440000/profile'),
+    '/users/:id/profile',
+  );
+});
+
+test('normalizeRouteState: replaces uppercase v4 UUID', () => {
+  assert.equal(
+    normalizeRouteState('/users/550E8400-E29B-41D4-A716-446655440000/settings'),
+    '/users/:id/settings',
+  );
+});
+
+test('normalizeRouteState: replaces MongoDB ObjectID (24-char hex) in path', () => {
+  assert.equal(
+    normalizeRouteState('/products/507f1f77bcf86cd799439011/reviews'),
+    '/products/:id/reviews',
+  );
+});
+
+test('normalizeRouteState: replaces multiple IDs in one path', () => {
+  assert.equal(
+    normalizeRouteState('/orgs/507f1f77bcf86cd799439011/users/550e8400-e29b-41d4-a716-446655440000'),
+    '/orgs/:id/users/:id',
+  );
+});
+
+test('normalizeRouteState: replaces both UUID and ObjectID along with query and hash', () => {
+  assert.equal(
+    normalizeRouteState('/users/550e8400-e29b-41d4-a716-446655440000/posts/507f1f77bcf86cd799439011?sort=asc#top'),
+    '/users/:id/posts/:id',
+  );
+});
+
+test('normalizeRouteState: does NOT replace short hex strings (not IDs)', () => {
+  // 7-char git commit SHA must not be treated as an ID
+  assert.equal(normalizeRouteState('/commits/abc1234'), '/commits/abc1234');
+  // 16-char hex is not a MongoDB ObjectID (too short)
+  assert.equal(normalizeRouteState('/tokens/deadbeefdeadbeef'), '/tokens/deadbeefdeadbeef');
+});
+
+test('normalizeRouteState: does NOT replace hex strings longer than 24 chars', () => {
+  // 26-char hex is not a MongoDB ObjectID (too long) — word boundary prevents partial match
+  assert.equal(
+    normalizeRouteState('/data/507f1f77bcf86cd79943901ab'),
+    '/data/507f1f77bcf86cd79943901ab',
+  );
+});
+
+test('normalizeRouteState: does NOT replace hyphenated slugs (non-UUID hyphens)', () => {
+  assert.equal(normalizeRouteState('/blog/my-first-article'), '/blog/my-first-article');
+  assert.equal(normalizeRouteState('/category/red-shoes'), '/category/red-shoes');
+});
+
+test('normalizeRouteState: handles empty string without throwing', () => {
+  assert.equal(normalizeRouteState(''), '');
+});
+
+test('normalizeRouteState: /checkout/ and /checkout resolve to the same state', () => {
+  assert.equal(normalizeRouteState('/checkout/'), normalizeRouteState('/checkout'));
+});
+
+test('normalizeRouteState: /checkout/?step=2 and /checkout resolve to the same state', () => {
+  assert.equal(normalizeRouteState('/checkout/?step=2'), normalizeRouteState('/checkout'));
+});
+
+// ─── Integration: normalizeRouteState exported from barrel ───────────────────
+import { normalizeRouteState as normalizeFromBarrel } from '../dist/src/intent-sdk.js';
+
+test('normalizeRouteState is re-exported from the intent-sdk barrel', () => {
+  assert.equal(typeof normalizeFromBarrel, 'function');
+  assert.equal(normalizeFromBarrel('/checkout/'), '/checkout');
+});
+
+// ─── Integration: IntentManager.track() auto-normalizes URLs ─────────────────
+test('track() auto-normalizes: strips query string before processing', () => {
+  storage.clear();
+  const manager = new IntentManager({ storageKey: 'track-norm-query', storage, botProtection: false });
+  const changes = [];
+  manager.on('state_change', ({ to }) => changes.push(to));
+
+  manager.track('/search?q=shoes');
+  assert.equal(changes[0], '/search', 'state_change.to must be the normalized path');
+  assert.ok(manager.hasSeen('/search'), 'hasSeen must use the normalized key');
+  assert.ok(!manager.hasSeen('/search?q=shoes'), 'raw URL must not be stored in Bloom filter');
+  manager.flushNow();
+});
+
+test('track() auto-normalizes: strips hash fragment before processing', () => {
+  storage.clear();
+  const manager = new IntentManager({ storageKey: 'track-norm-hash', storage, botProtection: false });
+  const changes = [];
+  manager.on('state_change', ({ to }) => changes.push(to));
+
+  manager.track('/about#team');
+  assert.equal(changes[0], '/about');
+  assert.ok(manager.hasSeen('/about'));
+  manager.flushNow();
+});
+
+test('track() auto-normalizes: removes trailing slash', () => {
+  storage.clear();
+  const manager = new IntentManager({ storageKey: 'track-norm-slash', storage, botProtection: false });
+
+  manager.track('/checkout/');
+  manager.track('/checkout');
+  // Both calls land on the same normalized state '/checkout'.
+  // The second call is a self-transition (from='/checkout' to='/checkout')
+  // which still counts as a state_change event.
+  assert.ok(manager.hasSeen('/checkout'));
+  assert.ok(!manager.hasSeen('/checkout/'), 'trailing-slash variant must not be stored');
+  manager.flushNow();
+});
+
+test('track() auto-normalizes: replaces UUID segments with :id', () => {
+  storage.clear();
+  const manager = new IntentManager({ storageKey: 'track-norm-uuid', storage, botProtection: false });
+  const changes = [];
+  manager.on('state_change', ({ to }) => changes.push(to));
+
+  manager.track('/users/550e8400-e29b-41d4-a716-446655440000/profile');
+  assert.equal(changes[0], '/users/:id/profile');
+  assert.ok(manager.hasSeen('/users/:id/profile'));
+  manager.flushNow();
+});
+
+test('track() auto-normalizes: two different UUIDs map to the same canonical state', () => {
+  storage.clear();
+  const manager = new IntentManager({ storageKey: 'track-norm-uuid2', storage, botProtection: false });
+  const changes = [];
+  manager.on('state_change', ({ to }) => changes.push(to));
+
+  manager.track('/users/550e8400-e29b-41d4-a716-446655440000/profile');
+  manager.track('/users/6ba7b810-9dad-41d1-80b4-00c04fd430c8/profile');
+  // Both arrive as '/users/:id/profile'
+  assert.equal(changes[0], '/users/:id/profile');
+  assert.equal(changes[1], '/users/:id/profile');
+  manager.flushNow();
+});
+
+test('track() auto-normalizes: replaces MongoDB ObjectID segments with :id', () => {
+  storage.clear();
+  const manager = new IntentManager({ storageKey: 'track-norm-mongo', storage, botProtection: false });
+  const changes = [];
+  manager.on('state_change', ({ to }) => changes.push(to));
+
+  manager.track('/products/507f1f77bcf86cd799439011/reviews');
+  assert.equal(changes[0], '/products/:id/reviews');
+  manager.flushNow();
+});
+
+test('track() auto-normalizes: plain semantic states are unchanged', () => {
+  storage.clear();
+  const manager = new IntentManager({ storageKey: 'track-norm-plain', storage, botProtection: false });
+  const changes = [];
+  manager.on('state_change', ({ to }) => changes.push(to));
+
+  manager.track('home');
+  manager.track('checkout');
+  assert.equal(changes[0], 'home');
+  assert.equal(changes[1], 'checkout');
+  manager.flushNow();
+});

@@ -14,6 +14,7 @@ import { BloomFilter } from '../core/bloom.js';
 import { MarkovGraph } from '../core/markov.js';
 import { EntropyGuard } from './entropy-guard.js';
 import { dwellStd, updateDwellStats } from './dwell.js';
+import { normalizeRouteState } from '../utils/route-normalizer.js';
 import type { SerializedMarkovGraph } from '../core/markov.js';
 import type {
   BotDetectedPayload,
@@ -199,6 +200,20 @@ export class IntentManager {
   /* Dirty-flag persistence: only persist when state actually changed */
   private isDirty = false;
 
+  /* ================================================================== */
+  /*  Deterministic Counters                                             */
+  /* ================================================================== */
+
+  /**
+   * Exact named counters — session-scoped, never persisted.
+   *
+   * Unlike the probabilistic Bloom filter, these counters are fully
+   * deterministic: `getCounter()` always returns the precise count.
+   * Use them for exact business metrics such as "articles read" or
+   * "items added to cart" where false positives are unacceptable.
+   */
+  private counters = new Map<string, number>();
+
   /* EntropyGuard: bot detection state */
   private readonly entropyGuard = new EntropyGuard();
 
@@ -227,6 +242,8 @@ export class IntentManager {
   private lastDwellAnomalyState = '';
   private readonly hesitationCorrelationWindowMs: number;
   private readonly trackStages: Array<(ctx: TrackContext) => void>;
+  /** A/B holdout group for this session. */
+  private readonly assignmentGroup: 'treatment' | 'control';
 
   constructor(config: IntentManagerConfig = {}) {
     this.storageKey = config.storageKey ?? 'edge-signal';
@@ -260,6 +277,12 @@ export class IntentManager {
     this.sessionId = (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function')
       ? crypto.randomUUID()
       : Math.random().toString(36).slice(2) + Math.random().toString(36).slice(2);
+
+    // A/B holdout assignment: randomly place the session in 'control' or 'treatment'
+    // based on holdoutConfig.percentage (0–100 chance of being control).
+    // The percentage is clamped to [0, 100] to guard against invalid config values.
+    const holdoutPct = Math.min(100, Math.max(0, config.holdoutConfig?.percentage ?? 0));
+    this.assignmentGroup = Math.random() * 100 < holdoutPct ? 'control' : 'treatment';
 
     // Merge baseline statistics: the top-level convenience aliases
     // (config.baselineMeanLL / config.baselineStdLL) take precedence over the
@@ -328,8 +351,24 @@ export class IntentManager {
 
   /**
    * Track a page view or custom state transition.
+   *
+   * The `state` argument is automatically normalized via `normalizeRouteState()`
+   * before any processing.  This means you can pass raw URL strings directly —
+   * query strings, hash fragments, trailing slashes, UUIDs, and MongoDB
+   * ObjectIDs are all stripped or replaced so the engine always receives a
+   * stable, canonical state label.
+   *
+   * ```ts
+   * intent.track('/users/550e8400-e29b-41d4-a716-446655440000/profile?tab=bio');
+   * // internally treated as: '/users/:id/profile'
+   * ```
    */
   track(state: string): void {
+    // Normalize first: strip query strings, hash fragments, trailing slashes,
+    // and replace dynamic ID segments (UUIDs, MongoDB ObjectIDs) with ':id'.
+    // This allows callers to pass raw window.location.href / pathname values.
+    state = normalizeRouteState(state);
+
     // Guard: '' is reserved internally as a tombstone marker.
     // Silently drop the call and surface a non-fatal error rather than letting
     // MarkovGraph.ensureState() throw and potentially crash the host app.
@@ -504,6 +543,7 @@ export class IntentManager {
       anomaliesFired: this.anomaliesFired,
       engineHealth: this.engineHealth,
       baselineStatus: this.isBaselineDrifted ? 'drifted' : 'active',
+      assignmentGroup: this.assignmentGroup,
     };
   }
 
@@ -529,6 +569,71 @@ export class IntentManager {
    */
   trackConversion(payload: ConversionPayload): void {
     this.emitter.emit('conversion', payload);
+  }
+
+  /**
+   * Increment a named counter by `by` (default 1) and return the new value.
+   *
+   * Counters are deterministic: unlike the probabilistic Bloom filter, they
+   * track exact counts with no false positives.  Use them for business
+   * metrics such as "articles read", "items added to cart", or any case
+   * where an exact integer matters.
+   *
+   * Counters are session-scoped and never persisted to storage.
+   *
+   * ```ts
+   * intent.incrementCounter('articles_read');        // 1
+   * intent.incrementCounter('articles_read');        // 2
+   * intent.incrementCounter('articles_read', 3);     // 5
+   * ```
+   *
+   * @param key - Identifier for the counter. Must not be an empty string.
+   * @param by  - Amount to add. Defaults to 1. Must be a finite number.
+   * @returns   The new counter value after incrementing.
+   */
+  incrementCounter(key: string, by = 1): number {
+    if (key === '') {
+      if (this.onError) {
+        this.onError(new Error('IntentManager.incrementCounter(): key must not be an empty string'));
+      }
+      return 0;
+    }
+    const next = (this.counters.get(key) ?? 0) + by;
+    this.counters.set(key, next);
+    return next;
+  }
+
+  /**
+   * Return the current value of a named counter, or 0 if it has never been
+   * incremented.
+   *
+   * ```ts
+   * intent.getCounter('articles_read'); // 0 before any increments
+   * ```
+   *
+   * @param key - Identifier for the counter.
+   */
+  getCounter(key: string): number {
+    return this.counters.get(key) ?? 0;
+  }
+
+  /**
+   * Reset a named counter to 0.
+   *
+   * After this call `getCounter(key)` returns 0.  The counter entry is
+   * removed from internal storage rather than being set to 0, keeping the
+   * map compact.
+   *
+   * ```ts
+   * intent.incrementCounter('articles_read', 5);
+   * intent.resetCounter('articles_read');
+   * intent.getCounter('articles_read'); // 0
+   * ```
+   *
+   * @param key - Identifier for the counter to reset.
+   */
+  resetCounter(key: string): void {
+    this.counters.delete(key);
   }
 
   getPerformanceReport(): PerformanceReport {
@@ -564,11 +669,13 @@ export class IntentManager {
       if (this.eventCooldownMs <= 0 || now - this.lastEmittedAt.high_entropy >= this.eventCooldownMs) {
         this.lastEmittedAt.high_entropy = now;
         this.anomaliesFired += 1;
-        this.emitter.emit('high_entropy', {
-          state,
-          entropy,
-          normalizedEntropy,
-        });
+        if (this.assignmentGroup !== 'control') {
+          this.emitter.emit('high_entropy', {
+            state,
+            entropy,
+            normalizedEntropy,
+          });
+        }
       }
     }
 
@@ -660,13 +767,15 @@ export class IntentManager {
       if (this.eventCooldownMs <= 0 || now - this.lastEmittedAt.trajectory_anomaly >= this.eventCooldownMs) {
         this.lastEmittedAt.trajectory_anomaly = now;
         this.anomaliesFired += 1;
-        this.emitter.emit('trajectory_anomaly', {
-          stateFrom: from,
-          stateTo: to,
-          realLogLikelihood: real,
-          expectedBaselineLogLikelihood: expected,
-          zScore,
-        });
+        if (this.assignmentGroup !== 'control') {
+          this.emitter.emit('trajectory_anomaly', {
+            stateFrom: from,
+            stateTo: to,
+            realLogLikelihood: real,
+            expectedBaselineLogLikelihood: expected,
+            zScore,
+          });
+        }
         this.lastTrajectoryAnomalyAt = now;
         this.lastTrajectoryAnomalyZScore = zScore;
         this.maybeEmitHesitation();
@@ -719,13 +828,15 @@ export class IntentManager {
       if (this.eventCooldownMs <= 0 || now - this.lastEmittedAt.dwell_time_anomaly >= this.eventCooldownMs) {
         this.lastEmittedAt.dwell_time_anomaly = now;
         this.anomaliesFired += 1;
-        this.emitter.emit('dwell_time_anomaly', {
-          state,
-          dwellMs,
-          meanMs: updated.meanMs,
-          stdMs: std,
-          zScore,
-        });
+        if (this.assignmentGroup !== 'control') {
+          this.emitter.emit('dwell_time_anomaly', {
+            state,
+            dwellMs,
+            meanMs: updated.meanMs,
+            stdMs: std,
+            zScore,
+          });
+        }
         // Only lingering (positive z-score) contributes to hesitation.
         if (zScore > 0) {
           this.lastDwellAnomalyAt = now;
@@ -760,11 +871,13 @@ export class IntentManager {
     this.lastTrajectoryAnomalyAt = -Infinity;
     this.lastDwellAnomalyAt = -Infinity;
 
-    this.emitter.emit('hesitation_detected', {
-      state: this.lastDwellAnomalyState,
-      trajectoryZScore: this.lastTrajectoryAnomalyZScore,
-      dwellZScore: this.lastDwellAnomalyZScore,
-    });
+    if (this.assignmentGroup !== 'control') {
+      this.emitter.emit('hesitation_detected', {
+        state: this.lastDwellAnomalyState,
+        trajectoryZScore: this.lastTrajectoryAnomalyZScore,
+        dwellZScore: this.lastDwellAnomalyZScore,
+      });
+    }
   }
 
   private schedulePersist(): void {

@@ -26,6 +26,7 @@ A tiny, tree-shakeable TypeScript SDK that learns how a user navigates your appl
    - [Hesitation Discount](#2-hesitation-discount)
    - [Rage-Click Healer](#3-rage-click-healer)
    - [GA4 Bridge — Proving ROI Without Sending Behavioral Data](#4-ga4-bridge--proving-roi-without-sending-behavioral-data)
+   - [A/B Testing Holdout — Measuring ROI Without a Server](#5-ab-testing-holdout--measuring-roi-without-a-server)
 7. [Configuration Reference](#configuration-reference)
 8. [Testing Guide](#testing-guide)
 9. [Technical Deep Dive](#technical-deep-dive)
@@ -37,9 +38,14 @@ A tiny, tree-shakeable TypeScript SDK that learns how a user navigates your appl
    - [Z-Score Anomaly Gate](#z-score-anomaly-gate)
    - [EntropyGuard — Bot & Anti-Gaming Protection](#entropyguard--bot--anti-gaming-protection)
    - [Dwell-Time Anomaly Detection](#dwell-time-anomaly-detection)
+   - [Tab-Visibility Dwell-Time Correction](#tab-visibility-dwell-time-correction)
+   - [Baseline Drift Auto-Killswitch](#baseline-drift-auto-killswitch)
    - [Selective Bigram Markov Transitions](#selective-bigram-markov-transitions)
    - [Event Cooldown](#event-cooldown)
    - [IntentManager Orchestration](#intentmanager-orchestration)
+   - [Deterministic Counter API](#deterministic-counter-api)
+   - [Route State Normalizer](#route-state-normalizer)
+   - [A/B Testing Holdout](#ab-testing-holdout)
    - [Binary Serialization](#binary-serialization)
    - [LFU Pruning](#lfu-pruning)
 10. [Performance](#performance)
@@ -63,10 +69,14 @@ The EdgeSignal SDK is a **local behavioral inference library**. As a user naviga
 3. Continuously evaluates **transition entropy** — when a user starts wandering randomly (e.g. rage-clicking back and forth), a `high_entropy` event fires.
 4. Compares the live navigation trajectory against a **calibrated baseline graph** via log-likelihood scoring. Unusual paths trigger a `trajectory_anomaly` event.
 5. Runs **EntropyGuard**, a timing-based bot detector, to suppress false signals from automated test runners and scrapers.
-6. Tracks **dwell-time** per state and fires a `dwell_time_anomaly` event when the time spent deviates statistically from learned patterns (Welford’s online z-score, O(1) per call).
+6. Tracks **dwell-time** per state and fires a `dwell_time_anomaly` event when the time spent deviates statistically from learned patterns (Welford’s online z-score, O(1) per call). Pauses the dwell timer automatically when the tab is hidden, preventing false hesitation signals from tab switching.
 7. Optionally learns **selective bigram transitions** (`A→B` → `B→C`) for richer second-order behavioral modeling, frequency-gated to prevent state explosion.
+8. Protects against **baseline drift** with a rolling-window killswitch — if `trajectory_anomaly` fires too frequently (indicating the baseline no longer reflects user behaviour), trajectory evaluation is silently disabled to prevent false positives.
+9. Auto-normalizes URL strings passed to `track()` via a built-in **route normalizer**: query strings, hash fragments, trailing slashes, UUIDs, and MongoDB ObjectIDs are stripped so the engine always receives a stable canonical state label.
+10. Provides a **deterministic counter API** (`incrementCounter` / `getCounter` / `resetCounter`) for exact business metrics (e.g. “articles read”) that must not tolerate Bloom filter false positives.
+11. Supports **A/B testing holdout** — randomly assigns each session to `treatment` or `control` at construction time. Control sessions perform all inference and increment telemetry counters but suppress behavioral events, enabling conversion-lift measurement with zero server-side infrastructure.
 
-All of this happens inside the user's browser. No analytics endpoint. No fingerprinting. No PII.
+All of this happens inside the user’s browser. No analytics endpoint. No fingerprinting. No PII.
 
 ---
 
@@ -85,6 +95,11 @@ All of this happens inside the user's browser. No analytics endpoint. No fingerp
 | **Dwell-time anomaly** | O(1) Welford’s online z-score per state — fires `dwell_time_anomaly` when a user lingers or rushes through a page anomalously. |
 | **Selective bigrams** | Optional second-order Markov transitions, frequency-gated and LFU-pruned. Only 18 bytes additional graph overhead at 50 states. |
 | **Event cooldown** | Per-channel cooldown gating (`eventCooldownMs`) prevents event flooding without losing detection fidelity. |
+| **Tab-visibility correction** | Dwell timer is automatically paused while `document.hidden === true`. Tabs switched away for 30 seconds do not produce a 30-second dwell reading. No configuration required. |
+| **Drift auto-killswitch** | A rolling-window guard monitors the `trajectory_anomaly`/`track()` ratio. When it exceeds `driftProtection.maxAnomalyRate`, trajectory evaluation is silently disabled so a stale baseline can never flood your UI with false positives. `getTelemetry().baselineStatus` reflects `'drifted'` when the killswitch has engaged. |
+| **Deterministic counters** | `incrementCounter(key)` / `getCounter(key)` / `resetCounter(key)` — exact integer counters, zero false positives, session-scoped. Use for business metrics like “articles read” where the Bloom filter’s probabilistic nature is unacceptable. |
+| **Route normalization** | `track()` auto-normalizes raw URLs: strips `?query`, `#hash`, trailing slashes, and replaces UUIDs / MongoDB ObjectIDs with `:id`. Pass `window.location.href` directly — the engine always receives a stable state label. |
+| **A/B holdout** | `holdoutConfig: { percentage: 10 }` routes ~10 % of sessions to a `control` group. Control sessions run all inference and increment `anomaliesFired` identically to treatment but suppress behavioral event emissions, giving you clean conversion-lift data with zero server-side tracking. |
 | **Clean teardown** | `destroy()` API flushes state, cancels timers, and removes listeners for leak-free SPA lifecycle management. |
 | **Fully typed** | Ships `.d.ts` declarations for every public API and event payload. |
 | **Dual CJS + ESM** | `dist/index.js` (ESM) + `dist/index.cjs` (CommonJS) with source maps. |
@@ -493,6 +508,101 @@ EdgeSignal itself has no GDPR obligations (zero personal data). Sending the even
 
 ---
 
+### 5. A/B Testing Holdout — Measuring ROI Without a Server
+
+Prove that your behavioral interventions (hesitation discounts, dynamic paywalls, support-chat prompts) actually increase conversions — without a server-side experiment platform, without a consent banner, and without sending any user data anywhere.
+
+**How the holdout works:**
+
+Set `holdoutConfig.percentage` to the percentage of sessions you want in the **control** group (i.e. sessions that do NOT receive the intervention). ~90 % of sessions will receive the intervention (`'treatment'`); ~10 % will not (`'control'`). Both groups perform identical behavioral inference — only the intervention UI code is gated behind `assignmentGroup`.
+
+```ts
+import { IntentManager } from 'edge-signal';
+
+const intent = new IntentManager({
+  storageKey: 'my-ab-test',
+  holdoutConfig: { percentage: 10 }, // ~10% → control (no intervention)
+  dwellTime: { enabled: true, minSamples: 8, zScoreThreshold: 2.0 },
+  hesitationCorrelationWindowMs: 30_000,
+});
+
+// --- Intervention: fires only for TREATMENT sessions ---
+intent.on('hesitation_detected', ({ state }) => {
+  // getTelemetry().assignmentGroup is always 'treatment' here,
+  // because control sessions never emit hesitation_detected.
+  showDiscount({ page: state, discount: '10%' });
+});
+
+// --- Conversion tracking ---
+// Wire up BEFORE any user action, BEFORE calling track().
+intent.on('conversion', (payload) => {
+  const { assignmentGroup, sessionId, anomaliesFired } = intent.getTelemetry();
+
+  // Forward to your own analytics (GA4, Amplitude, Mixpanel, …)
+  // Nothing here is personal data. No consent is required.
+  myAnalytics.send({
+    event: 'purchase',
+    ...payload,
+    assignmentGroup,  // 'treatment' | 'control'
+    anomaliesFired,   // how many behavioral signals fired
+    sessionId,        // local ephemeral ID — you control whether to send it
+  });
+});
+
+// --- Track navigation ---
+function onRouteChange(url) {
+  intent.track(url); // normalizeRouteState() is applied automatically
+}
+
+// --- Record the conversion after checkout ---
+function onPurchaseComplete(order) {
+  intent.trackConversion({ type: 'purchase', value: order.total, currency: order.currency });
+}
+```
+
+**Analyzing the lift:**
+
+Aggregate conversion data from your analytics backend, split by `assignmentGroup`:
+
+```
+treatment CVR = conversions_treatment / sessions_treatment
+control CVR   = conversions_control   / sessions_control
+
+absolute lift = treatment_CVR - control_CVR
+relative lift = absolute_lift / control_CVR × 100%
+```
+
+Because both groups perform identical inference, you can also compare `anomaliesFired` distributions to confirm the populations received equivalent behavioral signals — validating that the only difference between groups is the intervention itself.
+
+**Using exact counters for richer lift data:**
+
+Combine the holdout with `incrementCounter` for a more precise signal than binary conversion:
+
+```ts
+intent.on('state_change', ({ to }) => {
+  if (to.startsWith('/article/')) {
+    intent.incrementCounter('articles_read');
+  }
+  if (to === '/checkout') {
+    intent.incrementCounter('checkout_visits');
+  }
+});
+
+intent.on('conversion', () => {
+  const { assignmentGroup } = intent.getTelemetry();
+  myAnalytics.send({
+    event: 'purchase',
+    assignmentGroup,
+    articles_read:     intent.getCounter('articles_read'),
+    checkout_visits:   intent.getCounter('checkout_visits'),
+  });
+});
+```
+
+**Privacy note:** The holdout is entirely on-device. The `assignmentGroup` value is a single-bit flag (`'treatment'` or `'control'`) that you only transmit if your `conversion` listener explicitly sends it. EdgeSignal never sends it — or anything else — on its own.
+
+---
+
 ## Configuration Reference
 
 ```ts
@@ -555,6 +665,24 @@ interface IntentManagerConfig {
   // Selective bigram (second-order) Markov transitions
   enableBigrams?: boolean;          // default: false
   bigramFrequencyThreshold?: number; // min unigram rowTotal before recording bigrams (default: 5)
+
+  // Auto-killswitch: disable trajectory evaluation if the anomaly/track() ratio
+  // exceeds maxAnomalyRate within a rolling evaluationWindowMs window.
+  // Default: { maxAnomalyRate: 0.4, evaluationWindowMs: 300_000 }
+  // Set maxAnomalyRate: 1 to effectively disable the killswitch.
+  driftProtection?: {
+    maxAnomalyRate: number;       // 0–1; e.g. 0.4 = 40 % of track() calls
+    evaluationWindowMs: number;   // rolling window length, e.g. 300_000 (5 min)
+  };
+
+  // A/B holdout: randomly assign each session to 'treatment' or 'control'.
+  // 'control' sessions run all inference and increment telemetry counters but
+  // do NOT emit high_entropy, trajectory_anomaly, dwell_time_anomaly, or
+  // hesitation_detected events — ideal for measuring conversion lift locally.
+  // percentage is clamped to [0, 100]. Default: no holdout (all treatment).
+  holdoutConfig?: {
+    percentage: number; // probability (0–100) of being placed in control
+  };
 
   // Built-in performance instrumentation
   benchmark?: {
@@ -1121,8 +1249,13 @@ const intent = new IntentManager({
 | Persistence | Debounced write (2 s default), dirty-flag guards every write |
 | Bot detection | `EntropyGuard` circular buffer, synchronized to `timer.now()` |
 | Dwell-time | Welford’s online accumulator per state; z-score anomaly detection |
+| Tab-visibility | `visibilitychange` listener offsets `previousStateEnteredAt` by hidden duration; SSR-safe |
+| Drift killswitch | Rolling-window `trajectory_anomaly`/`track()` ratio; sets `isBaselineDrifted` flag when threshold exceeded |
+| Route normalization | `normalizeRouteState()` called at the top of every `track()` call |
 | Bigrams | Selective second-order Markov transitions, frequency-gated |
 | Event cooldown | Per-channel cooldown gating via `eventCooldownMs` |
+| Deterministic counters | `incrementCounter` / `getCounter` / `resetCounter` — exact integer map, session-scoped |
+| A/B holdout | `assignmentGroup: 'treatment' | 'control'` set at construction; control group skips event emissions |
 | Benchmarking | `BenchmarkRecorder` with per-operation ring-buffer sample accumulators |
 | Error handling | All `try/catch` blocks route to `onError?: (err: Error) => void`; never throws |
 | Telemetry | `getTelemetry()` returns `EdgeSignalTelemetry` — aggregate counters only, no raw states or PII |
@@ -1159,11 +1292,13 @@ intent.destroy();
 // Useful for measuring bot-mitigation ROI or anomaly rate on your own backend.
 const t = intent.getTelemetry();
 // {
-//   sessionId: 'a1b2c3d4-...',   ← local UUID, never persisted or transmitted
+//   sessionId: 'a1b2c3d4-...',      ← local UUID, never persisted or transmitted
 //   transitionsEvaluated: 42,
 //   botStatus: 'human',
 //   anomaliesFired: 3,
-//   engineHealth: 'healthy'      ← also: 'pruning_active' | 'quota_exceeded'
+//   engineHealth: 'healthy',         ← also: 'pruning_active' | 'quota_exceeded'
+//   baselineStatus: 'active',        ← 'drifted' when the drift killswitch has engaged
+//   assignmentGroup: 'treatment',    ← 'control' for holdout sessions
 // }
 ```
 
@@ -1227,6 +1362,223 @@ intent.on('dwell_time_anomaly', ({ state, dwellMs, meanMs, stdMs, zScore }) => {
 **Complements EntropyGuard:** EntropyGuard detects bots via timing regularity across states. Dwell-time detection catches anomalies within individual states — a user who normally spends 5s on `/product` but suddenly spends 45s, or rushes through in 200ms.
 
 **Session scope (intentional):** Dwell-time accumulators (`dwellStats`) are **not persisted to storage across page reloads**. This is a deliberate privacy decision: per-state timing distributions are more sensitive than transition counts and would meaningfully expand the cross-session fingerprinting surface area — directly contrary to the library's local-only design goal. As a result, the learning phase governed by `minSamples` restarts on every new `IntentManager` instance. If your application reloads frequently and you observe excessive false-positive `dwell_time_anomaly` events early in a session, raise `minSamples` (e.g. to 20–30) to require a more solid statistical baseline before the detector activates.
+
+---
+
+### Tab-Visibility Dwell-Time Correction
+
+When a user switches to another browser tab, the monotonic timer keeps running. Without correction, the dwell-time measurement for the state the user was on would be inflated by the entire hidden duration — potentially thousands of milliseconds — which would trivially exceed the z-score threshold and fire a spurious `dwell_time_anomaly` (and subsequently `hesitation_detected`).
+
+**How it works:**
+
+`IntentManager` registers a single `visibilitychange` listener in the constructor (browser-only; the listener is `null` in SSR environments). The correction is applied in two steps:
+
+1. **Tab becomes hidden** (`document.hidden === true`): `tabHiddenAt = timer.now()` is snapshotted.
+2. **Tab becomes visible again** (`document.hidden === false`): `hiddenDuration = timer.now() - tabHiddenAt` is computed, and `previousStateEnteredAt += hiddenDuration`. This shifts the dwell baseline forward by the exact gap so the next `track()` call sees only the visible dwell time.
+
+If no state has been entered yet (`previousState === null`), the adjustment is skipped — there is nothing accumulating.
+
+The listener is removed by `destroy()` using the exact same function reference, preventing memory leaks in SPA teardown paths.
+
+**No configuration is required.** The correction is automatic in all browser environments.
+
+```ts
+// Verify it is working — simulate tab switch in a test:
+let mockHidden = false;
+let listener = null;
+globalThis.document = {
+  get hidden() { return mockHidden; },
+  addEventListener(_e, fn) { listener = fn; },
+  removeEventListener() {},
+};
+
+const intent = new IntentManager({ botProtection: false, dwellTime: { enabled: true } });
+// ... track some states to build baseline ...
+
+mockHidden = true;  listener(); // tab hidden
+// ... 30 seconds pass ...
+mockHidden = false; listener(); // tab visible again
+
+// Next track() will NOT see a 30 s dwell on the previous state
+intent.track('/next-page');
+```
+
+---
+
+### Baseline Drift Auto-Killswitch
+
+The trajectory anomaly detector compares the live navigation sequence against a pre-trained baseline graph. If your application evolves and the baseline becomes stale, the detector can enter a state where almost every session triggers `trajectory_anomaly` — flooding your UI with false positives.
+
+**The killswitch prevents this automatically:**
+
+EdgeSignal maintains a rolling time window (`driftProtection.evaluationWindowMs`, default: 5 minutes) and counts two things inside that window:
+
+- `driftWindowTrackCount` — number of `track()` calls
+- `driftWindowAnomalyCount` — number of `trajectory_anomaly` emissions
+
+When `driftWindowAnomalyCount / driftWindowTrackCount > driftProtection.maxAnomalyRate` (default: 40 %), the engine sets `isBaselineDrifted = true`. From that point, `evaluateTrajectory` returns early on every call — trajectory anomaly detection is silently disabled for the lifetime of this `IntentManager` instance. All other detection channels (entropy, dwell-time, bot protection) continue operating normally.
+
+**Observability:** `getTelemetry().baselineStatus` is `'active'` normally and `'drifted'` once the killswitch has engaged.
+
+**Recovery:** Replace the `IntentManager` instance (or reload the page) to reset the flag. The long-term fix is to re-calibrate and redeploy your baseline graph using a representative sample of current user sessions.
+
+```ts
+const intent = new IntentManager({
+  baseline: myBaselineGraph,
+  driftProtection: {
+    maxAnomalyRate: 0.4,        // engage if >40% of tracks produce an anomaly
+    evaluationWindowMs: 300_000, // rolling 5-minute window
+  },
+});
+
+// Check health at any time:
+const { baselineStatus, anomaliesFired } = intent.getTelemetry();
+if (baselineStatus === 'drifted') {
+  console.warn('Baseline drift detected — trajectory anomaly detection disabled.');
+  // Re-deploy a fresh baseline graph, or replace the IntentManager instance.
+}
+```
+
+**Tuning guidance:**
+
+| `maxAnomalyRate` | Effect |
+|---|---|
+| `0.05` (5 %) | Very sensitive — triggers quickly if the baseline is even slightly stale. Good for production with a freshly calibrated baseline. |
+| `0.4` (40 %, default) | Balanced — tolerates natural session variance before engaging. |
+| `1.0` (100 %) | Effectively disables the killswitch. Use only during baseline calibration or testing. |
+
+---
+
+### Deterministic Counter API
+
+The Bloom filter provides O(1) probabilistic membership tests (`hasSeen()`), but it has a small false-positive rate — it can occasionally report `true` for a state that was never added. For business-critical counting ("how many articles has this user read?"), false positives are unacceptable.
+
+`IntentManager` provides three deterministic counter methods that use an exact `Map<string, number>` internally:
+
+```ts
+// Increment by 1 (default) and return the new value
+const count = intent.incrementCounter('articles_read');   // → 1
+intent.incrementCounter('articles_read');                 // → 2
+intent.incrementCounter('articles_read', 3);              // → 5
+
+// Read the current value (0 if never set)
+intent.getCounter('articles_read');   // → 5
+intent.getCounter('never_touched');   // → 0
+
+// Reset to 0 (removes the entry from the map)
+intent.resetCounter('articles_read');
+intent.getCounter('articles_read');   // → 0
+```
+
+**Key properties:**
+
+- **Deterministic.** No false positives. `getCounter('key')` always returns the exact accumulated value.
+- **Session-scoped.** Counters are never persisted to `localStorage`. They reset on every page reload / new `IntentManager` instance, keeping the privacy surface minimal.
+- **Error safe.** Passing an empty string `''` to `incrementCounter` triggers `onError` and returns `0` without throwing.
+
+**Recipe — paywall after 3 articles (exact count):**
+
+```ts
+intent.on('state_change', ({ to }) => {
+  if (to.startsWith('/article/')) {
+    const read = intent.incrementCounter('articles_read');
+    if (read >= 3) showPaywall();
+  }
+});
+```
+
+---
+
+### Route State Normalizer
+
+`IntentManager.track()` automatically normalizes its `state` argument via `normalizeRouteState()` before any engine processing. This means you can pass raw URL strings — including `window.location.href` — directly without any pre-processing.
+
+**Transformations applied in order:**
+
+| Step | Input | Output |
+|---|---|---|
+| Strip query string | `/search?q=shoes&page=2` | `/search` |
+| Strip hash fragment | `/docs#section-3` | `/docs` |
+| Replace v4 UUID | `/users/550e8400-e29b-41d4-a716-446655440000/profile` | `/users/:id/profile` |
+| Replace MongoDB ObjectID (24-char hex) | `/products/507f1f77bcf86cd799439011` | `/products/:id` |
+| Remove trailing slash | `/checkout/` | `/checkout` |
+
+**Stability guarantee:** Two different UUIDs on the same route produce exactly the same state label — so `/users/UUID-A/profile` and `/users/UUID-B/profile` both map to `/users/:id/profile` and contribute to the same Markov edge. This is essential for trajectory analysis to work across a dynamic user population.
+
+**Standalone use:**
+
+`normalizeRouteState` is also exported from the package barrel for standalone use outside of `IntentManager`:
+
+```ts
+import { normalizeRouteState } from 'edge-signal';
+
+// Use in router middleware, analytics pipelines, etc.
+const canonical = normalizeRouteState(window.location.href);
+```
+
+**What is NOT replaced:**
+
+- Short hex strings (e.g. 7-char git SHAs like `abc1234`) — the ObjectID pattern requires exactly 24 hex chars bounded by word boundaries.
+- Strings longer than 24 chars — the `\b` word-boundary anchor prevents partial matches.
+- Hyphenated slugs like `/blog/my-first-article` — they don't match the UUID pattern.
+
+---
+
+### A/B Testing Holdout
+
+EdgeSignal's A/B holdout lets you measure the conversion-rate lift from behavioral interventions (discount triggers, paywall prompts, support-chat popups) without any server-side tracking — the split is computed locally, and conversions are captured via `trackConversion()`.
+
+**How it works:**
+
+When `holdoutConfig: { percentage: N }` is provided, the `IntentManager` constructor generates a random number in `[0, 100)`. If it is less than `N`, the session is assigned to the `'control'` group; otherwise it is `'treatment'`.
+
+**Treatment sessions:** Normal operation — all behavioral events (`high_entropy`, `trajectory_anomaly`, `dwell_time_anomaly`, `hesitation_detected`) fire and trigger your intervention code.
+
+**Control sessions:** All inference runs identically — Markov graph updates, entropy/trajectory/dwell-time calculations, and `anomaliesFired` counter increments all happen normally. The only difference is that the four behavioral events are **not emitted**, so the intervention code never fires. This gives a clean counterfactual baseline for conversion-lift analysis.
+
+**The `assignmentGroup` field is included in `getTelemetry()`.** Attach it to your conversion event so your analytics backend can separate treatment from control.
+
+```ts
+import { IntentManager } from 'edge-signal';
+
+const intent = new IntentManager({
+  holdoutConfig: { percentage: 10 }, // ~10 % of sessions → control
+  dwellTime: { enabled: true },
+  hesitationCorrelationWindowMs: 30_000,
+});
+
+// Intervention fires only for treatment sessions
+intent.on('hesitation_detected', ({ state }) => {
+  showHesitationDiscount(state);
+});
+
+// Conversion tracking — attach assignmentGroup for lift analysis
+intent.on('conversion', (payload) => {
+  const { assignmentGroup, anomaliesFired, sessionId } = intent.getTelemetry();
+  myAnalytics.send({
+    event: 'conversion',
+    ...payload,
+    assignmentGroup,   // 'treatment' | 'control'
+    anomaliesFired,    // how many signals fired before conversion
+    sessionId,         // local session ID — never transmitted by the SDK itself
+  });
+});
+
+// After purchase:
+intent.trackConversion({ type: 'purchase', value: 49.99, currency: 'USD' });
+```
+
+**Analyzing lift:**
+
+Compare conversion rates between groups:
+
+```
+lift = (treatment_CVR - control_CVR) / control_CVR × 100%
+```
+
+Because all inference still runs in the control group (only event emissions are suppressed), `anomaliesFired` is comparable across groups, letting you validate that the two populations received equivalent behavioral signals — they just didn't receive the intervention.
+
+**Percentage is clamped to `[0, 100]`.** Values outside this range are silently clamped: negative values behave as 0 (all treatment), values above 100 as 100 (all control).
 
 ---
 
