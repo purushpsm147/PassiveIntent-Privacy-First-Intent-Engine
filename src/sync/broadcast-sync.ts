@@ -19,14 +19,10 @@ import type { MarkovGraph } from '../core/markov.js';
 export const MAX_STATE_LENGTH = 256;
 
 /**
- * Wire format of a cross-tab sync message.
- *
- * Only complete, fully-validated objects matching this interface are acted on.
- * Any extra fields are ignored (structural subtyping is safe here because we
- * never serialize unknown fields back out).
+ * Wire format of a Markov-transition sync message.
  */
-interface SyncMessage {
-  /** Discriminant — allows future protocol versioning without breaking older tabs. */
+interface TransitionMessage {
+  /** Discriminant. */
   type: 'transition';
   /** The state the user navigated *from*. */
   from: string;
@@ -35,24 +31,49 @@ interface SyncMessage {
 }
 
 /**
- * Type-guard that validates an unknown value against `SyncMessage`.
+ * Wire format of a deterministic counter increment sync message.
  *
- * Rejects the payload if:
- *   - `type` is not `'transition'`
- *   - `from` or `to` are not strings
- *   - either state label exceeds `MAX_STATE_LENGTH` (memory-exhaustion guard)
- *
- * The length check is the primary XSS-amplification / model-poisoning defense:
- * a crafted tab cannot inject an unbounded key into every other tab's Markov
- * graph by sending a 1 MB state label.
+ * Only positive, finite `by` values are acted on; malformed or unbounded
+ * payloads are silently dropped.
  */
-function isValidSyncMessage(data: unknown): data is SyncMessage {
-  if (typeof data !== 'object' || data === null) return false;
-  const msg = data as Record<string, unknown>;
+interface CounterMessage {
+  /** Discriminant. */
+  type: 'counter';
+  /** Counter key — same length constraints as state labels (≤ MAX_STATE_LENGTH). */
+  key: string;
+  /** Amount to add to the counter. Must be finite; validated before use. */
+  by: number;
+}
+
+/** Union of all wire-protocol message types. */
+type SyncMessage = TransitionMessage | CounterMessage;
+
+/**
+ * Type-guard for `TransitionMessage`.
+ *
+ * Rejects the payload if `from` or `to` exceed `MAX_STATE_LENGTH` (memory-
+ * exhaustion / model-poisoning guard).
+ */
+function isValidTransitionMessage(msg: Record<string, unknown>): boolean {
   if (msg['type'] !== 'transition') return false;
   if (typeof msg['from'] !== 'string' || typeof msg['to'] !== 'string') return false;
   if (msg['from'].length === 0 || msg['to'].length === 0) return false;
   if (msg['from'].length > MAX_STATE_LENGTH || msg['to'].length > MAX_STATE_LENGTH) return false;
+  return true;
+}
+
+/**
+ * Type-guard for `CounterMessage`.
+ *
+ * Rejects the payload if:
+ *   - `key` is not a non-empty string ≤ `MAX_STATE_LENGTH`
+ *   - `by` is not a finite number (guards against `Infinity`, `NaN`)
+ */
+function isValidCounterMessage(msg: Record<string, unknown>): boolean {
+  if (msg['type'] !== 'counter') return false;
+  if (typeof msg['key'] !== 'string') return false;
+  if (msg['key'].length === 0 || msg['key'].length > MAX_STATE_LENGTH) return false;
+  if (typeof msg['by'] !== 'number' || !Number.isFinite(msg['by'])) return false;
   return true;
 }
 
@@ -66,19 +87,23 @@ function isValidSyncMessage(data: unknown): data is SyncMessage {
  *    graph and Bloom filter learn that transition too, so prefetch hints stay
  *    accurate across a multi-tab session.
  *
- * 2. **XSS / model-poisoning hardening** — every incoming message is
- *    validated by `isValidSyncMessage` before touching any data structure:
- *    `from` and `to` must be non-empty strings ≤ `MAX_STATE_LENGTH` (256 chars).
+ * 2. **Counter consistency** — when a user increments a named counter in Tab A
+ *    (e.g. `incrementCounter('articles_read')`), all other tabs receive the
+ *    same increment so their local counts stay in sync.
+ *
+ * 3. **XSS / model-poisoning hardening** — every incoming message is
+ *    validated before touching any data structure: state labels and counter
+ *    keys must be non-empty strings ≤ `MAX_STATE_LENGTH` (256 chars);
+ *    counter `by` values must be finite numbers.
  *    Oversized or malformed payloads are silently dropped.
  *
- * 3. **Infinite-loop prevention** — remote transitions applied via
- *    `applyRemote()` update the in-memory graph and Bloom filter directly
- *    **without** re-broadcasting to the channel.  Only locally-originated
- *    transitions (those that passed the local `EntropyGuard`) are ever sent.
+ * 4. **Infinite-loop prevention** — remote transitions/increments applied via
+ *    `applyRemote()` / `applyRemoteCounter()` update in-memory state directly
+ *    **without** re-broadcasting to the channel.
  *
- * 4. **Bot flood containment** — `IntentManager` only calls `broadcast()`
- *    when the local `EntropyGuard` has *not* flagged the session as a bot,
- *    so a local script that spams `track()` cannot amplify noise into other tabs.
+ * 5. **Bot flood containment** — `IntentManager` only calls `broadcast()` and
+ *    `broadcastCounter()` when the local `EntropyGuard` has *not* flagged the
+ *    session as a bot.
  *
  * **SSR / non-browser safety** — `BroadcastSync` checks for `BroadcastChannel`
  * availability at construction time.  When it is absent (Node.js, older
@@ -87,9 +112,11 @@ function isValidSyncMessage(data: unknown): data is SyncMessage {
  *
  * @example
  * ```ts
- * const sync = new BroadcastSync('edgesignal-sync', graph, bloom);
+ * const sync = new BroadcastSync('edgesignal-sync', graph, bloom, counters);
  * // Called by IntentManager after a verified local transition:
  * sync.broadcast('/home', '/products');
+ * // Called by IntentManager after a local counter increment:
+ * sync.broadcastCounter('articles_read', 1);
  * // Clean up on destroy:
  * sync.close();
  * ```
@@ -98,6 +125,7 @@ export class BroadcastSync {
   private readonly channel: BroadcastChannel | null;
   private readonly graph: MarkovGraph;
   private readonly bloom: BloomFilter;
+  private readonly counters: Map<string, number>;
 
   /**
    * `true` when a real `BroadcastChannel` was opened successfully.
@@ -109,9 +137,11 @@ export class BroadcastSync {
     channelName: string,
     graph: MarkovGraph,
     bloom: BloomFilter,
+    counters: Map<string, number> = new Map(),
   ) {
     this.graph = graph;
     this.bloom = bloom;
+    this.counters = counters;
 
     if (typeof BroadcastChannel === 'undefined') {
       this.channel = null;
@@ -140,7 +170,23 @@ export class BroadcastSync {
    */
   broadcast(from: string, to: string): void {
     if (!this.channel) return;
-    const msg: SyncMessage = { type: 'transition', from, to };
+    const msg: TransitionMessage = { type: 'transition', from, to };
+    this.channel.postMessage(msg);
+  }
+
+  /**
+   * Broadcast a counter increment to all other tabs so their local counter
+   * Maps stay in sync with the tab that originated the increment.
+   *
+   * **Must only be called when the local `EntropyGuard` has not flagged the
+   * session as a bot.**  `IntentManager.incrementCounter()` enforces this.
+   *
+   * @param key  Counter key (must not be empty, ≤ MAX_STATE_LENGTH chars).
+   * @param by   Amount the counter was incremented (must be finite).
+   */
+  broadcastCounter(key: string, by: number): void {
+    if (!this.channel) return;
+    const msg: CounterMessage = { type: 'counter', key, by };
     this.channel.postMessage(msg);
   }
 
@@ -164,6 +210,21 @@ export class BroadcastSync {
   }
 
   /**
+   * Apply a validated remote counter increment to the local counters Map
+   * **without** re-broadcasting, preventing infinite-loop amplification.
+   *
+   * This is an internal method exposed for testing; production code should rely
+   * on `onmessage` calling `handleMessage` automatically.
+   *
+   * @param key  Validated counter key.
+   * @param by   Validated finite increment amount.
+   */
+  applyRemoteCounter(key: string, by: number): void {
+    const current = this.counters.get(key) ?? 0;
+    this.counters.set(key, current + by);
+  }
+
+  /**
    * Close the underlying `BroadcastChannel` and release the message handler.
    *
    * Call this inside `IntentManager.destroy()` to prevent ghost listeners.
@@ -178,16 +239,25 @@ export class BroadcastSync {
   // ── Private ──────────────────────────────────────────────────────────────
 
   /**
-   * Validate and apply an incoming raw message from the broadcast channel.
+   * Validate and dispatch an incoming raw message from the broadcast channel.
    *
-   * Security invariants enforced here:
-   *   1. `isValidSyncMessage` rejects non-object, wrong-type, non-string, empty,
-   *      or oversized payloads — protecting against heap amplification.
-   *   2. After validation, `applyRemote` is called (not `broadcast`) — the
-   *      transition is applied locally only, never echoed back to the channel.
+   * Security invariants:
+   *   - Non-object, null, and unrecognised `type` values are silently dropped.
+   *   - `TransitionMessage`: `from`/`to` must be non-empty strings ≤ `MAX_STATE_LENGTH`.
+   *   - `CounterMessage`: `key` must be a non-empty string ≤ `MAX_STATE_LENGTH`;
+   *     `by` must be a finite number.
+   *   - No re-broadcasting occurs — remote state is applied locally only.
    */
   private handleMessage(data: unknown): void {
-    if (!isValidSyncMessage(data)) return;
-    this.applyRemote(data.from, data.to);
+    if (typeof data !== 'object' || data === null) return;
+    const msg = data as Record<string, unknown>;
+    if (msg['type'] === 'transition') {
+      if (!isValidTransitionMessage(msg)) return;
+      this.applyRemote(msg['from'] as string, msg['to'] as string);
+    } else if (msg['type'] === 'counter') {
+      if (!isValidCounterMessage(msg)) return;
+      this.applyRemoteCounter(msg['key'] as string, msg['by'] as number);
+    }
+    // Unknown type values are silently ignored for forward-compatibility.
   }
 }

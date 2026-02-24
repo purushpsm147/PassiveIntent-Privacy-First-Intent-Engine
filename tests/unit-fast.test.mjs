@@ -2499,7 +2499,194 @@ test('IntentManager: crossTabSync broadcasts transitions from non-bot sessions',
   });
 });
 
-// ── AsyncStorageAdapter / IntentManager.createAsync tests ───────────────
+// ── BroadcastSync counter-sync tests ────────────────────────────────────────
+
+test('BroadcastSync.applyRemoteCounter increments the shared counters Map', () => {
+  const graph = new MarkovGraph();
+  const bloom = new BloomFilter({ bitSize: 256, hashCount: 3 });
+  const counters = new Map();
+  const sync = new BroadcastSync('edgesignal-test-counter-apply', graph, bloom, counters);
+
+  sync.applyRemoteCounter('articles_read', 3);
+  assert.equal(counters.get('articles_read'), 3, 'first applyRemoteCounter sets the value');
+
+  sync.applyRemoteCounter('articles_read', 2);
+  assert.equal(counters.get('articles_read'), 5, 'second applyRemoteCounter accumulates');
+
+  sync.applyRemoteCounter('videos_watched', 1);
+  assert.equal(counters.get('videos_watched'), 1, 'independent counter is tracked separately');
+
+  sync.close();
+});
+
+test('BroadcastSync counter message is delivered and applied via BroadcastChannel', () => {
+  const channelName = 'edgesignal-test-counter-channel';
+
+  const graph = new MarkovGraph();
+  const bloom = new BloomFilter({ bitSize: 256, hashCount: 3 });
+  const counters = new Map();
+  const receiver = new BroadcastSync(channelName, graph, bloom, counters);
+
+  const sender = new BroadcastChannel(channelName);
+  sender.postMessage({ type: 'counter', key: 'articles_read', by: 4 });
+
+  return new Promise((resolve) => {
+    setTimeout(() => {
+      assert.equal(counters.get('articles_read'), 4, 'counter must be updated by remote message');
+      sender.close();
+      receiver.close();
+      resolve();
+    }, 50);
+  });
+});
+
+test('BroadcastSync: counter message with oversized key is silently dropped', () => {
+  const channelName = 'edgesignal-test-counter-oversize';
+
+  const graph = new MarkovGraph();
+  const bloom = new BloomFilter({ bitSize: 256, hashCount: 3 });
+  const counters = new Map();
+  const receiver = new BroadcastSync(channelName, graph, bloom, counters);
+
+  const sender = new BroadcastChannel(channelName);
+  const longKey = 'k'.repeat(MAX_STATE_LENGTH + 1); // 257 chars — exceeds limit
+  sender.postMessage({ type: 'counter', key: longKey, by: 1 });
+
+  return new Promise((resolve) => {
+    setTimeout(() => {
+      assert.equal(counters.size, 0, 'oversized key must be dropped without touching the Map');
+      sender.close();
+      receiver.close();
+      resolve();
+    }, 50);
+  });
+});
+
+test('BroadcastSync: counter message with empty key is silently dropped', () => {
+  const channelName = 'edgesignal-test-counter-emptykey';
+
+  const graph = new MarkovGraph();
+  const bloom = new BloomFilter({ bitSize: 256, hashCount: 3 });
+  const counters = new Map();
+  const receiver = new BroadcastSync(channelName, graph, bloom, counters);
+
+  const sender = new BroadcastChannel(channelName);
+  sender.postMessage({ type: 'counter', key: '', by: 1 });
+
+  return new Promise((resolve) => {
+    setTimeout(() => {
+      assert.equal(counters.size, 0, 'empty key must be dropped');
+      sender.close();
+      receiver.close();
+      resolve();
+    }, 50);
+  });
+});
+
+test('BroadcastSync: counter message with non-finite by is silently dropped', () => {
+  const channelName = 'edgesignal-test-counter-nonfinite';
+
+  const graph = new MarkovGraph();
+  const bloom = new BloomFilter({ bitSize: 256, hashCount: 3 });
+  const counters = new Map();
+  const receiver = new BroadcastSync(channelName, graph, bloom, counters);
+
+  const sender = new BroadcastChannel(channelName);
+  sender.postMessage({ type: 'counter', key: 'views', by: Infinity });
+
+  return new Promise((resolve) => {
+    setTimeout(() => {
+      assert.equal(counters.size, 0, 'Infinity by value must be dropped');
+      sender.close();
+      receiver.close();
+      resolve();
+    }, 50);
+  });
+});
+
+test('IntentManager: incrementCounter broadcasts counter message when crossTabSync:true', () => {
+  storage.clear();
+  const channelName = 'edgesignal-sync:cross-tab-counter-broadcast';
+  const received = [];
+  const listener = new BroadcastChannel(channelName);
+  listener.onmessage = (e) => received.push(e.data);
+
+  const manager = new IntentManager({
+    storageKey: 'cross-tab-counter-broadcast',
+    storage,
+    botProtection: false,
+    crossTabSync: true,
+  });
+
+  manager.incrementCounter('articles_read');
+  manager.incrementCounter('articles_read', 4);
+
+  return new Promise((resolve) => {
+    setTimeout(() => {
+      const counterMsgs = received.filter((m) => m.type === 'counter' && m.key === 'articles_read');
+      assert.equal(counterMsgs.length, 2, 'exactly 2 counter messages must be broadcast (one per incrementCounter call)');
+      const total = counterMsgs.reduce((sum, m) => sum + m.by, 0);
+      assert.equal(total, 5, 'broadcast increments must sum to 5 (1 + 4)');
+      listener.close();
+      manager.destroy();
+      resolve();
+    }, 50);
+  });
+});
+
+test('IntentManager: incrementCounter does not broadcast when crossTabSync:false', () => {
+  storage.clear();
+  const channelName = 'edgesignal-sync:cross-tab-counter-off';
+  const received = [];
+  const listener = new BroadcastChannel(channelName);
+  listener.onmessage = (e) => received.push(e.data);
+
+  const manager = new IntentManager({
+    storageKey: 'cross-tab-counter-off',
+    storage,
+    botProtection: false,
+    crossTabSync: false,
+  });
+
+  manager.incrementCounter('articles_read', 3);
+
+  return new Promise((resolve) => {
+    setTimeout(() => {
+      const counterMsgs = received.filter((m) => m.type === 'counter');
+      assert.equal(counterMsgs.length, 0, 'no counter messages should be broadcast when crossTabSync is false');
+      listener.close();
+      manager.destroy();
+      resolve();
+    }, 50);
+  });
+});
+
+test('IntentManager: remote counter increment from another tab is reflected in getCounter()', () => {
+  storage.clear();
+
+  // "Tab A" — the one that already has crossTabSync enabled
+  const managerA = new IntentManager({
+    storageKey: 'cross-tab-counter-receive',
+    storage,
+    botProtection: false,
+    crossTabSync: true,
+  });
+
+  // Simulate "Tab B" by directly broadcasting a counter message on the same channel
+  const channelName = 'edgesignal-sync:cross-tab-counter-receive';
+  const sender = new BroadcastChannel(channelName);
+  sender.postMessage({ type: 'counter', key: 'articles_read', by: 7 });
+
+  return new Promise((resolve) => {
+    setTimeout(() => {
+      assert.equal(managerA.getCounter('articles_read'), 7,
+        'getCounter() must reflect the remotely-broadcast increment');
+      sender.close();
+      managerA.destroy();
+      resolve();
+    }, 50);
+  });
+});
 
 test('IntentManager.createAsync() throws when asyncStorage is absent', async () => {
   await assert.rejects(

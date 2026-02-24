@@ -322,7 +322,7 @@ export class IntentManager {
     // The channel name is derived from storageKey so that multiple independent
     // IntentManager instances (different storageKeys) never share messages.
     this.broadcastSync = (config.crossTabSync === true)
-      ? new BroadcastSync(`edgesignal-sync:${this.storageKey}`, this.graph, this.bloom)
+      ? new BroadcastSync(`edgesignal-sync:${this.storageKey}`, this.graph, this.bloom, this.counters)
       : null;
 
     this.trackStages = [
@@ -726,6 +726,11 @@ export class IntentManager {
     }
     const next = (this.counters.get(key) ?? 0) + by;
     this.counters.set(key, next);
+    // Broadcast the increment to other tabs when cross-tab sync is enabled,
+    // applying the same bot-containment guard used for Markov transitions.
+    if (this.broadcastSync && !this.entropyGuard.suspected) {
+      this.broadcastSync.broadcastCounter(key, by);
+    }
     return next;
   }
 

@@ -559,7 +559,8 @@ describe('Cross-Tab Sync (BroadcastSync)', () => {
 
       const bloom = new BloomFilter();
       const graph = new MarkovGraph();
-      const sync = new BroadcastSync('test-channel', graph, bloom);
+      const counters = new Map<string, number>();
+      const sync = new BroadcastSync('test-channel', graph, bloom, counters);
 
       // applyRemote must update bloom and graph without re-broadcasting
       sync.applyRemote('/home', '/search');
@@ -567,6 +568,92 @@ describe('Cross-Tab Sync (BroadcastSync)', () => {
       expect(bloom.check('/search')).to.be.true;
 
       sync.close();
+    });
+  });
+
+  it('Test AE: BroadcastSync.applyRemoteCounter() updates the shared counters Map', () => {
+    cy.window().then((win) => {
+      const { BloomFilter, MarkovGraph, BroadcastSync } = (win as any).__EdgeSignalSDK;
+
+      const bloom = new BloomFilter();
+      const graph = new MarkovGraph();
+      const counters = new Map<string, number>();
+      const sync = new BroadcastSync('test-counter-direct', graph, bloom, counters);
+
+      sync.applyRemoteCounter('articles_read', 3);
+      sync.applyRemoteCounter('articles_read', 2);
+
+      expect(counters.get('articles_read')).to.equal(5);
+      expect(counters.get('videos_watched')).to.be.undefined;
+
+      sync.close();
+    });
+  });
+
+  it('Test AF: incrementCounter broadcasts counter messages when crossTabSync:true', () => {
+    cy.window().then((win) => {
+      const { IntentManager } = (win as any).__EdgeSignalSDK;
+
+      // Capture all messages on the channel IntentManager will use
+      const received: any[] = [];
+      const listener = new win.BroadcastChannel('edgesignal-sync:counter-broadcast-test');
+      listener.onmessage = (e: MessageEvent) => received.push(e.data);
+      (win as any).__testListenerAF = listener;
+
+      const mgr = new IntentManager({
+        storageKey: 'counter-broadcast-test',
+        botProtection: false,
+        crossTabSync: true,
+      });
+      (win as any).__testMgrAF = mgr;
+      (win as any).__testReceivedAF = received;
+
+      // Broadcast two increments: by=1 and by=4, total=5
+      mgr.incrementCounter('articles_read');
+      mgr.incrementCounter('articles_read', 4);
+    });
+
+    // Give the BroadcastChannel messages time to arrive
+    cy.wait(150);
+
+    cy.window().then((win) => {
+      const received: any[] = (win as any).__testReceivedAF;
+      const counterMsgs = received.filter((m: any) => m.type === 'counter' && m.key === 'articles_read');
+      expect(counterMsgs).to.have.length(2, 'exactly 2 counter messages must be broadcast (one per incrementCounter call)');
+      const total = counterMsgs.reduce((sum: number, m: any) => sum + m.by, 0);
+      expect(total).to.equal(5, 'broadcast increments must sum to 5 (1 + 4)');
+
+      (win as any).__testListenerAF.close();
+      (win as any).__testMgrAF.destroy();
+    });
+  });
+
+  it('Test AG: remote counter increment is reflected in getCounter() on the receiving tab', () => {
+    cy.window().then((win) => {
+      const { IntentManager } = (win as any).__EdgeSignalSDK;
+
+      // "Tab A" — the receiver
+      const mgrA = new IntentManager({
+        storageKey: 'counter-receive-test',
+        botProtection: false,
+        crossTabSync: true,
+      });
+      (win as any).__testMgrAG = mgrA;
+
+      // "Tab B" — simulate by posting directly to the channel
+      const channelName = 'edgesignal-sync:counter-receive-test';
+      const sender = new win.BroadcastChannel(channelName);
+      sender.postMessage({ type: 'counter', key: 'articles_read', by: 7 });
+      (win as any).__testSenderAG = sender;
+    });
+
+    cy.wait(150);
+
+    cy.window().then((win) => {
+      expect((win as any).__testMgrAG.getCounter('articles_read')).to.equal(7,
+        'getCounter() must reflect the remotely-broadcast increment');
+      (win as any).__testSenderAG.close();
+      (win as any).__testMgrAG.destroy();
     });
   });
 });
