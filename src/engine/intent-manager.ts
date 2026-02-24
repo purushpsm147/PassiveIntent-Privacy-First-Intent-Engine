@@ -495,6 +495,51 @@ export class IntentManager {
     return this.graph.toJSON();
   }
 
+  /**
+   * Returns the most likely next states from the current (or previous) state,
+   * filtered by a minimum probability threshold and an optional sanitize predicate.
+   *
+   * Designed for **read-only** UI prefetching hints only.  This method exposes
+   * predictive data from the Markov graph to the host application so it can
+   * preload assets or warm caches for the most probable next routes.
+   *
+   * ⚠ **Security constraint — you MUST provide a `sanitize` function.**
+   * Without a sanitize predicate, the returned list may include state-mutating
+   * or privacy-sensitive routes such as `/logout`, `/checkout/pay`, or routes
+   * that embed PII (e.g. `/users/john.doe/settings`).  The sanitize function
+   * must return `false` for any such route.  Prefetching must **never** trigger
+   * state-mutating side effects — treat the results as navigation hints only.
+   *
+   * ```ts
+   * // ✅ Safe usage with a sanitize guard
+   * const hints = intent.predictNextStates(0.3, (state) => {
+   *   const blocked = ['/logout', '/checkout/pay', '/delete-account'];
+   *   return !blocked.some((b) => state.startsWith(b)) &&
+   *          !/\/users\/[^/]+\/pii/.test(state);
+   * });
+   * hints.forEach(({ state, probability }) => prefetch(state));
+   * ```
+   *
+   * @param threshold  Minimum probability in [0, 1] for a state to be included.
+   *                   Defaults to `0.3`.
+   * @param sanitize   Optional predicate that receives each candidate state label
+   *                   and returns `true` to **include** it or `false` to **exclude**
+   *                   it.  When omitted all states above the threshold are returned,
+   *                   which is **unsafe** for production use — always supply this.
+   * @returns Filtered and sorted `{ state, probability }[]`, descending by
+   *          probability.  Returns an empty array when no previous state is known
+   *          or no transitions meet the threshold.
+   */
+  predictNextStates(
+    threshold = 0.3,
+    sanitize?: (state: string) => boolean,
+  ): { state: string; probability: number }[] {
+    if (this.previousState === null) return [];
+    const candidates = this.graph.getLikelyNextStates(this.previousState, threshold);
+    if (!sanitize) return candidates;
+    return candidates.filter(({ state }) => sanitize(state));
+  }
+
   flushNow(): void {
     if (this.persistTimer !== null) {
       this.timer.clearTimeout(this.persistTimer);

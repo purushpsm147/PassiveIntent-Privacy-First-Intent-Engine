@@ -2186,3 +2186,105 @@ test('track() auto-normalizes: plain semantic states are unchanged', () => {
   assert.equal(changes[1], 'checkout');
   manager.flushNow();
 });
+
+test('MarkovGraph.getLikelyNextStates returns edges above the probability threshold', () => {
+  const graph = new MarkovGraph();
+  graph.incrementTransition('/home', '/products');
+  graph.incrementTransition('/home', '/products');
+  graph.incrementTransition('/home', '/about');
+  // /products: 2/3 ≈ 0.667, /about: 1/3 ≈ 0.333
+
+  const results = graph.getLikelyNextStates('/home', 0.4);
+  assert.equal(results.length, 1);
+  assert.equal(results[0].state, '/products');
+  assert.ok(Math.abs(results[0].probability - 2 / 3) < 1e-9);
+});
+
+test('MarkovGraph.getLikelyNextStates returns results sorted descending by probability', () => {
+  const graph = new MarkovGraph();
+  graph.incrementTransition('/home', '/a');
+  graph.incrementTransition('/home', '/b');
+  graph.incrementTransition('/home', '/b');
+  graph.incrementTransition('/home', '/c');
+  graph.incrementTransition('/home', '/c');
+  graph.incrementTransition('/home', '/c');
+  // /c: 3/6 = 0.5, /b: 2/6 ≈ 0.333, /a: 1/6 ≈ 0.167
+
+  const results = graph.getLikelyNextStates('/home', 0.1);
+  assert.equal(results.length, 3);
+  assert.equal(results[0].state, '/c');
+  assert.equal(results[1].state, '/b');
+  assert.equal(results[2].state, '/a');
+  assert.ok(results[0].probability >= results[1].probability);
+  assert.ok(results[1].probability >= results[2].probability);
+});
+
+test('MarkovGraph.getLikelyNextStates returns empty array for unknown state', () => {
+  const graph = new MarkovGraph();
+  assert.deepEqual(graph.getLikelyNextStates('/nonexistent', 0.1), []);
+});
+
+test('MarkovGraph.getLikelyNextStates returns empty array when threshold exceeds all probabilities', () => {
+  const graph = new MarkovGraph();
+  graph.incrementTransition('/home', '/products');
+  // /products: 1.0 — but we ask for > 1.0
+  assert.deepEqual(graph.getLikelyNextStates('/home', 1.1), []);
+});
+
+test('IntentManager.predictNextStates returns likely next states from previousState', () => {
+  storage.clear();
+  const manager = new IntentManager({ storageKey: 'predict-basic', storage, botProtection: false });
+  manager.track('/home');
+  manager.track('/products');
+  manager.track('/home');
+  manager.track('/products');
+  manager.track('/home');
+  // Now previousState = '/home', graph has /home → /products with high probability
+
+  const hints = manager.predictNextStates(0.3);
+  assert.ok(hints.length > 0);
+  assert.ok(hints.some(({ state }) => state === '/products'));
+  manager.flushNow();
+});
+
+test('IntentManager.predictNextStates returns empty array before any state is tracked', () => {
+  storage.clear();
+  const manager = new IntentManager({ storageKey: 'predict-empty', storage, botProtection: false });
+  assert.deepEqual(manager.predictNextStates(0.3), []);
+  manager.flushNow();
+});
+
+test('IntentManager.predictNextStates applies sanitize predicate to filter results', () => {
+  storage.clear();
+  const manager = new IntentManager({ storageKey: 'predict-sanitize', storage, botProtection: false });
+  manager.track('/home');
+  manager.track('/logout');
+  manager.track('/home');
+  manager.track('/products');
+  manager.track('/home');
+  // previousState = '/home'; both /logout and /products are candidates
+
+  const blocklist = ['/logout'];
+  const hints = manager.predictNextStates(0.1, (state) => !blocklist.includes(state));
+  assert.ok(hints.every(({ state }) => state !== '/logout'));
+  manager.flushNow();
+});
+
+test('IntentManager.predictNextStates uses default threshold of 0.3', () => {
+  storage.clear();
+  const manager = new IntentManager({ storageKey: 'predict-default-threshold', storage, botProtection: false });
+  // Create a low-probability edge: /home → /rare (1/10) and a high one: /home → /common (9/10)
+  for (let i = 0; i < 9; i++) {
+    manager.track('/home');
+    manager.track('/common');
+  }
+  manager.track('/home');
+  manager.track('/rare');
+  manager.track('/home');
+  // previousState = '/home'
+
+  const hints = manager.predictNextStates(); // default threshold = 0.3
+  assert.ok(hints.some(({ state }) => state === '/common'), '/common should be included');
+  assert.ok(!hints.some(({ state }) => state === '/rare'), '/rare should be excluded at 0.3 threshold');
+  manager.flushNow();
+});

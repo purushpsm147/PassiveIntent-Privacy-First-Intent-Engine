@@ -241,6 +241,49 @@ export class MarkovGraph {
   }
 
   /**
+   * Returns all outgoing edges from `fromState` whose transition probability
+   * meets or exceeds `minProbability`, sorted descending by probability.
+   *
+   * Intended for **read-only** UI prefetching hints.  The returned state
+   * labels are raw values from the internal transition graph and may include
+   * sensitive routes.
+   *
+   * ⚠ **Security notice — you MUST filter results before acting on them.**
+   * Always pass a `sanitize` predicate (see `IntentManager.predictNextStates`)
+   * that rejects state-mutating or privacy-sensitive routes such as
+   * `/logout`, `/checkout/pay`, or any route containing PII.
+   * Prefetching must **never** trigger state-mutating side effects.
+   *
+   * @param fromState     The source state to query outgoing transitions from.
+   * @param minProbability Minimum probability threshold in [0, 1] (inclusive).
+   *                       Values ≤ 0 return all edges; values > 1 return none.
+   * @returns Array of `{ state, probability }` objects, sorted by probability
+   *          descending.  Returns an empty array when the state is unknown or
+   *          has no recorded transitions.
+   */
+  getLikelyNextStates(fromState: string, minProbability: number): { state: string; probability: number }[] {
+    const fromIndex = this.stateToIndex.get(fromState);
+    if (fromIndex === undefined) return [];
+
+    const row = this.rows.get(fromIndex);
+    if (!row || row.total === 0) return [];
+
+    const results: { state: string; probability: number }[] = [];
+    row.toCounts.forEach((count, toIndex) => {
+      const probability = count / row.total;
+      if (probability >= minProbability) {
+        const label = this.indexToState[toIndex];
+        if (label && label !== '') {
+          results.push({ state: label, probability });
+        }
+      }
+    });
+
+    results.sort((a, b) => b.probability - a.probability);
+    return results;
+  }
+
+  /**
    * Returns the total number of outgoing transitions recorded for a state.
    * Used as a minimum-sample guard before firing entropy/divergence events.
    */
