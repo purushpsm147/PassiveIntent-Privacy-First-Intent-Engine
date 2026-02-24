@@ -227,6 +227,8 @@ export class IntentManager {
   private lastDwellAnomalyState = '';
   private readonly hesitationCorrelationWindowMs: number;
   private readonly trackStages: Array<(ctx: TrackContext) => void>;
+  /** A/B holdout group for this session. */
+  private readonly assignmentGroup: 'treatment' | 'control';
 
   constructor(config: IntentManagerConfig = {}) {
     this.storageKey = config.storageKey ?? 'edge-signal';
@@ -260,6 +262,11 @@ export class IntentManager {
     this.sessionId = (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function')
       ? crypto.randomUUID()
       : Math.random().toString(36).slice(2) + Math.random().toString(36).slice(2);
+
+    // A/B holdout assignment: randomly place the session in 'control' or 'treatment'
+    // based on holdoutConfig.percentage (0–100 chance of being control).
+    const holdoutPct = config.holdoutConfig?.percentage ?? 0;
+    this.assignmentGroup = Math.random() * 100 < holdoutPct ? 'control' : 'treatment';
 
     // Merge baseline statistics: the top-level convenience aliases
     // (config.baselineMeanLL / config.baselineStdLL) take precedence over the
@@ -504,6 +511,7 @@ export class IntentManager {
       anomaliesFired: this.anomaliesFired,
       engineHealth: this.engineHealth,
       baselineStatus: this.isBaselineDrifted ? 'drifted' : 'active',
+      assignmentGroup: this.assignmentGroup,
     };
   }
 
@@ -564,11 +572,13 @@ export class IntentManager {
       if (this.eventCooldownMs <= 0 || now - this.lastEmittedAt.high_entropy >= this.eventCooldownMs) {
         this.lastEmittedAt.high_entropy = now;
         this.anomaliesFired += 1;
-        this.emitter.emit('high_entropy', {
-          state,
-          entropy,
-          normalizedEntropy,
-        });
+        if (this.assignmentGroup !== 'control') {
+          this.emitter.emit('high_entropy', {
+            state,
+            entropy,
+            normalizedEntropy,
+          });
+        }
       }
     }
 
@@ -660,13 +670,15 @@ export class IntentManager {
       if (this.eventCooldownMs <= 0 || now - this.lastEmittedAt.trajectory_anomaly >= this.eventCooldownMs) {
         this.lastEmittedAt.trajectory_anomaly = now;
         this.anomaliesFired += 1;
-        this.emitter.emit('trajectory_anomaly', {
-          stateFrom: from,
-          stateTo: to,
-          realLogLikelihood: real,
-          expectedBaselineLogLikelihood: expected,
-          zScore,
-        });
+        if (this.assignmentGroup !== 'control') {
+          this.emitter.emit('trajectory_anomaly', {
+            stateFrom: from,
+            stateTo: to,
+            realLogLikelihood: real,
+            expectedBaselineLogLikelihood: expected,
+            zScore,
+          });
+        }
         this.lastTrajectoryAnomalyAt = now;
         this.lastTrajectoryAnomalyZScore = zScore;
         this.maybeEmitHesitation();
@@ -719,13 +731,15 @@ export class IntentManager {
       if (this.eventCooldownMs <= 0 || now - this.lastEmittedAt.dwell_time_anomaly >= this.eventCooldownMs) {
         this.lastEmittedAt.dwell_time_anomaly = now;
         this.anomaliesFired += 1;
-        this.emitter.emit('dwell_time_anomaly', {
-          state,
-          dwellMs,
-          meanMs: updated.meanMs,
-          stdMs: std,
-          zScore,
-        });
+        if (this.assignmentGroup !== 'control') {
+          this.emitter.emit('dwell_time_anomaly', {
+            state,
+            dwellMs,
+            meanMs: updated.meanMs,
+            stdMs: std,
+            zScore,
+          });
+        }
         // Only lingering (positive z-score) contributes to hesitation.
         if (zScore > 0) {
           this.lastDwellAnomalyAt = now;
@@ -760,11 +774,13 @@ export class IntentManager {
     this.lastTrajectoryAnomalyAt = -Infinity;
     this.lastDwellAnomalyAt = -Infinity;
 
-    this.emitter.emit('hesitation_detected', {
-      state: this.lastDwellAnomalyState,
-      trajectoryZScore: this.lastTrajectoryAnomalyZScore,
-      dwellZScore: this.lastDwellAnomalyZScore,
-    });
+    if (this.assignmentGroup !== 'control') {
+      this.emitter.emit('hesitation_detected', {
+        state: this.lastDwellAnomalyState,
+        trajectoryZScore: this.lastTrajectoryAnomalyZScore,
+        dwellZScore: this.lastDwellAnomalyZScore,
+      });
+    }
   }
 
   private schedulePersist(): void {

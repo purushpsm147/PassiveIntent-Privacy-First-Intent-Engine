@@ -31,6 +31,7 @@ export interface EdgeSignalTelemetry {
   anomaliesFired: number;
   engineHealth: 'healthy' | 'pruning_active' | 'quota_exceeded';
   baselineStatus: 'active' | 'drifted';
+  assignmentGroup: 'treatment' | 'control';
 }
 
 export interface HighEntropyPayload {
@@ -210,4 +211,22 @@ export interface IntentManagerConfig {
    * (5 minutes).  Set `maxAnomalyRate: 1` to effectively disable the feature.
    */
   driftProtection?: { maxAnomalyRate: number; evaluationWindowMs: number };
+  /**
+   * Local A/B testing holdout configuration.
+   *
+   * When provided, each new `IntentManager` instance is randomly assigned to
+   * either `'treatment'` or `'control'` at construction time.  The `percentage`
+   * field specifies the probability (0–100) of being placed in the control
+   * group.  For example, `{ percentage: 10 }` routes ~10 % of sessions to
+   * control and ~90 % to treatment.
+   *
+   * Sessions in the **control** group still perform all entropy, trajectory,
+   * and dwell-time calculations and increment the telemetry counters, but
+   * will **not** emit `high_entropy`, `trajectory_anomaly`,
+   * `dwell_time_anomaly`, or `hesitation_detected` events.  This lets you
+   * measure conversion lift (ROI) without any server-side tracking.
+   *
+   * The assigned group is exposed via `getTelemetry().assignmentGroup`.
+   */
+  holdoutConfig?: { percentage: number };
 }

@@ -1820,3 +1820,89 @@ test('visibilitychange: no listener is attached in non-browser (SSR) environment
     globalThis.document = originalDocument;
   }
 });
+
+test('holdoutConfig: assignmentGroup defaults to treatment when holdoutConfig is absent', () => {
+  storage.clear();
+  const manager = new IntentManager({
+    storageKey: 'holdout-default-test',
+    storage,
+    botProtection: false,
+  });
+  const telemetry = manager.getTelemetry();
+  assert.equal(telemetry.assignmentGroup, 'treatment');
+  manager.flushNow();
+});
+
+test('holdoutConfig: percentage:100 always assigns to control group', () => {
+  storage.clear();
+  // With percentage: 100, every session must be in control
+  const manager = new IntentManager({
+    storageKey: 'holdout-100-test',
+    storage,
+    botProtection: false,
+    holdoutConfig: { percentage: 100 },
+  });
+  assert.equal(manager.getTelemetry().assignmentGroup, 'control');
+  manager.flushNow();
+});
+
+test('holdoutConfig: percentage:0 always assigns to treatment group', () => {
+  storage.clear();
+  // With percentage: 0, every session must be in treatment
+  const manager = new IntentManager({
+    storageKey: 'holdout-0-test',
+    storage,
+    botProtection: false,
+    holdoutConfig: { percentage: 0 },
+  });
+  assert.equal(manager.getTelemetry().assignmentGroup, 'treatment');
+  manager.flushNow();
+});
+
+test('holdoutConfig: control group suppresses high_entropy emit but still increments anomaliesFired', () => {
+  storage.clear();
+  const manager = new IntentManager({
+    storageKey: 'holdout-entropy-test',
+    storage,
+    botProtection: false,
+    holdoutConfig: { percentage: 100 }, // always control
+    graph: { highEntropyThreshold: 0 }, // fire on any entropy
+  });
+
+  const emitted = [];
+  manager.on('high_entropy', (p) => emitted.push(p));
+
+  // Build >= MIN_SAMPLE_TRANSITIONS (10) outgoing edges from 'hub'
+  const dests = ['A', 'B', 'C', 'D', 'E'];
+  for (let i = 0; i < 30; i++) {
+    manager.track(i % 2 === 0 ? 'hub' : dests[Math.floor(i / 2) % dests.length]);
+  }
+
+  // No event emitted for control group
+  assert.equal(emitted.length, 0, 'control group must not emit high_entropy');
+  // But anomaliesFired must have been incremented
+  assert.ok(manager.getTelemetry().anomaliesFired > 0, 'control group must still increment anomaliesFired');
+  manager.flushNow();
+});
+
+test('holdoutConfig: treatment group still emits high_entropy normally', () => {
+  storage.clear();
+  const manager = new IntentManager({
+    storageKey: 'holdout-treatment-entropy-test',
+    storage,
+    botProtection: false,
+    holdoutConfig: { percentage: 0 }, // always treatment
+    graph: { highEntropyThreshold: 0 },
+  });
+
+  const emitted = [];
+  manager.on('high_entropy', (p) => emitted.push(p));
+
+  const dests = ['A', 'B', 'C', 'D', 'E'];
+  for (let i = 0; i < 30; i++) {
+    manager.track(i % 2 === 0 ? 'hub' : dests[Math.floor(i / 2) % dests.length]);
+  }
+
+  assert.ok(emitted.length > 0, 'treatment group must emit high_entropy events');
+  manager.flushNow();
+});
