@@ -73,7 +73,7 @@ EdgeSignal takes the opposite approach. It is a tiny, tree-shakeable TypeScript 
 
 ### Explainable Math vs. Black-Box AI
 
-Competing intent platforms (such as Intent HQ / Intent Edge) rely on opaque neural models trained on aggregated population data. Their output is a score or segment label with no human-readable explanation of how it was produced. This creates compliance risk: if a user asks "why did you show me this offer?", the platform cannot answer in plain language.
+Competing intent platforms rely on opaque neural models trained on aggregated population data. Their output is a score or segment label with no human-readable explanation of how it was produced. This creates compliance risk: if a user asks "why did you show me this offer?", the platform cannot answer in plain language.
 
 EdgeSignal uses only **transparent, auditable algorithms**:
 
