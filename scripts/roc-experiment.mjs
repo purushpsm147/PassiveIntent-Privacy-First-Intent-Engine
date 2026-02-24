@@ -1,4 +1,11 @@
 /**
+ * Copyright (c) 2026 Purushottam <purushpsm147@yahoo.co.in>
+ * 
+ * This source code is licensed under the AGPL-3.0-only license found in the
+ * LICENSE file in the root directory of this source tree.
+ */
+
+/**
  * ROC / AUC Experiment
  * --------------------
  * Sweeps noise deltas (0.05 … 0.3) × divergence thresholds (1.0 … 6.0)
