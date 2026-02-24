@@ -13,13 +13,13 @@ EdgeSignal is **free and open-source** under AGPLv3 for open-source projects, ho
 
 ## Tiers
 
-| Tier       | Annual Fee  | Org Size / Signal                   | What Justifies It                                                       |
-| ---------- | ----------- | ----------------------------------- | ----------------------------------------------------------------------- |
-| Free       | $0          | OSS, hobby, non-commercial          | AGPLv3; community adoption flywheel                                     |
-| Indie      | $149/yr     | Solo dev, <5 employees, <$500K ARR  | 1 project, email support, no premium features                           |
-| Startup    | $599/yr     | 5–50 employees, $500K–$5M ARR       | 3 projects, 24 h SLA, future premium features                           |
-| Growth     | $1,999/yr   | 50–200 employees, $5M–$20M ARR      | Unlimited projects (1 org), 8 h SLA, indemnification                    |
-| Enterprise | Custom      | 200+ employees, CDPs, AdTech, OEM   | White-label, multi-org, dedicated support, SLA contract                 |
+| Tier       | Annual Fee  | Org Size / Signal                   | What Justifies It                                                                                        |
+| ---------- | ----------- | ----------------------------------- | -------------------------------------------------------------------------------------------------------- |
+| Free       | $0          | OSS, hobby, non-commercial          | AGPLv3, full SDK, community forum/GitHub Issues                                                          |
+| Indie      | $149/yr     | Solo dev, <5 employees, <$500K ARR  | 1 commercial project, commercial license, best-effort email support                                      |
+| Startup    | $599/yr     | 5–50 employees, $500K–$5M ARR       | 3 commercial projects, priority email (typically 2 business days), future premium features when released |
+| Growth     | $1,999/yr   | 50–200 employees, $5M–$20M ARR      | Unlimited projects (1 org), same-day best effort (IST hours), no-warranty commercial license             |
+| Enterprise | Custom      | 200+ employees, CDPs, AdTech, OEM   | Custom license terms, scoped support hours, direct async communication                                   |
 
 ## What "commercial use" means
 
