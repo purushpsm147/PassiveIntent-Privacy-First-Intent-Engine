@@ -1,4 +1,4 @@
-import { IntentManager, SerializedMarkovGraph } from '../src/intent-sdk.js';
+import { IntentManager, BloomFilter, MarkovGraph, BroadcastSync, normalizeRouteState, SerializedMarkovGraph } from '../src/intent-sdk.js';
 
 const baseline: SerializedMarkovGraph = {
   states: ['/home', '/search', '/product', '/cart', '/checkout'],
@@ -68,4 +68,15 @@ routes.addEventListener('click', (event: Event) => {
   intentManager.track(route);
 });
 
-(window as typeof window & { __intentManager?: IntentManager }).__intentManager = intentManager;
+(window as typeof window & {
+  __intentManager?: IntentManager;
+  __EdgeSignalSDK?: {
+    IntentManager: typeof IntentManager;
+    BloomFilter: typeof BloomFilter;
+    MarkovGraph: typeof MarkovGraph;
+    BroadcastSync: typeof BroadcastSync;
+    normalizeRouteState: typeof normalizeRouteState;
+  };
+}).__intentManager = intentManager;
+
+(window as any).__EdgeSignalSDK = { IntentManager, BloomFilter, MarkovGraph, BroadcastSync, normalizeRouteState };

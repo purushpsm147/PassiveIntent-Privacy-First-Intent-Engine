@@ -2,6 +2,10 @@ const clickRoute = (route: string) => {
   cy.contains('button', route).click();
 };
 
+// Named UUID constants used in Route Normalization tests for clarity
+const SAMPLE_UUID_1 = '550e8400-e29b-41d4-a716-446655440000';
+const SAMPLE_UUID_2 = '6ba7b810-9dad-41d1-80b4-00c04fd430c8';
+
 describe('Privacy-First Intent Sandbox', () => {
   beforeEach(() => {
     cy.visit('/sandbox/index.html', {
@@ -139,6 +143,12 @@ describe('Telemetry & Conversion Tracking API', () => {
 
       // Engine is not under storage pressure at this point
       expect(t.engineHealth).to.equal('healthy');
+
+      // PR 28/29: baselineStatus must be 'active' or 'drifted'
+      expect(t.baselineStatus).to.be.oneOf(['active', 'drifted']);
+
+      // PR 29: assignmentGroup must be 'treatment' or 'control'
+      expect(t.assignmentGroup).to.be.oneOf(['treatment', 'control']);
     });
   });
 
@@ -231,6 +241,332 @@ describe('Telemetry & Conversion Tracking API', () => {
         'trackConversion() must not increment transitionsEvaluated');
       expect(after.anomaliesFired).to.equal(before.anomaliesFired,
         'trackConversion() must not increment anomaliesFired');
+    });
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Deterministic Counter API (PR #29)
+// ─────────────────────────────────────────────────────────────────────────────
+describe('Deterministic Counter API', () => {
+  beforeEach(() => {
+    cy.visit('/sandbox/index.html', {
+      onBeforeLoad: (win) => {
+        win.localStorage.clear();
+      },
+    });
+  });
+
+  it('Test K: getCounter returns 0 before any increment', () => {
+    cy.window().then((win) => {
+      const mgr = (win as any).__intentManager;
+      expect(mgr.getCounter('articles_read')).to.equal(0);
+    });
+  });
+
+  it('Test L: incrementCounter starts at 1 and increments by 1 each call', () => {
+    cy.window().then((win) => {
+      const mgr = (win as any).__intentManager;
+      expect(mgr.incrementCounter('articles_read')).to.equal(1);
+      expect(mgr.incrementCounter('articles_read')).to.equal(2);
+      expect(mgr.getCounter('articles_read')).to.equal(2);
+    });
+  });
+
+  it('Test M: incrementCounter with custom by parameter', () => {
+    cy.window().then((win) => {
+      const mgr = (win as any).__intentManager;
+      expect(mgr.incrementCounter('cart_items', 3)).to.equal(3);
+      expect(mgr.incrementCounter('cart_items', 2)).to.equal(5);
+      expect(mgr.getCounter('cart_items')).to.equal(5);
+    });
+  });
+
+  it('Test N: resetCounter resets the counter to 0', () => {
+    cy.window().then((win) => {
+      const mgr = (win as any).__intentManager;
+      mgr.incrementCounter('views');
+      mgr.incrementCounter('views');
+      expect(mgr.getCounter('views')).to.equal(2);
+      mgr.resetCounter('views');
+      expect(mgr.getCounter('views')).to.equal(0);
+    });
+  });
+
+  it('Test O: multiple independent counters do not interfere with each other', () => {
+    cy.window().then((win) => {
+      const mgr = (win as any).__intentManager;
+      mgr.incrementCounter('counter_a', 5);
+      mgr.incrementCounter('counter_b', 3);
+      expect(mgr.getCounter('counter_a')).to.equal(5);
+      expect(mgr.getCounter('counter_b')).to.equal(3);
+    });
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Route Normalization (PR #29)
+// ─────────────────────────────────────────────────────────────────────────────
+describe('Route Normalization', () => {
+  beforeEach(() => {
+    cy.visit('/sandbox/index.html', {
+      onBeforeLoad: (win) => {
+        win.localStorage.clear();
+      },
+    });
+  });
+
+  it('Test P: track() strips query strings so only the path is stored', () => {
+    cy.window().then((win) => {
+      const mgr = (win as any).__intentManager;
+      const states: string[] = [];
+      mgr.on('state_change', ({ to }: { to: string }) => states.push(to));
+
+      mgr.track('/search?q=shoes');
+
+      expect(states[states.length - 1]).to.equal('/search');
+      expect(mgr.hasSeen('/search')).to.be.true;
+      expect(mgr.hasSeen('/search?q=shoes')).to.be.false;
+    });
+  });
+
+  it('Test Q: track() strips hash fragments from the URL', () => {
+    cy.window().then((win) => {
+      const mgr = (win as any).__intentManager;
+      const states: string[] = [];
+      mgr.on('state_change', ({ to }: { to: string }) => states.push(to));
+
+      mgr.track('/about#team');
+
+      expect(states[states.length - 1]).to.equal('/about');
+      expect(mgr.hasSeen('/about')).to.be.true;
+      expect(mgr.hasSeen('/about#team')).to.be.false;
+    });
+  });
+
+  it('Test R: track() removes trailing slashes (except root /)', () => {
+    cy.window().then((win) => {
+      const mgr = (win as any).__intentManager;
+      mgr.track('/checkout/');
+      expect(mgr.hasSeen('/checkout')).to.be.true;
+      expect(mgr.hasSeen('/checkout/')).to.be.false;
+    });
+  });
+
+  it('Test S: track() replaces v4 UUID path segments with :id', () => {
+    cy.window().then((win) => {
+      const mgr = (win as any).__intentManager;
+      const states: string[] = [];
+      mgr.on('state_change', ({ to }: { to: string }) => states.push(to));
+
+      mgr.track(`/users/${SAMPLE_UUID_1}/profile`);
+
+      expect(states[states.length - 1]).to.equal('/users/:id/profile');
+      expect(mgr.hasSeen('/users/:id/profile')).to.be.true;
+    });
+  });
+
+  it('Test T: two different UUIDs on the same route map to the same canonical state', () => {
+    cy.window().then((win) => {
+      const mgr = (win as any).__intentManager;
+      const states: string[] = [];
+      mgr.on('state_change', ({ to }: { to: string }) => states.push(to));
+
+      mgr.track(`/users/${SAMPLE_UUID_1}/settings`);
+      mgr.track(`/users/${SAMPLE_UUID_2}/settings`);
+
+      expect(states[0]).to.equal('/users/:id/settings');
+      expect(states[1]).to.equal('/users/:id/settings');
+      expect(mgr.hasSeen('/users/:id/settings')).to.be.true;
+    });
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Predictive Prefetch Hints (PR #31)
+// ─────────────────────────────────────────────────────────────────────────────
+describe('Predictive Prefetch Hints', () => {
+  beforeEach(() => {
+    cy.visit('/sandbox/index.html', {
+      onBeforeLoad: (win) => {
+        win.localStorage.clear();
+      },
+    });
+  });
+
+  it('Test U: predictNextStates() returns an empty array before any navigation', () => {
+    cy.window().then((win) => {
+      const mgr = (win as any).__intentManager;
+      const hints = mgr.predictNextStates(0.1);
+      expect(hints).to.deep.equal([]);
+    });
+  });
+
+  it('Test V: predictNextStates() returns candidates after repeated navigation patterns', () => {
+    cy.window().then((win) => {
+      const mgr = (win as any).__intentManager;
+      // Build enough transitions so /home → /search reaches the minimum sample threshold
+      for (let i = 0; i < 12; i++) {
+        mgr.track('/home');
+        mgr.track('/search');
+      }
+
+      const hints = mgr.predictNextStates(0.1);
+      const states = hints.map((h: { state: string; probability: number }) => h.state);
+      expect(states).to.include('/search');
+    });
+  });
+
+  it('Test W: predictNextStates() results are sorted by probability descending', () => {
+    cy.window().then((win) => {
+      const mgr = (win as any).__intentManager;
+      // /home → /search more often than /home → /product
+      for (let i = 0; i < 8; i++) {
+        mgr.track('/home');
+        mgr.track('/search');
+      }
+      for (let i = 0; i < 4; i++) {
+        mgr.track('/home');
+        mgr.track('/product');
+      }
+
+      const hints = mgr.predictNextStates(0.0);
+      for (let i = 1; i < hints.length; i++) {
+        expect(hints[i].probability).to.be.at.most(hints[i - 1].probability,
+          'hints must be sorted by probability descending');
+      }
+    });
+  });
+
+  it('Test X: predictNextStates() sanitize predicate excludes filtered states', () => {
+    cy.window().then((win) => {
+      const mgr = (win as any).__intentManager;
+      for (let i = 0; i < 12; i++) {
+        mgr.track('/home');
+        mgr.track('/search');
+      }
+
+      const hints = mgr.predictNextStates(0.1, (state: string) => state !== '/search');
+      const states = hints.map((h: { state: string; probability: number }) => h.state);
+      expect(states).not.to.include('/search');
+    });
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Baseline Drift Protection (PR #28 / #29)
+// ─────────────────────────────────────────────────────────────────────────────
+describe('Baseline Drift Protection', () => {
+  beforeEach(() => {
+    cy.visit('/sandbox/index.html', {
+      onBeforeLoad: (win) => {
+        win.localStorage.clear();
+      },
+    });
+  });
+
+  it('Test Y: getTelemetry().baselineStatus is "active" for a fresh session', () => {
+    cy.window().then((win) => {
+      const mgr = (win as any).__intentManager;
+      expect(mgr.getTelemetry().baselineStatus).to.equal('active');
+    });
+  });
+
+  it('Test Z: baselineStatus remains "active" during normal navigation', () => {
+    clickRoute('/home');
+    clickRoute('/search');
+    clickRoute('/product');
+    clickRoute('/cart');
+    clickRoute('/checkout');
+
+    cy.window().then((win) => {
+      const mgr = (win as any).__intentManager;
+      expect(mgr.getTelemetry().baselineStatus).to.equal('active');
+    });
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// A/B Holdout Assignment (PR #29)
+// ─────────────────────────────────────────────────────────────────────────────
+describe('A/B Holdout Assignment', () => {
+  beforeEach(() => {
+    cy.visit('/sandbox/index.html', {
+      onBeforeLoad: (win) => {
+        win.localStorage.clear();
+      },
+    });
+  });
+
+  it('Test AA: getTelemetry().assignmentGroup is either "treatment" or "control"', () => {
+    cy.window().then((win) => {
+      const mgr = (win as any).__intentManager;
+      const { assignmentGroup } = mgr.getTelemetry();
+      expect(assignmentGroup).to.be.oneOf(['treatment', 'control']);
+    });
+  });
+
+  it('Test AB: assignmentGroup remains stable throughout a session', () => {
+    let firstGroup: string;
+
+    cy.window().then((win) => {
+      firstGroup = (win as any).__intentManager.getTelemetry().assignmentGroup;
+    });
+
+    clickRoute('/home');
+    clickRoute('/search');
+    clickRoute('/product');
+
+    cy.window().then((win) => {
+      const currentGroup = (win as any).__intentManager.getTelemetry().assignmentGroup;
+      expect(currentGroup).to.equal(firstGroup, 'assignmentGroup must not change within a session');
+    });
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Cross-Tab Sync (PR #31)
+// ─────────────────────────────────────────────────────────────────────────────
+describe('Cross-Tab Sync (BroadcastSync)', () => {
+  beforeEach(() => {
+    cy.visit('/sandbox/index.html', {
+      onBeforeLoad: (win) => {
+        win.localStorage.clear();
+      },
+    });
+  });
+
+  it('Test AC: IntentManager with crossTabSync:true initializes and tracks correctly', () => {
+    cy.window().then((win) => {
+      const { IntentManager } = (win as any).__EdgeSignalSDK;
+      const mgr = new IntentManager({
+        storageKey: 'cross-tab-test',
+        botProtection: false,
+        crossTabSync: true,
+      });
+      mgr.track('/home');
+      mgr.track('/search');
+      expect(mgr.hasSeen('/home')).to.be.true;
+      expect(mgr.hasSeen('/search')).to.be.true;
+      expect(mgr.getTelemetry().transitionsEvaluated).to.equal(1);
+      mgr.destroy();
+    });
+  });
+
+  it('Test AD: BroadcastSync.applyRemote() updates the graph and Bloom filter', () => {
+    cy.window().then((win) => {
+      const { BloomFilter, MarkovGraph, BroadcastSync } = (win as any).__EdgeSignalSDK;
+
+      const bloom = new BloomFilter();
+      const graph = new MarkovGraph();
+      const sync = new BroadcastSync('test-channel', graph, bloom);
+
+      // applyRemote must update bloom and graph without re-broadcasting
+      sync.applyRemote('/home', '/search');
+      expect(bloom.check('/home')).to.be.true;
+      expect(bloom.check('/search')).to.be.true;
+
+      sync.close();
     });
   });
 });
