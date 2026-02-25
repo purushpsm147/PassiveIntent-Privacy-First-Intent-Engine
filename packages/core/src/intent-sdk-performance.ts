@@ -8,6 +8,11 @@
 import { IntentManager, MarkovGraph } from './intent-sdk.js';
 import { MemoryStorageAdapter } from './adapters.js';
 import type { PerformanceReport } from './performance-instrumentation.js';
+import {
+  SMOOTHING_EPSILON,
+  MIN_WINDOW_LENGTH,
+  MAX_WINDOW_LENGTH,
+} from './engine/constants.js';
 
 interface BaselineCalibration {
   mean: number;
@@ -158,24 +163,6 @@ function buildBaselineGraph(statePool: string[]): MarkovGraph {
   }
   return baselineBuilder;
 }
-
-/**
- * Smoothing epsilon used for log-likelihood calculations.
- * Must be identical between calibration and runtime.
- */
-const SMOOTHING_EPSILON = 0.01;
-
-/**
- * Minimum sliding window length for calibration sampling.
- * Matches the warm-up gate in IntentManager.evaluateTrajectory.
- */
-const MIN_WINDOW_LENGTH = 16;
-
-/**
- * Maximum sliding window length for calibration sampling.
- * Matches the recentTrajectory cap in IntentManager.
- */
-const MAX_WINDOW_LENGTH = 32;
 
 /**
  * Calibrate baseline statistics using independent samples at the reference window size.

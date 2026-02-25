@@ -2322,6 +2322,87 @@ test('incrementCounter: empty key is rejected with onError and returns 0', () =>
   manager.flushNow();
 });
 
+test('incrementCounter: NaN by is rejected with onError and returns current counter value', () => {
+  storage.clear();
+  const errors = [];
+  const manager = new IntentManager({
+    storageKey: 'counter-nan-by-test',
+    storage,
+    botProtection: false,
+    onError: (err) => errors.push(err),
+  });
+
+  manager.incrementCounter('score', 5);
+  const result = manager.incrementCounter('score', NaN);
+  assert.equal(result, 5, 'must return current counter value without incrementing');
+  assert.equal(manager.getCounter('score'), 5, 'counter must not change');
+  assert.equal(errors.length, 1);
+  assert.equal(
+    errors[0].code,
+    'VALIDATION',
+    `Expected code 'VALIDATION', got: '${errors[0].code}'`,
+  );
+  assert.ok(
+    errors[0].message.includes('finite'),
+    `Expected 'finite' in error message, got: "${errors[0].message}"`,
+  );
+  manager.flushNow();
+});
+
+test('incrementCounter: Infinity by is rejected with onError and returns current counter value', () => {
+  storage.clear();
+  const errors = [];
+  const manager = new IntentManager({
+    storageKey: 'counter-infinity-by-test',
+    storage,
+    botProtection: false,
+    onError: (err) => errors.push(err),
+  });
+
+  manager.incrementCounter('score', 3);
+  const result = manager.incrementCounter('score', Infinity);
+  assert.equal(result, 3, 'must return current counter value without incrementing');
+  assert.equal(manager.getCounter('score'), 3, 'counter must not change');
+  assert.equal(errors.length, 1);
+  assert.equal(
+    errors[0].code,
+    'VALIDATION',
+    `Expected code 'VALIDATION', got: '${errors[0].code}'`,
+  );
+  assert.ok(
+    errors[0].message.includes('finite'),
+    `Expected 'finite' in error message, got: "${errors[0].message}"`,
+  );
+  manager.flushNow();
+});
+
+test('incrementCounter: -Infinity by is rejected with onError and returns current counter value', () => {
+  storage.clear();
+  const errors = [];
+  const manager = new IntentManager({
+    storageKey: 'counter-neg-infinity-by-test',
+    storage,
+    botProtection: false,
+    onError: (err) => errors.push(err),
+  });
+
+  manager.incrementCounter('score', 7);
+  const result = manager.incrementCounter('score', -Infinity);
+  assert.equal(result, 7, 'must return current counter value without incrementing');
+  assert.equal(manager.getCounter('score'), 7, 'counter must not change');
+  assert.equal(errors.length, 1);
+  assert.equal(
+    errors[0].code,
+    'VALIDATION',
+    `Expected code 'VALIDATION', got: '${errors[0].code}'`,
+  );
+  assert.ok(
+    errors[0].message.includes('finite'),
+    `Expected 'finite' in error message, got: "${errors[0].message}"`,
+  );
+  manager.flushNow();
+});
+
 // ─── normalizeRouteState ─────────────────────────────────────────────────────
 import { normalizeRouteState } from '../dist/src/utils/route-normalizer.js';
 

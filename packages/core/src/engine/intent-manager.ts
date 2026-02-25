@@ -6,7 +6,7 @@
  */
 
 import { BenchmarkRecorder } from '../performance-instrumentation.js';
-import type { BenchmarkConfig, PerformanceReport } from '../performance-instrumentation.js';
+import type { PerformanceReport } from '../performance-instrumentation.js';
 import { BrowserStorageAdapter, BrowserTimerAdapter } from '../adapters.js';
 import type {
   AsyncStorageAdapter,
@@ -23,71 +23,20 @@ import { normalizeRouteState } from '../utils/route-normalizer.js';
 import { BroadcastSync } from '../sync/broadcast-sync.js';
 import type { SerializedMarkovGraph } from '../core/markov.js';
 import type {
-  BotDetectedPayload,
   ConversionPayload,
-  DwellTimeAnomalyPayload,
   EdgeSignalError,
   EdgeSignalTelemetry,
-  HesitationDetectedPayload,
-  HighEntropyPayload,
   IntentEventMap,
-  IntentEventName,
   IntentManagerConfig,
   MarkovGraphConfig,
-  StateChangePayload,
-  TrajectoryAnomalyPayload,
 } from '../types/events.js';
-
-const SMOOTHING_EPSILON = 0.01;
-
-/**
- * Minimum sliding window length before evaluating trajectory.
- * This "warm-up" allows the average log-likelihood to stabilize.
- */
-const MIN_WINDOW_LENGTH = 16;
-
-/**
- * Maximum sliding window length (recentTrajectory cap).
- * Used as reference for variance scaling.
- */
-const MAX_WINDOW_LENGTH = 32;
-
-/**
- * Minimum number of outgoing transitions a state must have before entropy
- * evaluation is considered statistically meaningful.
- * Higher values prevent spurious entropy triggers on small samples.
- */
-const MIN_SAMPLE_TRANSITIONS = 10;
-
-type Listener<T> = (payload: T) => void;
-
-/**
- * Tiny event emitter.
- */
-class EventEmitter<Events extends object> {
-  private listeners = new Map<keyof Events, Set<Listener<any>>>();
-
-  on<K extends keyof Events>(event: K, listener: Listener<Events[K]>): () => void {
-    const set = this.listeners.get(event) ?? new Set<Listener<Events[K]>>();
-    set.add(listener);
-    this.listeners.set(event, set as Set<Listener<any>>);
-
-    return () => {
-      set.delete(listener);
-      if (set.size === 0) this.listeners.delete(event);
-    };
-  }
-
-  emit<K extends keyof Events>(event: K, payload: Events[K]): void {
-    const set = this.listeners.get(event);
-    if (!set) return;
-    set.forEach((listener) => listener(payload));
-  }
-
-  removeAll(): void {
-    this.listeners.clear();
-  }
-}
+import {
+  SMOOTHING_EPSILON,
+  MIN_WINDOW_LENGTH,
+  MAX_WINDOW_LENGTH,
+  MIN_SAMPLE_TRANSITIONS,
+} from './constants.js';
+import { EventEmitter } from './event-emitter.js';
 
 /**
  * Persisted payload format.
