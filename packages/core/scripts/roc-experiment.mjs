@@ -1,6 +1,6 @@
 /**
  * Copyright (c) 2026 Purushottam <purushpsm147@yahoo.co.in>
- * 
+ *
  * This source code is licensed under the AGPL-3.0-only license found in the
  * LICENSE file in the root directory of this source tree.
  */
@@ -24,9 +24,15 @@ import { IntentManager, MarkovGraph } from '../dist/src/intent-sdk.js';
 
 // ── polyfills ──────────────────────────────────────────────
 class MemoryStorage {
-  constructor() { this.map = new Map(); }
-  getItem(key) { return this.map.has(key) ? this.map.get(key) : null; }
-  setItem(key, value) { this.map.set(key, value); }
+  constructor() {
+    this.map = new Map();
+  }
+  getItem(key) {
+    return this.map.has(key) ? this.map.get(key) : null;
+  }
+  setItem(key, value) {
+    this.map.set(key, value);
+  }
 }
 if (!globalThis.localStorage) globalThis.localStorage = new MemoryStorage();
 if (!globalThis.window) globalThis.window = { setTimeout, clearTimeout };
@@ -35,7 +41,9 @@ if (!globalThis.atob) globalThis.atob = (v) => Buffer.from(v, 'base64').toString
 
 // ── deterministic PRNG ────────────────────────────────────
 class SeededRng {
-  constructor(seed) { this.state = seed >>> 0; }
+  constructor(seed) {
+    this.state = seed >>> 0;
+  }
   next() {
     this.state = (this.state + 0x6d2b79f5) >>> 0;
     let t = this.state;
@@ -43,7 +51,9 @@ class SeededRng {
     t ^= t + Math.imul(t ^ (t >>> 7), t | 61);
     return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
   }
-  int(max) { return Math.floor(this.next() * max); }
+  int(max) {
+    return Math.floor(this.next() * max);
+  }
 }
 
 // ── helpers ───────────────────────────────────────────────
@@ -68,7 +78,7 @@ function buildBaselineGraph(statePool) {
 
 // ── calibration (must match runtime constants) ─────────────
 const SMOOTHING_EPSILON = 0.01;
-const MAX_WINDOW       = 32;
+const MAX_WINDOW = 32;
 
 function calibrateBaseline(baselineGraph, statePool, rng, sessions = 200) {
   const baselineEntropy = 0.2;
@@ -84,7 +94,11 @@ function calibrateBaseline(baselineGraph, statePool, rng, sessions = 200) {
     avgs.push(ll / Math.max(1, seq.length - 1));
   }
   const mean = avgs.reduce((a, b) => a + b, 0) / avgs.length;
-  const variance = avgs.reduce((a, v) => { const d = v - mean; return a + d * d; }, 0) / avgs.length;
+  const variance =
+    avgs.reduce((a, v) => {
+      const d = v - mean;
+      return a + d * d;
+    }, 0) / avgs.length;
   return { mean, std: Math.max(Math.sqrt(variance), Number.EPSILON) };
 }
 
@@ -94,14 +108,22 @@ function calibrateBaseline(baselineGraph, statePool, rng, sessions = 200) {
  * Returns { tp, fp, tn, fn }.
  */
 function runExperiment({
-  statePool, baselineGraph, calibrated,
-  noiseDelta, divergenceThreshold,
-  baselineEntropy, anomalyRate,
-  sessions, transitionsPerSession,
+  statePool,
+  baselineGraph,
+  calibrated,
+  noiseDelta,
+  divergenceThreshold,
+  baselineEntropy,
+  anomalyRate,
+  sessions,
+  transitionsPerSession,
   seed,
 }) {
   const rng = new SeededRng(seed);
-  let tp = 0, fp = 0, tn = 0, fn = 0;
+  let tp = 0,
+    fp = 0,
+    tn = 0,
+    fn = 0;
 
   const managerConfig = {
     baseline: baselineGraph.toJSON(),
@@ -114,22 +136,24 @@ function runExperiment({
     graph: {
       divergenceThreshold,
       baselineMeanLL: calibrated.mean,
-      baselineStdLL:  calibrated.std,
+      baselineStdLL: calibrated.std,
       highEntropyThreshold: 0.75,
     },
   };
 
   for (let s = 0; s < sessions; s++) {
     const isAnomaly = rng.next() < anomalyRate;
-    const sessionEntropy = isAnomaly
-      ? clamp(baselineEntropy + noiseDelta, 0, 1)
-      : baselineEntropy;
+    const sessionEntropy = isAnomaly ? clamp(baselineEntropy + noiseDelta, 0, 1) : baselineEntropy;
 
     const manager = new IntentManager(managerConfig);
     let triggered = false;
 
-    const offDiv = manager.on('trajectory_anomaly', () => { triggered = true; });
-    const offEnt = manager.on('high_entropy',       () => { triggered = true; });
+    const offDiv = manager.on('trajectory_anomaly', () => {
+      triggered = true;
+    });
+    const offEnt = manager.on('high_entropy', () => {
+      triggered = true;
+    });
 
     let cur = rng.int(statePool.length);
     for (let t = 0; t < transitionsPerSession; t++) {
@@ -139,7 +163,7 @@ function runExperiment({
     offDiv();
     offEnt();
 
-    if (triggered && isAnomaly)  tp++;
+    if (triggered && isAnomaly) tp++;
     else if (triggered && !isAnomaly) fp++;
     else if (!triggered && isAnomaly) fn++;
     else tn++;
@@ -211,11 +235,17 @@ function plotROC(curves, width = 60, height = 24) {
     lines.push(label + grid[y].join(''));
   }
   lines.push(' 0.0 ' + grid[height].join(''));
-  lines.push('     0.0' + ' '.repeat(Math.round(width / 2) - 4) + '0.5' + ' '.repeat(width - Math.round(width / 2) - 3) + '1.0');
+  lines.push(
+    '     0.0' +
+      ' '.repeat(Math.round(width / 2) - 4) +
+      '0.5' +
+      ' '.repeat(width - Math.round(width / 2) - 3) +
+      '1.0',
+  );
   lines.push('     ' + ' '.repeat(Math.round(width / 2) - 2) + 'FPR');
   lines.push('');
   lines.push('  Legend:');
-  legend.forEach(l => lines.push(l));
+  legend.forEach((l) => lines.push(l));
 
   return lines.join('\n');
 }
@@ -224,20 +254,20 @@ function plotROC(curves, width = 60, height = 24) {
 //  MAIN EXPERIMENT
 // ══════════════════════════════════════════════════════════
 
-const STATE_SPACE       = 50;
-const BASELINE_ENTROPY  = 0.2;
-const SESSIONS          = 200;      // per (noiseDelta, threshold) pair
-const TRANSITIONS       = 64;
-const ANOMALY_RATE      = 0.5;      // 50/50 split for proper ROC
-const MASTER_SEED       = 77777;
+const STATE_SPACE = 50;
+const BASELINE_ENTROPY = 0.2;
+const SESSIONS = 200; // per (noiseDelta, threshold) pair
+const TRANSITIONS = 64;
+const ANOMALY_RATE = 0.5; // 50/50 split for proper ROC
+const MASTER_SEED = 77777;
 
-const NOISE_DELTAS      = [0.05, 0.10, 0.15, 0.20, 0.30];
-const THRESHOLDS        = [1.0, 1.5, 2.0, 2.5, 3.0, 3.5, 4.0, 4.5, 5.0, 5.5, 6.0];
+const NOISE_DELTAS = [0.05, 0.1, 0.15, 0.2, 0.3];
+const THRESHOLDS = [1.0, 1.5, 2.0, 2.5, 3.0, 3.5, 4.0, 4.5, 5.0, 5.5, 6.0];
 
-const statePool     = createStatePool(STATE_SPACE);
+const statePool = createStatePool(STATE_SPACE);
 const baselineGraph = buildBaselineGraph(statePool);
-const calRng        = new SeededRng(MASTER_SEED ^ 0xa5a5a5a5);
-const calibrated    = calibrateBaseline(baselineGraph, statePool, calRng);
+const calRng = new SeededRng(MASTER_SEED ^ 0xa5a5a5a5);
+const calibrated = calibrateBaseline(baselineGraph, statePool, calRng);
 
 console.log('═══════════════════════════════════════════════════════════');
 console.log('  ROC / AUC Experiment — EdgeSignal');
@@ -253,19 +283,23 @@ console.log(`  Thresholds:    ${THRESHOLDS.join(', ')}`);
 console.log('═══════════════════════════════════════════════════════════\n');
 
 const allResults = {};
-const rocCurves  = [];
+const rocCurves = [];
 
 for (const delta of NOISE_DELTAS) {
   const anomalyEntropy = clamp(BASELINE_ENTROPY + delta, 0, 1);
   const points = [];
 
-  console.log(`──── Noise Δ = ${delta.toFixed(2)}  (anomaly entropy = ${anomalyEntropy.toFixed(2)}) ────`);
+  console.log(
+    `──── Noise Δ = ${delta.toFixed(2)}  (anomaly entropy = ${anomalyEntropy.toFixed(2)}) ────`,
+  );
   console.log('  Threshold │   TPR   │   FPR   │  Prec   │   F1');
   console.log('  ──────────┼─────────┼─────────┼─────────┼────────');
 
   for (const thr of THRESHOLDS) {
     const { tp, fp, tn, fn } = runExperiment({
-      statePool, baselineGraph, calibrated,
+      statePool,
+      baselineGraph,
+      calibrated,
       noiseDelta: delta,
       divergenceThreshold: thr,
       baselineEntropy: BASELINE_ENTROPY,
@@ -278,16 +312,16 @@ for (const delta of NOISE_DELTAS) {
     const tpr = tp + fn > 0 ? tp / (tp + fn) : 0;
     const fpr = fp + tn > 0 ? fp / (fp + tn) : 0;
     const prec = tp + fp > 0 ? tp / (tp + fp) : 0;
-    const f1   = prec + tpr > 0 ? (2 * prec * tpr) / (prec + tpr) : 0;
+    const f1 = prec + tpr > 0 ? (2 * prec * tpr) / (prec + tpr) : 0;
 
     points.push({ threshold: thr, tpr, fpr, prec, f1, tp, fp, tn, fn });
 
     console.log(
-      `    ${thr.toFixed(1).padStart(5)}   │ ${tpr.toFixed(4)} │ ${fpr.toFixed(4)} │ ${prec.toFixed(4)} │ ${f1.toFixed(4)}`
+      `    ${thr.toFixed(1).padStart(5)}   │ ${tpr.toFixed(4)} │ ${fpr.toFixed(4)} │ ${prec.toFixed(4)} │ ${f1.toFixed(4)}`,
     );
   }
 
-  const roc = computeROC(points.map(p => ({ fpr: p.fpr, tpr: p.tpr })));
+  const roc = computeROC(points.map((p) => ({ fpr: p.fpr, tpr: p.tpr })));
   const auc = computeAUC(roc);
 
   console.log(`  AUC = ${auc.toFixed(4)}\n`);
@@ -313,17 +347,17 @@ for (const delta of NOISE_DELTAS) {
   const r = allResults[`delta_${delta}`];
   let verdict;
   if (r.auc >= 0.95) verdict = '✓ Excellent';
-  else if (r.auc >= 0.90) verdict = '~ Good';
-  else if (r.auc >= 0.80) verdict = '△ Acceptable';
+  else if (r.auc >= 0.9) verdict = '~ Good';
+  else if (r.auc >= 0.8) verdict = '△ Acceptable';
   else verdict = '✗ Needs improvement';
 
   console.log(
-    `   ${delta.toFixed(2)}   │   ${r.anomalyEntropy.toFixed(2)}    │ ${r.auc.toFixed(4)} │ ${verdict}`
+    `   ${delta.toFixed(2)}   │   ${r.anomalyEntropy.toFixed(2)}    │ ${r.auc.toFixed(4)} │ ${verdict}`,
   );
 }
 
 // ── overall assessment ─────────────────────────────────────
-const aucs = NOISE_DELTAS.map(d => allResults[`delta_${d}`].auc);
+const aucs = NOISE_DELTAS.map((d) => allResults[`delta_${d}`].auc);
 const minAUC = Math.min(...aucs);
 const maxAUC = Math.max(...aucs);
 
@@ -355,7 +389,7 @@ console.log('');
 if (minAUC >= 0.95) {
   console.log('  Overall: All AUC ≥ 0.95. Engine is performing well.');
   console.log('  → No immediate model changes needed.');
-} else if (minAUC >= 0.80) {
+} else if (minAUC >= 0.8) {
   console.log(`  Overall: Min AUC = ${minAUC.toFixed(4)}. Acceptable but room for improvement.`);
   console.log('  → Consider: sliding-window recalibration, confirmation counter.');
 } else {
@@ -382,12 +416,12 @@ const output = {
     calibration: calibrated,
   },
   results: Object.fromEntries(
-    NOISE_DELTAS.map(d => [
+    NOISE_DELTAS.map((d) => [
       `delta_${d}`,
       { ...allResults[`delta_${d}`], roc: undefined, points: allResults[`delta_${d}`].points },
-    ])
+    ]),
   ),
-  aucs: Object.fromEntries(NOISE_DELTAS.map(d => [d, allResults[`delta_${d}`].auc])),
+  aucs: Object.fromEntries(NOISE_DELTAS.map((d) => [d, allResults[`delta_${d}`].auc])),
 };
 fs.writeFileSync(outputPath, JSON.stringify(output, null, 2) + '\n');
 console.log(`Results saved to ${outputPath}`);

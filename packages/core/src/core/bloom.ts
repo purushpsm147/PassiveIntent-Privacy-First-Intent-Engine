@@ -1,6 +1,6 @@
 /**
  * Copyright (c) 2026 Purushottam <purushpsm147@yahoo.co.in>
- * 
+ *
  * This source code is licensed under the AGPL-3.0-only license found in the
  * LICENSE file in the root directory of this source tree.
  */
@@ -24,12 +24,7 @@ function fnv1a(input: string, seed = 0x811c9dc5): number {
   let hash = seed >>> 0;
   for (let i = 0; i < input.length; i += 1) {
     hash ^= input.charCodeAt(i);
-    hash +=
-      (hash << 1) +
-      (hash << 4) +
-      (hash << 7) +
-      (hash << 8) +
-      (hash << 24);
+    hash += (hash << 1) + (hash << 4) + (hash << 7) + (hash << 8) + (hash << 24);
   }
   return hash >>> 0;
 }
@@ -61,9 +56,8 @@ export class BloomFilter {
     this.hashCount = config.hashCount ?? 4;
 
     const byteSize = Math.ceil(this.bitSize / 8);
-    this.bits = existingBits && existingBits.length === byteSize
-      ? existingBits
-      : new Uint8Array(byteSize);
+    this.bits =
+      existingBits && existingBits.length === byteSize ? existingBits : new Uint8Array(byteSize);
   }
 
   add(item: string): void {

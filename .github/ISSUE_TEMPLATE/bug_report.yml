@@ -1,6 +1,6 @@
 name: Bug Report
 description: Something isn't working as expected
-labels: ["bug", "needs-triage"]
+labels: ['bug', 'needs-triage']
 body:
   - type: markdown
     attributes:
@@ -12,7 +12,7 @@ body:
     attributes:
       label: SDK Version
       description: Run `npm list edge-signal` or check your `package.json` to find the version.
-      placeholder: "e.g. 1.2.3"
+      placeholder: 'e.g. 1.2.3'
     validations:
       required: true
 
@@ -21,7 +21,7 @@ body:
     attributes:
       label: Browser & Version
       description: Include the full browser name and version. You can find this at `chrome://version`, `about:version`, etc.
-      placeholder: "e.g. Chrome 121.0.6167.184 / Firefox 123.0 / Safari 17.3"
+      placeholder: 'e.g. Chrome 121.0.6167.184 / Firefox 123.0 / Safari 17.3'
     validations:
       required: true
 
@@ -29,7 +29,7 @@ body:
     id: os
     attributes:
       label: Operating System
-      placeholder: "e.g. Windows 11, macOS 14.3, Ubuntu 22.04"
+      placeholder: 'e.g. Windows 11, macOS 14.3, Ubuntu 22.04'
     validations:
       required: true
 
@@ -38,7 +38,7 @@ body:
     attributes:
       label: Node.js Version (if applicable)
       description: Run `node --version`. Only relevant if you are using the SDK server-side.
-      placeholder: "e.g. 20.11.0"
+      placeholder: 'e.g. 20.11.0'
     validations:
       required: false
 

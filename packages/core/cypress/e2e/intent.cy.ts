@@ -1,6 +1,6 @@
 /**
  * Copyright (c) 2026 Purushottam <purushpsm147@yahoo.co.in>
- * 
+ *
  * This source code is licensed under the AGPL-3.0-only license found in the
  * LICENSE file in the root directory of this source tree.
  */
@@ -18,7 +18,7 @@ describe('Privacy-First Intent Sandbox', () => {
     cy.visit('/sandbox/index.html', {
       onBeforeLoad: (win) => {
         win.localStorage.clear();
-      }
+      },
     });
   });
 
@@ -197,7 +197,10 @@ describe('Telemetry & Conversion Tracking API', () => {
 
     cy.window().then((win) => {
       const currentId = (win as any).__intentManager.getTelemetry().sessionId;
-      expect(currentId).to.equal(firstId, 'sessionId must stay the same throughout a single page lifecycle');
+      expect(currentId).to.equal(
+        firstId,
+        'sessionId must stay the same throughout a single page lifecycle',
+      );
     });
 
     // Reload the page — a new IntentManager is constructed, so sessionId must differ
@@ -244,10 +247,14 @@ describe('Telemetry & Conversion Tracking API', () => {
       mgr.trackConversion({ type: 'test-event-2' });
 
       const after = mgr.getTelemetry();
-      expect(after.transitionsEvaluated).to.equal(before.transitionsEvaluated,
-        'trackConversion() must not increment transitionsEvaluated');
-      expect(after.anomaliesFired).to.equal(before.anomaliesFired,
-        'trackConversion() must not increment anomaliesFired');
+      expect(after.transitionsEvaluated).to.equal(
+        before.transitionsEvaluated,
+        'trackConversion() must not increment transitionsEvaluated',
+      );
+      expect(after.anomaliesFired).to.equal(
+        before.anomaliesFired,
+        'trackConversion() must not increment anomaliesFired',
+      );
     });
   });
 });
@@ -440,8 +447,10 @@ describe('Predictive Prefetch Hints', () => {
 
       const hints = mgr.predictNextStates(0.0);
       for (let i = 1; i < hints.length; i++) {
-        expect(hints[i].probability).to.be.at.most(hints[i - 1].probability,
-          'hints must be sorted by probability descending');
+        expect(hints[i].probability).to.be.at.most(
+          hints[i - 1].probability,
+          'hints must be sorted by probability descending',
+        );
       }
     });
   });
@@ -626,8 +635,13 @@ describe('Cross-Tab Sync (BroadcastSync)', () => {
 
     cy.window().then((win) => {
       const received: any[] = (win as any).__testReceivedAF;
-      const counterMsgs = received.filter((m: any) => m.type === 'counter' && m.key === 'articles_read');
-      expect(counterMsgs).to.have.length(2, 'exactly 2 counter messages must be broadcast (one per incrementCounter call)');
+      const counterMsgs = received.filter(
+        (m: any) => m.type === 'counter' && m.key === 'articles_read',
+      );
+      expect(counterMsgs).to.have.length(
+        2,
+        'exactly 2 counter messages must be broadcast (one per incrementCounter call)',
+      );
       const total = counterMsgs.reduce((sum: number, m: any) => sum + m.by, 0);
       expect(total).to.equal(5, 'broadcast increments must sum to 5 (1 + 4)');
 
@@ -658,8 +672,10 @@ describe('Cross-Tab Sync (BroadcastSync)', () => {
     cy.wait(150);
 
     cy.window().then((win) => {
-      expect((win as any).__testMgrAG.getCounter('articles_read')).to.equal(7,
-        'getCounter() must reflect the remotely-broadcast increment');
+      expect((win as any).__testMgrAG.getCounter('articles_read')).to.equal(
+        7,
+        'getCounter() must reflect the remotely-broadcast increment',
+      );
       (win as any).__testSenderAG.close();
       (win as any).__testMgrAG.destroy();
     });

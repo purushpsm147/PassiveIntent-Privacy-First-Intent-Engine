@@ -1,13 +1,13 @@
 /**
  * Copyright (c) 2026 Purushottam <purushpsm147@yahoo.co.in>
- * 
+ *
  * This source code is licensed under the AGPL-3.0-only license found in the
  * LICENSE file in the root directory of this source tree.
  */
 
 /**
  * Amazon Clone E2E Tests
- * 
+ *
  * These tests verify the EdgeSignal SDK functionality
  * in a realistic e-commerce shopping context.
  */
@@ -17,7 +17,7 @@ describe('Amazon Clone - Intent Engine Integration', () => {
     cy.visit('/sandbox/amazon/index.html', {
       onBeforeLoad: (win) => {
         win.localStorage.clear();
-      }
+      },
     });
   });
 
@@ -56,28 +56,28 @@ describe('Amazon Clone - Intent Engine Integration', () => {
       // Home -> Search
       cy.get('[data-cy="search-btn"]').click();
       cy.get('[data-cy="view-search"]').should('be.visible');
-      
+
       // Search -> Product
       cy.get('[data-cy="search-result-1"]').click();
       cy.get('[data-cy="view-product"]').should('be.visible');
-      
+
       // Add to cart
       cy.get('[data-cy="btn-add-cart"]').click();
       cy.get('[data-cy="cart-add-toast"]').should('be.visible');
       cy.get('[data-cy="cart-count"]').should('contain', '1');
-      
+
       // Go to cart
       cy.get('[data-cy="nav-cart"]').click();
       cy.get('[data-cy="view-cart"]').should('be.visible');
-      
+
       // Proceed to checkout
       cy.get('[data-cy="btn-proceed-checkout"]').click();
       cy.get('[data-cy="view-checkout"]').should('be.visible');
-      
+
       // Place order
       cy.get('[data-cy="btn-place-order"]').click();
       cy.get('[data-cy="view-order-confirmation"]').should('be.visible');
-      
+
       // No anomaly toasts should appear
       cy.get('[data-cy="entropy-toast"]').should('not.exist');
       cy.get('[data-cy="anomaly-toast"]').should('not.exist');
@@ -89,7 +89,7 @@ describe('Amazon Clone - Intent Engine Integration', () => {
       // A simple back-and-forth pattern between two states has low entropy (predictable),
       // so the engine should NOT fire high_entropy even after many transitions.
       cy.get('[data-cy="view-home"]').should('be.visible');
-      
+
       // Extended rapid navigation back and forth (simulating confusion/frustration)
       for (let i = 0; i < 3; i++) {
         cy.get('[data-cy="nav-customer-service"]').click();
@@ -97,12 +97,14 @@ describe('Amazon Clone - Intent Engine Integration', () => {
         cy.get('[data-cy="footer-help"]').click();
         cy.get('[data-cy="logo"]').click();
       }
-      
+
       // Verify all transitions are being counted
-      cy.get('[data-cy="debug-transitions"]').invoke('text').then((text) => {
-        expect(parseInt(text)).to.be.greaterThan(12);
-      });
-      
+      cy.get('[data-cy="debug-transitions"]')
+        .invoke('text')
+        .then((text) => {
+          expect(parseInt(text)).to.be.greaterThan(12);
+        });
+
       // A predictable back-and-forth pattern must not trigger a false-positive entropy alert
       cy.get('[data-cy="entropy-toast"]').should('not.exist');
     });
@@ -111,21 +113,23 @@ describe('Amazon Clone - Intent Engine Integration', () => {
       // This test verifies the navigation works correctly even with rapid transitions
       cy.get('[data-cy="category-gaming"]').click();
       cy.get('[data-cy="view-search"]').should('be.visible');
-      
+
       cy.get('[data-cy="logo"]').click();
       cy.get('[data-cy="view-home"]').should('be.visible');
-      
+
       cy.get('[data-cy="category-deals"]').click();
       cy.get('[data-cy="view-search"]').should('be.visible');
-      
+
       cy.get('[data-cy="logo"]').click();
       cy.get('[data-cy="category-toys"]').click();
       cy.get('[data-cy="view-search"]').should('be.visible');
-      
+
       // Verify debug panel shows transitions
-      cy.get('[data-cy="debug-transitions"]').invoke('text').then((text) => {
-        expect(parseInt(text)).to.be.greaterThan(4);
-      });
+      cy.get('[data-cy="debug-transitions"]')
+        .invoke('text')
+        .then((text) => {
+          expect(parseInt(text)).to.be.greaterThan(4);
+        });
     });
 
     it('should fire the entropy toast when a user scatters navigation across many destinations from home', () => {
@@ -159,29 +163,29 @@ describe('Amazon Clone - Intent Engine Integration', () => {
       // Start normal shopping flow
       cy.get('[data-cy="product-card-1"]').click();
       cy.get('[data-cy="view-product"]').should('be.visible');
-      
+
       cy.get('[data-cy="btn-add-cart"]').click();
       cy.get('[data-cy="nav-cart"]').click();
       cy.get('[data-cy="view-cart"]').should('be.visible');
-      
+
       // Hesitate - go back to product multiple times
       cy.get('[data-cy="cart-item-1"] .cart-item-title').click();
       cy.get('[data-cy="view-product"]').should('be.visible');
-      
+
       cy.get('[data-cy="nav-cart"]').click();
       cy.get('[data-cy="view-cart"]').should('be.visible');
-      
+
       // Go to help from navbar
       cy.get('[data-cy="nav-customer-service"]').click();
       cy.get('[data-cy="view-help"]').should('be.visible');
-      
+
       cy.get('[data-cy="nav-cart"]').click();
       cy.get('[data-cy="view-cart"]').should('be.visible');
-      
+
       // More hesitation
       cy.get('[data-cy="nav-customer-service"]').click();
       cy.get('[data-cy="view-help"]').should('be.visible');
-      
+
       cy.get('[data-cy="nav-cart"]').click();
       cy.get('[data-cy="view-cart"]').should('be.visible');
 
@@ -189,16 +193,18 @@ describe('Amazon Clone - Intent Engine Integration', () => {
       for (let i = 0; i < 10; i++) {
         cy.get('[data-cy="nav-customer-service"]').click();
         cy.get('[data-cy="view-help"]').should('be.visible');
-        
+
         cy.get('[data-cy="nav-cart"]').click();
         cy.get('[data-cy="view-cart"]').should('be.visible');
       }
-      
+
       // Check for anomaly toast or confirm transitions tracked
-      cy.get('[data-cy="debug-transitions"]').invoke('text').then((text) => {
-        expect(parseInt(text)).to.be.greaterThan(7);
-      });
-      
+      cy.get('[data-cy="debug-transitions"]')
+        .invoke('text')
+        .then((text) => {
+          expect(parseInt(text)).to.be.greaterThan(7);
+        });
+
       // Verify that the anomaly toast appears
       cy.get('[data-cy="anomaly-toast"]').should('be.visible');
     });
@@ -207,37 +213,39 @@ describe('Amazon Clone - Intent Engine Integration', () => {
       // Browse product, leave, come back (indecision pattern)
       cy.get('[data-cy="product-card-1"]').click();
       cy.get('[data-cy="view-product"]').should('be.visible');
-      
+
       cy.get('[data-cy="logo"]').click();
       cy.get('[data-cy="view-home"]').should('be.visible');
-      
+
       cy.get('[data-cy="product-card-1"]').click();
       cy.get('[data-cy="view-product"]').should('be.visible');
-      
-      cy.get('[data-cy="search-btn"]').click();       
+
+      cy.get('[data-cy="search-btn"]').click();
       cy.get('[data-cy="view-search"]').should('be.visible');
-      
+
       cy.get('[data-cy="search-result-1"]').click();
       cy.get('[data-cy="view-product"]').should('be.visible');
-      
+
       cy.get('[data-cy="nav-customer-service"]').click();
       cy.get('[data-cy="view-help"]').should('be.visible');
-      
+
       // Verify states are being tracked
-      cy.get('[data-cy="debug-states"]').invoke('text').then((text) => {
-        expect(parseInt(text)).to.be.greaterThan(2);
-      });
+      cy.get('[data-cy="debug-states"]')
+        .invoke('text')
+        .then((text) => {
+          expect(parseInt(text)).to.be.greaterThan(2);
+        });
     });
   });
 
   describe('Cart Functionality', () => {
     it('should increment cart count when adding items', () => {
       cy.get('[data-cy="cart-count"]').should('contain', '0');
-      
+
       cy.get('[data-cy="product-card-1"]').click();
       cy.get('[data-cy="btn-add-cart"]').click();
       cy.get('[data-cy="cart-count"]').should('contain', '1');
-      
+
       cy.get('[data-cy="btn-add-cart"]').click();
       cy.get('[data-cy="cart-count"]').should('contain', '2');
     });
@@ -245,10 +253,8 @@ describe('Amazon Clone - Intent Engine Integration', () => {
     it('should show add to cart toast confirmation', () => {
       cy.get('[data-cy="product-card-2"]').click();
       cy.get('[data-cy="btn-add-cart"]').click();
-      
-      cy.get('[data-cy="cart-add-toast"]')
-        .should('be.visible')
-        .and('contain', 'Added to cart');
+
+      cy.get('[data-cy="cart-add-toast"]').should('be.visible').and('contain', 'Added to cart');
     });
   });
 
@@ -260,15 +266,15 @@ describe('Amazon Clone - Intent Engine Integration', () => {
       cy.get('[data-cy="btn-add-cart"]').click();
       cy.get('[data-cy="nav-cart"]').click();
       cy.get('[data-cy="btn-proceed-checkout"]').click();
-      
+
       // Wait for debounced persistence
       cy.wait(700);
-      
+
       // Verify localStorage was written
       cy.window().then((win) => {
         const payload = win.localStorage.getItem('amazon-intent-demo');
         expect(payload).to.be.a('string');
-        
+
         const parsed = JSON.parse(payload as string);
         expect(parsed).to.have.property('bloomBase64');
         // The engine uses graphBinary for compact storage
@@ -278,26 +284,26 @@ describe('Amazon Clone - Intent Engine Integration', () => {
 
     it('should track correct number of transitions in debug panel', () => {
       cy.get('[data-cy="debug-transitions"]').should('contain', '1'); // Initial /home
-      
+
       cy.get('[data-cy="search-btn"]').click();
       cy.get('[data-cy="debug-transitions"]').should('contain', '2');
-      
+
       cy.get('[data-cy="search-result-1"]').click();
       cy.get('[data-cy="debug-transitions"]').should('contain', '3');
-      
+
       cy.get('[data-cy="nav-cart"]').click();
       cy.get('[data-cy="debug-transitions"]').should('contain', '4');
     });
 
     it('should track unique states visited', () => {
       cy.get('[data-cy="debug-states"]').should('contain', '1'); // /home
-      
+
       cy.get('[data-cy="search-btn"]').click();
       cy.get('[data-cy="debug-states"]').should('contain', '2'); // + /search
-      
+
       cy.get('[data-cy="search-result-1"]').click();
       cy.get('[data-cy="debug-states"]').should('contain', '3'); // + /product
-      
+
       // Revisiting doesn't increase count
       cy.get('[data-cy="logo"]').click();
       cy.get('[data-cy="debug-states"]').should('contain', '3');
@@ -360,7 +366,7 @@ describe('Amazon Clone - Intent Engine Integration', () => {
 
     it('should display product details correctly', () => {
       cy.get('[data-cy="product-card-1"]').click();
-      
+
       cy.get('[data-cy="product-title"]').should('be.visible');
       cy.get('[data-cy="btn-add-cart"]').should('be.visible');
       cy.get('[data-cy="btn-buy-now"]').should('be.visible');
@@ -370,7 +376,7 @@ describe('Amazon Clone - Intent Engine Integration', () => {
     it('should display checkout form correctly', () => {
       cy.get('[data-cy="product-card-1"]').click();
       cy.get('[data-cy="btn-buy-now"]').click();
-      
+
       cy.get('[data-cy="checkout-name"]').should('be.visible');
       cy.get('[data-cy="checkout-address"]').should('be.visible');
       cy.get('[data-cy="checkout-city"]').should('be.visible');
@@ -383,7 +389,7 @@ describe('Amazon Clone - Intent Engine Integration', () => {
     it('should allow filling checkout form fields', () => {
       cy.get('[data-cy="product-card-1"]').click();
       cy.get('[data-cy="btn-buy-now"]').click();
-      
+
       cy.get('[data-cy="checkout-name"]').type('John Doe');
       cy.get('[data-cy="checkout-address"]').type('123 Main St');
       cy.get('[data-cy="checkout-city"]').type('New York');
@@ -392,7 +398,7 @@ describe('Amazon Clone - Intent Engine Integration', () => {
       cy.get('[data-cy="checkout-card"]').type('4111111111111111');
       cy.get('[data-cy="checkout-expiry"]').type('12/28');
       cy.get('[data-cy="checkout-cvv"]').type('123');
-      
+
       // All fields should have values
       cy.get('[data-cy="checkout-name"]').should('have.value', 'John Doe');
       cy.get('[data-cy="checkout-zip"]').should('have.value', '10001');
@@ -403,7 +409,7 @@ describe('Amazon Clone - Intent Engine Integration', () => {
     it('should navigate to home when clicking back to top', () => {
       cy.get('[data-cy="nav-customer-service"]').click();
       cy.get('[data-cy="view-help"]').should('be.visible');
-      
+
       cy.get('[data-cy="footer-back-top"]').click();
       cy.get('[data-cy="view-home"]').should('be.visible');
     });
@@ -422,7 +428,7 @@ describe('Amazon Clone - Intent Engine Integration', () => {
 
     it('should display search results with proper elements', () => {
       cy.get('[data-cy="search-btn"]').click();
-      
+
       cy.get('.search-results-header').should('be.visible');
       cy.get('.search-result-item').should('have.length.at.least', 4);
       cy.get('.search-result-title').first().should('be.visible');
@@ -434,7 +440,7 @@ describe('Amazon Clone - Intent Engine Integration', () => {
   describe('Help Center', () => {
     it('should display help topics correctly', () => {
       cy.get('[data-cy="nav-customer-service"]').click();
-      
+
       cy.get('[data-cy="help-orders"]').should('be.visible');
       cy.get('[data-cy="help-returns"]').should('be.visible');
       cy.get('[data-cy="help-shipping"]').should('be.visible');
@@ -461,11 +467,11 @@ describe('Amazon Clone - Intent Engine Integration', () => {
     it('should expose __navigate function for programmatic navigation', () => {
       cy.window().then((win) => {
         expect((win as any).__navigate).to.be.a('function');
-        
+
         // Test programmatic navigation
         (win as any).__navigate('/checkout');
       });
-      
+
       cy.get('[data-cy="view-checkout"]').should('be.visible');
     });
   });

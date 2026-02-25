@@ -1,6 +1,6 @@
 /**
  * Copyright (c) 2026 Purushottam <purushpsm147@yahoo.co.in>
- * 
+ *
  * This source code is licensed under the AGPL-3.0-only license found in the
  * LICENSE file in the root directory of this source tree.
  */
@@ -8,7 +8,12 @@
 import { BenchmarkRecorder } from '../performance-instrumentation.js';
 import type { BenchmarkConfig, PerformanceReport } from '../performance-instrumentation.js';
 import { BrowserStorageAdapter, BrowserTimerAdapter } from '../adapters.js';
-import type { AsyncStorageAdapter, StorageAdapter, TimerAdapter, TimerHandle } from '../adapters.js';
+import type {
+  AsyncStorageAdapter,
+  StorageAdapter,
+  TimerAdapter,
+  TimerHandle,
+} from '../adapters.js';
 import { base64ToUint8, uint8ToBase64 } from '../persistence/codec.js';
 import { BloomFilter } from '../core/bloom.js';
 import { MarkovGraph } from '../core/markov.js';
@@ -195,7 +200,10 @@ export class IntentManager {
   private driftWindowAnomalyCount = 0;
 
   /** Timestamp of the last emission per cooldown-gated event type */
-  private lastEmittedAt: Record<'high_entropy' | 'trajectory_anomaly' | 'dwell_time_anomaly', number> = {
+  private lastEmittedAt: Record<
+    'high_entropy' | 'trajectory_anomaly' | 'dwell_time_anomaly',
+    number
+  > = {
     high_entropy: -Infinity,
     trajectory_anomaly: -Infinity,
     dwell_time_anomaly: -Infinity,
@@ -291,9 +299,10 @@ export class IntentManager {
     // Node ≥ 19 (unflagged). Node 14.17–18 exposed randomUUID() only via the
     // built-in 'crypto' module (require('crypto')), NOT as a global, so those
     // runtimes will correctly fall back to the Math.random path below.
-    this.sessionId = (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function')
-      ? crypto.randomUUID()
-      : Math.random().toString(36).slice(2) + Math.random().toString(36).slice(2);
+    this.sessionId =
+      typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function'
+        ? crypto.randomUUID()
+        : Math.random().toString(36).slice(2) + Math.random().toString(36).slice(2);
 
     // A/B holdout assignment: randomly place the session in 'control' or 'treatment'
     // based on holdoutConfig.percentage (0–100 chance of being control).
@@ -321,9 +330,15 @@ export class IntentManager {
     // Cross-tab synchronization — only initialized when explicitly opted in.
     // The channel name is derived from storageKey so that multiple independent
     // IntentManager instances (different storageKeys) never share messages.
-    this.broadcastSync = (config.crossTabSync === true)
-      ? new BroadcastSync(`edgesignal-sync:${this.storageKey}`, this.graph, this.bloom, this.counters)
-      : null;
+    this.broadcastSync =
+      config.crossTabSync === true
+        ? new BroadcastSync(
+            `edgesignal-sync:${this.storageKey}`,
+            this.graph,
+            this.bloom,
+            this.counters,
+          )
+        : null;
 
     this.trackStages = [
       this.runBotProtectionStage,
@@ -415,7 +430,9 @@ export class IntentManager {
     const preloadBridge: StorageAdapter = {
       // getItem is invoked exactly once — by restore() in the constructor.
       getItem: () => raw,
-      setItem: () => { /* writes handled async in persist() */ },
+      setItem: () => {
+        /* writes handled async in persist() */
+      },
     };
     const { storage: _omit, ...restConfig } = config;
     return new IntentManager({ ...restConfig, storage: preloadBridge });
@@ -720,7 +737,9 @@ export class IntentManager {
   incrementCounter(key: string, by = 1): number {
     if (key === '') {
       if (this.onError) {
-        this.onError(new Error('IntentManager.incrementCounter(): key must not be an empty string'));
+        this.onError(
+          new Error('IntentManager.incrementCounter(): key must not be an empty string'),
+        );
       }
       return 0;
     }
@@ -797,7 +816,10 @@ export class IntentManager {
 
     if (normalizedEntropy >= this.graph.highEntropyThreshold) {
       const now = this.timer.now();
-      if (this.eventCooldownMs <= 0 || now - this.lastEmittedAt.high_entropy >= this.eventCooldownMs) {
+      if (
+        this.eventCooldownMs <= 0 ||
+        now - this.lastEmittedAt.high_entropy >= this.eventCooldownMs
+      ) {
         this.lastEmittedAt.high_entropy = now;
         this.anomaliesFired += 1;
         if (this.assignmentGroup !== 'control') {
@@ -859,11 +881,11 @@ export class IntentManager {
     const threshold = -Math.abs(this.graph.divergenceThreshold);
 
     const hasCalibratedBaseline =
-      typeof this.graph.baselineMeanLL === 'number'
-      && typeof this.graph.baselineStdLL === 'number'
-      && Number.isFinite(this.graph.baselineMeanLL)
-      && Number.isFinite(this.graph.baselineStdLL)
-      && this.graph.baselineStdLL > 0;
+      typeof this.graph.baselineMeanLL === 'number' &&
+      typeof this.graph.baselineStdLL === 'number' &&
+      Number.isFinite(this.graph.baselineMeanLL) &&
+      Number.isFinite(this.graph.baselineStdLL) &&
+      this.graph.baselineStdLL > 0;
 
     // Dynamic variance scaling: std of an average scales by 1/sqrt(N).
     // Scale baselineStdLL by sqrt(CALIBRATION_LENGTH / N) where CALIBRATION_LENGTH = MAX_WINDOW_LENGTH.
@@ -875,9 +897,7 @@ export class IntentManager {
       ? (expectedAvg - this.graph.baselineMeanLL) / adjustedStd
       : expectedAvg;
 
-    const shouldEmit = hasCalibratedBaseline
-      ? zScore <= threshold
-      : expectedAvg <= threshold;
+    const shouldEmit = hasCalibratedBaseline ? zScore <= threshold : expectedAvg <= threshold;
 
     // ⚠  KNOWN LIMITATION (v1 — accepted for initial release):
     //    At very low noise deltas (Δε ≤ 0.05, entropy difference < 0.05 nats)
@@ -895,7 +915,10 @@ export class IntentManager {
 
     if (shouldEmit) {
       const now = this.timer.now();
-      if (this.eventCooldownMs <= 0 || now - this.lastEmittedAt.trajectory_anomaly >= this.eventCooldownMs) {
+      if (
+        this.eventCooldownMs <= 0 ||
+        now - this.lastEmittedAt.trajectory_anomaly >= this.eventCooldownMs
+      ) {
         this.lastEmittedAt.trajectory_anomaly = now;
         this.anomaliesFired += 1;
         if (this.assignmentGroup !== 'control') {
@@ -956,7 +979,10 @@ export class IntentManager {
 
     if (Math.abs(zScore) >= this.dwellTimeZScoreThreshold) {
       const now = this.timer.now();
-      if (this.eventCooldownMs <= 0 || now - this.lastEmittedAt.dwell_time_anomaly >= this.eventCooldownMs) {
+      if (
+        this.eventCooldownMs <= 0 ||
+        now - this.lastEmittedAt.dwell_time_anomaly >= this.eventCooldownMs
+      ) {
         this.lastEmittedAt.dwell_time_anomaly = now;
         this.anomaliesFired += 1;
         if (this.assignmentGroup !== 'control') {
@@ -1063,7 +1089,8 @@ export class IntentManager {
       // into `payload`.  If the write fails we restore the flag.
       this.isDirty = false;
 
-      this.asyncStorage.setItem(this.storageKey, JSON.stringify(payload))
+      this.asyncStorage
+        .setItem(this.storageKey, JSON.stringify(payload))
         .then(() => {
           this.isAsyncWriting = false;
         })
@@ -1101,7 +1128,9 @@ export class IntentManager {
     }
   }
 
-  private restore(graphConfig: MarkovGraphConfig): { bloom: BloomFilter; graph: MarkovGraph } | null {
+  private restore(
+    graphConfig: MarkovGraphConfig,
+  ): { bloom: BloomFilter; graph: MarkovGraph } | null {
     try {
       const raw = this.storage.getItem(this.storageKey);
       if (!raw) return null;

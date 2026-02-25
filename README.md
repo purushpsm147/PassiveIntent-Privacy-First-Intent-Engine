@@ -28,7 +28,7 @@ It combines a Bloom filter for fast membership checks and a sparse Markov graph 
 
 ## Why EdgeSignal vs. Mixpanel / Amplitude
 
-Mixpanel and Amplitude are cloud-based analytics platforms: every event they capture leaves the user's browser and lands on a third-party server, creating GDPR/CCPA exposure, adding 50–200 ms of network latency per batch flush, and requiring you to buy a plan before you can query your own data. EdgeSignal runs the entire inference pipeline **inside the browser** — no data ever egresses, no vendor SDK is loaded, and signal evaluation completes in [under 0.004 ms on average (p95 < 0.006 ms)](./benchmarks/baseline.json). The serialized graph state fits in [~1.4 KB of localStorage](./benchmarks/baseline.json), meaning EdgeSignal works offline, survives cookie consent banners, and adds zero marginal cost per user. The trade-off is intentional: EdgeSignal detects *intent signals* (rage clicks, hesitation, trajectory anomalies) rather than replacing a full event warehouse — use it alongside, or instead of, heavyweight analytics when privacy, latency, or cost is the constraint. For a full scenario accuracy breakdown see the [evaluation matrix](./benchmarks/evaluation-matrix.json).
+Mixpanel and Amplitude are cloud-based analytics platforms: every event they capture leaves the user's browser and lands on a third-party server, creating GDPR/CCPA exposure, adding 50–200 ms of network latency per batch flush, and requiring you to buy a plan before you can query your own data. EdgeSignal runs the entire inference pipeline **inside the browser** — no data ever egresses, no vendor SDK is loaded, and signal evaluation completes in [under 0.004 ms on average (p95 < 0.006 ms)](./benchmarks/baseline.json). The serialized graph state fits in [~1.4 KB of localStorage](./benchmarks/baseline.json), meaning EdgeSignal works offline, survives cookie consent banners, and adds zero marginal cost per user. The trade-off is intentional: EdgeSignal detects _intent signals_ (rage clicks, hesitation, trajectory anomalies) rather than replacing a full event warehouse — use it alongside, or instead of, heavyweight analytics when privacy, latency, or cost is the constraint. For a full scenario accuracy breakdown see the [evaluation matrix](./benchmarks/evaluation-matrix.json).
 
 ## Install
 
@@ -99,11 +99,7 @@ intent.flushNow();
 
 import { useEffect, useRef } from 'react';
 import { usePathname } from 'next/navigation';
-import {
-  IntentManager,
-  BrowserStorageAdapter,
-  BrowserTimerAdapter,
-} from 'edge-signal';
+import { IntentManager, BrowserStorageAdapter, BrowserTimerAdapter } from 'edge-signal';
 
 export function IntentProvider({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
@@ -153,11 +149,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
 <script setup lang="ts">
 import { onMounted, onUnmounted, watch } from 'vue';
 import { useRoute } from 'vue-router';
-import {
-  IntentManager,
-  BrowserStorageAdapter,
-  BrowserTimerAdapter,
-} from 'edge-signal';
+import { IntentManager, BrowserStorageAdapter, BrowserTimerAdapter } from 'edge-signal';
 
 let intent: IntentManager | null = null;
 const route = useRoute();
@@ -171,9 +163,12 @@ onMounted(() => {
   intent.track(route.fullPath);
 });
 
-watch(() => route.fullPath, (path) => {
-  intent?.track(path);
-});
+watch(
+  () => route.fullPath,
+  (path) => {
+    intent?.track(path);
+  },
+);
 
 onUnmounted(() => {
   intent?.destroy();
@@ -189,11 +184,7 @@ onUnmounted(() => {
 import { Injectable, OnDestroy } from '@angular/core';
 import { Router, NavigationEnd } from '@angular/router';
 import { filter, Subscription } from 'rxjs';
-import {
-  IntentManager,
-  BrowserStorageAdapter,
-  BrowserTimerAdapter,
-} from 'edge-signal';
+import { IntentManager, BrowserStorageAdapter, BrowserTimerAdapter } from 'edge-signal';
 
 @Injectable({ providedIn: 'root' })
 export class IntentService implements OnDestroy {
@@ -257,9 +248,9 @@ When `botScore` reaches **5**, the session is flagged as `isSuspectedBot = true`
 
 **Configuration:**
 
-| Option | Type | Default | Description |
-|--------|------|---------|-------------|
-| `botProtection` | `boolean` | `true` | Enable EntropyGuard. Set to `false` in E2E test environments where a headless browser drives clicks programmatically. |
+| Option          | Type      | Default | Description                                                                                                           |
+| --------------- | --------- | ------- | --------------------------------------------------------------------------------------------------------------------- |
+| `botProtection` | `boolean` | `true`  | Enable EntropyGuard. Set to `false` in E2E test environments where a headless browser drives clicks programmatically. |
 
 **Production usage** (protection on by default):
 

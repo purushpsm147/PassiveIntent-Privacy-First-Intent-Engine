@@ -1,6 +1,6 @@
 /**
  * Copyright (c) 2026 Purushottam <purushpsm147@yahoo.co.in>
- * 
+ *
  * This source code is licensed under the AGPL-3.0-only license found in the
  * LICENSE file in the root directory of this source tree.
  */
@@ -261,7 +261,10 @@ export class MarkovGraph {
    *          descending.  Returns an empty array when the state is unknown or
    *          has no recorded transitions.
    */
-  getLikelyNextStates(fromState: string, minProbability: number): { state: string; probability: number }[] {
+  getLikelyNextStates(
+    fromState: string,
+    minProbability: number,
+  ): { state: string; probability: number }[] {
     const fromIndex = this.stateToIndex.get(fromState);
     if (fromIndex === undefined) return [];
 
@@ -343,10 +346,10 @@ export class MarkovGraph {
     ranked.sort((a, b) => a.total - b.total);
 
     // Evict bottom 20 % (at least 1, at most enough to get back to maxStates).
-    const evictTarget = Math.max(1, Math.min(
-      Math.ceil(liveCount * 0.2),
-      liveCount - this.maxStates,
-    ));
+    const evictTarget = Math.max(
+      1,
+      Math.min(Math.ceil(liveCount * 0.2), liveCount - this.maxStates),
+    );
     const evictSet = new Set<number>();
     for (let i = 0; i < evictTarget && i < ranked.length; i += 1) {
       evictSet.add(ranked[i].index);
@@ -377,7 +380,7 @@ export class MarkovGraph {
         this.stateToIndex.delete(label);
       }
       this.freedIndices.push(idx);
-      this.indexToState[idx] = '';  // dead slot
+      this.indexToState[idx] = ''; // dead slot
     });
   }
 
@@ -417,7 +420,7 @@ export class MarkovGraph {
         if (label === '') {
           throw new Error(
             `MarkovGraph.fromJSON: slot ${i} has an empty-string label but is not listed in ` +
-            `freedIndices. Empty string is reserved as the tombstone marker.`,
+              `freedIndices. Empty string is reserved as the tombstone marker.`,
           );
         }
         graph.stateToIndex.set(label, i);
@@ -492,8 +495,8 @@ export class MarkovGraph {
     // Per row:  fromIndex (2B) + total (4B) + numEdges (2B) = 8 bytes
     // Per edge: toIndex (2B) + count (4B) = 6 bytes
     this.rows.forEach((row) => {
-      totalSize += 8;                          // row header
-      totalSize += row.toCounts.size * 6;      // edges
+      totalSize += 8; // row header
+      totalSize += row.toCounts.size * 6; // edges
     });
 
     // ── Allocate buffer + DataView ──
@@ -504,12 +507,12 @@ export class MarkovGraph {
     // ── Write header ──
 
     // Byte 0: format version (0x02 — adds explicit freed-index list)
-    view.setUint8(offset, 0x02);               // version = 2
-    offset += 1;                               // offset now 1
+    view.setUint8(offset, 0x02); // version = 2
+    offset += 1; // offset now 1
 
     // Bytes 1-2: number of states (Uint16 LE)
     view.setUint16(offset, this.indexToState.length, true);
-    offset += 2;                               // offset now 3
+    offset += 2; // offset now 3
 
     // ── Write state labels ──
     for (let i = 0; i < this.indexToState.length; i += 1) {
@@ -589,7 +592,7 @@ export class MarkovGraph {
     if (version !== 0x02) {
       throw new Error(
         `Unsupported MarkovGraph binary version: 0x${version.toString(16).padStart(2, '0')}. ` +
-        `Only version 0x02 is supported.`,
+          `Only version 0x02 is supported.`,
       );
     }
 
@@ -632,7 +635,7 @@ export class MarkovGraph {
         if (label === '') {
           throw new Error(
             `MarkovGraph.fromBinary: slot ${i} has an empty-string label but is not listed ` +
-            `in the freed-index section. Empty string is reserved as the tombstone marker.`,
+              `in the freed-index section. Empty string is reserved as the tombstone marker.`,
           );
         }
         graph.stateToIndex.set(label, i);

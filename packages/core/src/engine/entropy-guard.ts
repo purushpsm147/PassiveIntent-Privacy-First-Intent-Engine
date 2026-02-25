@@ -1,6 +1,6 @@
 /**
  * Copyright (c) 2026 Purushottam <purushpsm147@yahoo.co.in>
- * 
+ *
  * This source code is licensed under the AGPL-3.0-only license found in the
  * LICENSE file in the root directory of this source tree.
  */
@@ -72,9 +72,7 @@ export class EntropyGuard {
 
     // Ring-buffer oldest entry: if the window is not yet full, oldest is index 0;
     // otherwise it's the slot that was written next (trackTimestampIndex wraps around).
-    const oldestIndex = count < BOT_DETECTION_WINDOW
-      ? 0
-      : this.trackTimestampIndex;
+    const oldestIndex = count < BOT_DETECTION_WINDOW ? 0 : this.trackTimestampIndex;
 
     for (let i = 0; i < count - 1; i += 1) {
       const currIdx = (oldestIndex + i) % BOT_DETECTION_WINDOW;

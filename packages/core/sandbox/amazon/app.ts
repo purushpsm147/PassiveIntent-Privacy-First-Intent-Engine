@@ -1,13 +1,13 @@
 /**
  * Copyright (c) 2026 Purushottam <purushpsm147@yahoo.co.in>
- * 
+ *
  * This source code is licensed under the AGPL-3.0-only license found in the
  * LICENSE file in the root directory of this source tree.
  */
 
 /**
  * Amazon Clone - Intent Engine Integration
- * 
+ *
  * This demo showcases the EdgeSignal SDK in an
  * e-commerce context, tracking user journeys through a realistic
  * shopping flow to detect:
@@ -22,20 +22,42 @@ import { IntentManager, SerializedMarkovGraph } from '../../src/intent-sdk.js';
 // ============================================
 // Represents the "ideal" shopping funnel that most users follow
 const baseline: SerializedMarkovGraph = {
-  states: [
-    '/home',
-    '/search',
-    '/product',
-    '/cart',
-    '/checkout',
-    '/order-confirmation'
-  ],
+  states: ['/home', '/search', '/product', '/cart', '/checkout', '/order-confirmation'],
   rows: [
-    [0, 5, [[1, 3], [2, 2]]],           // /home -> /search (60%), /product (40%)
-    [1, 5, [[2, 4], [0, 1]]],           // /search -> /product (80%), /home (20%)
-    [2, 10, [[3, 7], [1, 2], [0, 1]]],  // /product -> /cart (70%), /search (20%), /home (10%)
-    [3, 5, [[4, 4], [2, 1]]],           // /cart -> /checkout (80%), /product (20%)
-    [4, 5, [[5, 5]]],                   // /checkout -> /order-confirmation (100%)
+    [
+      0,
+      5,
+      [
+        [1, 3],
+        [2, 2],
+      ],
+    ], // /home -> /search (60%), /product (40%)
+    [
+      1,
+      5,
+      [
+        [2, 4],
+        [0, 1],
+      ],
+    ], // /search -> /product (80%), /home (20%)
+    [
+      2,
+      10,
+      [
+        [3, 7],
+        [1, 2],
+        [0, 1],
+      ],
+    ], // /product -> /cart (70%), /search (20%), /home (10%)
+    [
+      3,
+      5,
+      [
+        [4, 4],
+        [2, 1],
+      ],
+    ], // /cart -> /checkout (80%), /product (20%)
+    [4, 5, [[5, 5]]], // /checkout -> /order-confirmation (100%)
   ],
   freedIndices: [],
 };
@@ -52,7 +74,7 @@ const intentManager = new IntentManager({
   },
   baseline,
   // Disable bot protection for E2E testing (Cypress behaves like a bot)
-  botProtection: false
+  botProtection: false,
 });
 
 // ============================================
@@ -75,7 +97,7 @@ const visitedStates = new Set<string>();
 // ============================================
 function showView(viewId: string): void {
   // Hide all views
-  document.querySelectorAll('.view').forEach(view => {
+  document.querySelectorAll('.view').forEach((view) => {
     view.classList.remove('active');
   });
 
@@ -90,22 +112,22 @@ function showView(viewId: string): void {
 function parseRoute(route: string): string {
   // Extract base view from route
   const cleanRoute = route.startsWith('/') ? route.slice(1) : route;
-  
+
   // Map routes to views
   const routeMap: Record<string, string> = {
-    'home': 'home',
-    'search': 'search',
-    'product': 'product',
-    'cart': 'cart',
-    'checkout': 'checkout',
+    home: 'home',
+    search: 'search',
+    product: 'product',
+    cart: 'cart',
+    checkout: 'checkout',
     'order-confirmation': 'order-confirmation',
-    'help': 'help',
+    help: 'help',
     'customer-service': 'help',
-    'returns': 'help',
-    'deals': 'search',
-    'categories': 'home',
-    'account': 'home',
-    'orders': 'cart',
+    returns: 'help',
+    deals: 'search',
+    categories: 'home',
+    account: 'home',
+    orders: 'cart',
   };
 
   // Handle parameterized routes
@@ -130,21 +152,21 @@ function normalizeRoute(route: string): string {
 function navigate(route: string): void {
   const viewId = parseRoute(route);
   const normalizedRoute = normalizeRoute(route);
-  
+
   // Update view
   showView(viewId);
-  
+
   // Track with intent engine
   intentManager.track(normalizedRoute);
-  
+
   // Update debug panel
   transitionCount++;
   visitedStates.add(normalizedRoute);
-  
+
   if (debugRoute) debugRoute.textContent = normalizedRoute;
   if (debugTransitions) debugTransitions.textContent = String(transitionCount);
   if (debugStates) debugStates.textContent = String(visitedStates.size);
-  
+
   // Scroll to top
   window.scrollTo({ top: 0, behavior: 'smooth' });
 }
@@ -171,7 +193,7 @@ function showToast(message: string, kind: 'entropy' | 'anomaly'): void {
 function addToCart(): void {
   cartItems++;
   if (cartCount) cartCount.textContent = String(cartItems);
-  
+
   // Show confirmation toast
   const toast = document.createElement('div');
   toast.className = 'toast';
@@ -179,7 +201,7 @@ function addToCart(): void {
   toast.textContent = '✓ Added to cart';
   toast.dataset.cy = 'cart-add-toast';
   toastRegion.appendChild(toast);
-  
+
   window.setTimeout(() => toast.remove(), 2500);
 }
 
@@ -210,7 +232,7 @@ intentManager.on('state_change', (payload) => {
 // Global click handler for navigation
 document.addEventListener('click', (event: MouseEvent) => {
   const target = event.target as HTMLElement;
-  
+
   // Handle route navigation
   const routeElement = target.closest('[data-route]') as HTMLElement | null;
   if (routeElement) {
@@ -221,7 +243,7 @@ document.addEventListener('click', (event: MouseEvent) => {
     }
     return;
   }
-  
+
   // Handle actions
   const actionElement = target.closest('[data-action]') as HTMLElement | null;
   if (actionElement) {
@@ -253,11 +275,13 @@ searchInput?.addEventListener('keydown', (event: KeyboardEvent) => {
 navigate('/home');
 
 // Expose for testing and debugging
-(window as typeof window & { 
-  __intentManager?: IntentManager;
-  __navigate?: (route: string) => void;
-  __getCartCount?: () => number;
-}).__intentManager = intentManager;
+(
+  window as typeof window & {
+    __intentManager?: IntentManager;
+    __navigate?: (route: string) => void;
+    __getCartCount?: () => number;
+  }
+).__intentManager = intentManager;
 
 (window as typeof window & { __navigate?: (route: string) => void }).__navigate = navigate;
 (window as typeof window & { __getCartCount?: () => number }).__getCartCount = () => cartItems;

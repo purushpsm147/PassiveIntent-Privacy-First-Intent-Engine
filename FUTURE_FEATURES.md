@@ -29,7 +29,7 @@
 
 ### Problem
 
-The current anomaly detection relies solely on state-transition patterns (Markov) and timing regularity (EntropyGuard). It does not capture the *rate* of interactions within a single state — rapid clicking on a product page vs. calm scrolling are indistinguishable.
+The current anomaly detection relies solely on state-transition patterns (Markov) and timing regularity (EntropyGuard). It does not capture the _rate_ of interactions within a single state — rapid clicking on a product page vs. calm scrolling are indistinguishable.
 
 ### Proposed Solution
 
@@ -148,16 +148,16 @@ Binary serialization and base64 encoding during `persist()` happens on the main 
 
 ## Implementation Priority Matrix
 
-| Feature | Impact | Effort | Risk | Suggested Phase |
-|---------|--------|--------|------|-----------------|
-| ~~Cross-Tab Sync~~ | High | High | Medium | ✅ v1.0 |
-| Click Velocity Channel | Medium | Medium | Low | v1.2 |
-| Inter-Event Interval Entropy | Medium | Medium | Low | v1.3 |
-| Feature Vector Architecture | High | High | High | v2.0 |
-| Session Replay Export | Low | Low | None | v1.1 |
-| Adaptive Threshold Tuning | Medium | High | Medium | v2.0 |
-| WebWorker Persistence | Low | Medium | Low | v1.3 |
+| Feature                      | Impact | Effort | Risk   | Suggested Phase |
+| ---------------------------- | ------ | ------ | ------ | --------------- |
+| ~~Cross-Tab Sync~~           | High   | High   | Medium | ✅ v1.0         |
+| Click Velocity Channel       | Medium | Medium | Low    | v1.2            |
+| Inter-Event Interval Entropy | Medium | Medium | Low    | v1.3            |
+| Feature Vector Architecture  | High   | High   | High   | v2.0            |
+| Session Replay Export        | Low    | Low    | None   | v1.1            |
+| Adaptive Threshold Tuning    | Medium | High   | Medium | v2.0            |
+| WebWorker Persistence        | Low    | Medium | Low    | v1.3            |
 
 ---
 
-*Last updated: 2026-02-22*
+_Last updated: 2026-02-22_

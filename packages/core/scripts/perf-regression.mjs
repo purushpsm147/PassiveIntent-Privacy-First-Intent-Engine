@@ -1,6 +1,6 @@
 /**
  * Copyright (c) 2026 Purushottam <purushpsm147@yahoo.co.in>
- * 
+ *
  * This source code is licensed under the AGPL-3.0-only license found in the
  * LICENSE file in the root directory of this source tree.
  */
@@ -48,7 +48,7 @@ for (const key of ['avgTrackMs', 'p95TrackMs', 'p99TrackMs']) {
   if (delta !== null && delta > maxRegressionPct) {
     regressions.push(
       `${key} regressed ${delta.toFixed(1)}% vs baseline` +
-      ` (baseline=${base.toFixed(6)}ms, current=${current.toFixed(6)}ms)`,
+        ` (baseline=${base.toFixed(6)}ms, current=${current.toFixed(6)}ms)`,
     );
   }
 
@@ -62,30 +62,38 @@ for (const key of ['avgTrackMs', 'p95TrackMs', 'p99TrackMs']) {
 
   // Suspiciously fast — may indicate a measurement or warm-up issue
   if (delta !== null && delta < -50) {
-    warnings.push(`${key} is ${Math.abs(delta).toFixed(1)}% faster than baseline — consider updating the baseline`);
+    warnings.push(
+      `${key} is ${Math.abs(delta).toFixed(1)}% faster than baseline — consider updating the baseline`,
+    );
   }
 }
 
 // --- Graph size ---
 if (latest.serializedGraphSizeBytes > maxGraphBytes) {
-  regressions.push(`serializedGraphSizeBytes ${latest.serializedGraphSizeBytes} exceeds hard limit of ${maxGraphBytes}`);
+  regressions.push(
+    `serializedGraphSizeBytes ${latest.serializedGraphSizeBytes} exceeds hard limit of ${maxGraphBytes}`,
+  );
 }
 const graphDelta = pctChange(baseline.serializedGraphSizeBytes, latest.serializedGraphSizeBytes);
 if (graphDelta !== null && graphDelta > maxRegressionPct) {
   regressions.push(
     `serializedGraphSizeBytes grew ${graphDelta.toFixed(1)}% vs baseline` +
-    ` (baseline=${baseline.serializedGraphSizeBytes}, current=${latest.serializedGraphSizeBytes})`,
+      ` (baseline=${baseline.serializedGraphSizeBytes}, current=${latest.serializedGraphSizeBytes})`,
   );
 }
 
 // --- Memory ---
-// Only check as a percentage regression; absolute heap values are too
-// environment-dependent for a hard ceiling to be useful.
+// Heap deltas are NOT checked as a regression gate. V8 GC scheduling, OS
+// memory pressure, and warm-up allocations all vary significantly between
+// environments (Windows dev machine vs. Linux CI runner), making a
+// cross-machine baseline comparison meaningless and noisy. We log the
+// value for observability only.
 const memDelta = pctChange(baseline.memoryUsageEstimate, latest.memoryUsageEstimate);
-if (memDelta !== null && memDelta > maxRegressionPct) {
-  regressions.push(
-    `memoryUsageEstimate grew ${memDelta.toFixed(1)}% vs baseline` +
-    ` (baseline=${baseline.memoryUsageEstimate}, current=${latest.memoryUsageEstimate})`,
+if (memDelta !== null) {
+  const direction = memDelta > 0 ? `+${memDelta.toFixed(1)}%` : `${memDelta.toFixed(1)}%`;
+  console.log(
+    `[perf-regression] info: memoryUsageEstimate ${direction} vs baseline` +
+      ` (baseline=${baseline.memoryUsageEstimate}, current=${latest.memoryUsageEstimate}) — informational only`,
   );
 }
 

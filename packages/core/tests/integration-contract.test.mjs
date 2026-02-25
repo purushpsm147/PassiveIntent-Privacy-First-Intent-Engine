@@ -1,6 +1,6 @@
 /**
  * Copyright (c) 2026 Purushottam <purushpsm147@yahoo.co.in>
- * 
+ *
  * This source code is licensed under the AGPL-3.0-only license found in the
  * LICENSE file in the root directory of this source tree.
  */
@@ -9,11 +9,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 
-import {
-  BloomFilter,
-  IntentManager,
-  MarkovGraph,
-} from '../dist/src/intent-sdk.js';
+import { BloomFilter, IntentManager, MarkovGraph } from '../dist/src/intent-sdk.js';
 import { setupTestEnvironment, storage } from './helpers/test-env.mjs';
 
 setupTestEnvironment();
@@ -135,7 +131,10 @@ test('dirty flag: multiple flushNow() calls without track() write storage exactl
   let writeCount = 0;
   const countingStorage = {
     getItem: (key) => storage.getItem(key),
-    setItem: (key, value) => { writeCount += 1; storage.setItem(key, value); },
+    setItem: (key, value) => {
+      writeCount += 1;
+      storage.setItem(key, value);
+    },
   };
 
   const manager = new IntentManager({
@@ -158,7 +157,11 @@ test('dirty flag: multiple flushNow() calls without track() write storage exactl
   manager.track('C');
   manager.flushNow();
 
-  assert.equal(writeCount, 2, `Expected exactly 2 storage writes after second track, got ${writeCount}`);
+  assert.equal(
+    writeCount,
+    2,
+    `Expected exactly 2 storage writes after second track, got ${writeCount}`,
+  );
 });
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -200,7 +203,9 @@ test('destroy() flushes pending state and removes all listeners', () => {
   });
 
   let eventCount = 0;
-  manager.on('state_change', () => { eventCount += 1; });
+  manager.on('state_change', () => {
+    eventCount += 1;
+  });
 
   manager.track('home');
   manager.track('search');
@@ -252,12 +257,15 @@ test('getTelemetry() engineHealth is healthy after a normal persist / prune cycl
   });
 
   // Add 5 states to force LFU pruning threshold
-  ['A', 'B', 'C', 'D', 'E'].forEach(s => manager.track(s));
+  ['A', 'B', 'C', 'D', 'E'].forEach((s) => manager.track(s));
   manager.flushNow(); // triggers prune() internally
 
   // After prune completes, engineHealth must settle back to 'healthy'
-  assert.equal(manager.getTelemetry().engineHealth, 'healthy',
-    'engineHealth must be healthy after prune cycle completes');
+  assert.equal(
+    manager.getTelemetry().engineHealth,
+    'healthy',
+    'engineHealth must be healthy after prune cycle completes',
+  );
 });
 
 test('getTelemetry() engineHealth transitions to quota_exceeded on QuotaExceededError', () => {
@@ -283,10 +291,12 @@ test('getTelemetry() engineHealth transitions to quota_exceeded on QuotaExceeded
   manager.track('search');
   manager.flushNow(); // triggers persist() which throws QuotaExceededError
 
-  assert.equal(manager.getTelemetry().engineHealth, 'quota_exceeded',
-    'engineHealth must be quota_exceeded after a QuotaExceededError from storage');
+  assert.equal(
+    manager.getTelemetry().engineHealth,
+    'quota_exceeded',
+    'engineHealth must be quota_exceeded after a QuotaExceededError from storage',
+  );
 });
-
 
 test('binary codec v2 golden fixture remains backward compatible', () => {
   const fixture = JSON.parse(readFileSync('tests/fixtures/markov-binary-v2-golden.json', 'utf8'));
@@ -303,9 +313,17 @@ test('binary codec v2 golden fixture remains backward compatible', () => {
   assert.equal(fromBinary.getProbability('A', 'B'), fromJson.getProbability('A', 'B'));
 
   const roundTripBase64 = Buffer.from(fromBinary.toBinary()).toString('base64');
-  assert.equal(roundTripBase64, fixture.binaryBase64, 'Binary round-trip must match golden fixture payload');
+  assert.equal(
+    roundTripBase64,
+    fixture.binaryBase64,
+    'Binary round-trip must match golden fixture payload',
+  );
 
   const statesLen = fromBinary.toJSON().states.length;
   fromBinary.incrementTransition('A', 'Z');
-  assert.equal(fromBinary.toJSON().states.length, statesLen, 'Freed slot should be reused after restore');
+  assert.equal(
+    fromBinary.toJSON().states.length,
+    statesLen,
+    'Freed slot should be reused after restore',
+  );
 });

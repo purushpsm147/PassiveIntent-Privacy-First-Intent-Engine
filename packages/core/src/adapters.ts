@@ -1,6 +1,6 @@
 /**
  * Copyright (c) 2026 Purushottam <purushpsm147@yahoo.co.in>
- * 
+ *
  * This source code is licensed under the AGPL-3.0-only license found in the
  * LICENSE file in the root directory of this source tree.
  */
@@ -104,7 +104,10 @@ export class BrowserTimerAdapter implements TimerAdapter {
   }
 
   now(): number {
-    if (typeof globalThis.performance !== 'undefined' && typeof globalThis.performance.now === 'function') {
+    if (
+      typeof globalThis.performance !== 'undefined' &&
+      typeof globalThis.performance.now === 'function'
+    ) {
       return globalThis.performance.now();
     }
     return Date.now();

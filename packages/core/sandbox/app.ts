@@ -1,11 +1,18 @@
 /**
  * Copyright (c) 2026 Purushottam <purushpsm147@yahoo.co.in>
- * 
+ *
  * This source code is licensed under the AGPL-3.0-only license found in the
  * LICENSE file in the root directory of this source tree.
  */
 
-import { IntentManager, BloomFilter, MarkovGraph, BroadcastSync, normalizeRouteState, SerializedMarkovGraph } from '../src/intent-sdk.js';
+import {
+  IntentManager,
+  BloomFilter,
+  MarkovGraph,
+  BroadcastSync,
+  normalizeRouteState,
+  SerializedMarkovGraph,
+} from '../src/intent-sdk.js';
 
 const baseline: SerializedMarkovGraph = {
   states: ['/home', '/search', '/product', '/cart', '/checkout'],
@@ -13,7 +20,7 @@ const baseline: SerializedMarkovGraph = {
     [0, 1, [[1, 1]]],
     [1, 1, [[2, 1]]],
     [2, 1, [[3, 1]]],
-    [3, 1, [[4, 1]]]
+    [3, 1, [[4, 1]]],
   ],
   freedIndices: [],
 };
@@ -23,11 +30,11 @@ const intentManager = new IntentManager({
   persistDebounceMs: 500,
   graph: {
     highEntropyThreshold: 0.8,
-    divergenceThreshold: 1.0
+    divergenceThreshold: 1.0,
   },
   baseline,
   // Disable bot protection for E2E testing (Cypress behaves like a bot)
-  botProtection: false
+  botProtection: false,
 });
 
 const activeRoute = document.getElementById('active-route') as HTMLDivElement;
@@ -65,7 +72,9 @@ convertBtn?.addEventListener('click', () => {
 });
 
 routes.addEventListener('click', (event: Event) => {
-  const button = (event.target as HTMLElement).closest('button[data-route]') as HTMLButtonElement | null;
+  const button = (event.target as HTMLElement).closest(
+    'button[data-route]',
+  ) as HTMLButtonElement | null;
   if (!button) return;
 
   const route = button.dataset.route;
@@ -75,15 +84,23 @@ routes.addEventListener('click', (event: Event) => {
   intentManager.track(route);
 });
 
-(window as typeof window & {
-  __intentManager?: IntentManager;
-  __EdgeSignalSDK?: {
-    IntentManager: typeof IntentManager;
-    BloomFilter: typeof BloomFilter;
-    MarkovGraph: typeof MarkovGraph;
-    BroadcastSync: typeof BroadcastSync;
-    normalizeRouteState: typeof normalizeRouteState;
-  };
-}).__intentManager = intentManager;
+(
+  window as typeof window & {
+    __intentManager?: IntentManager;
+    __EdgeSignalSDK?: {
+      IntentManager: typeof IntentManager;
+      BloomFilter: typeof BloomFilter;
+      MarkovGraph: typeof MarkovGraph;
+      BroadcastSync: typeof BroadcastSync;
+      normalizeRouteState: typeof normalizeRouteState;
+    };
+  }
+).__intentManager = intentManager;
 
-(window as any).__EdgeSignalSDK = { IntentManager, BloomFilter, MarkovGraph, BroadcastSync, normalizeRouteState };
+(window as any).__EdgeSignalSDK = {
+  IntentManager,
+  BloomFilter,
+  MarkovGraph,
+  BroadcastSync,
+  normalizeRouteState,
+};

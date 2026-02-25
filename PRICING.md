@@ -13,13 +13,13 @@ EdgeSignal is **free and open-source** under AGPLv3 for open-source projects, ho
 
 ## Tiers
 
-| Tier       | Annual Fee  | Org Size / Signal                   | What Justifies It                                                                                        |
-| ---------- | ----------- | ----------------------------------- | -------------------------------------------------------------------------------------------------------- |
-| Free       | $0          | OSS, hobby, non-commercial          | AGPLv3, full SDK, community forum/GitHub Issues                                                          |
-| Indie      | $149/yr     | Solo dev, <5 employees, <$500K ARR  | 1 commercial project, commercial license, best-effort email support                                      |
-| Startup    | $599/yr     | 5–50 employees, $500K–$5M ARR       | 3 commercial projects, priority email (typically 2 business days), future premium features when released |
-| Growth     | $1,999/yr   | 50–200 employees, $5M–$20M ARR      | Unlimited projects (1 org), same-day best effort (IST hours), no-warranty commercial license             |
-| Enterprise | Custom      | 200+ employees, CDPs, AdTech, OEM   | Custom license terms, scoped support hours, direct async communication                                   |
+| Tier       | Annual Fee | Org Size / Signal                  | What Justifies It                                                                                        |
+| ---------- | ---------- | ---------------------------------- | -------------------------------------------------------------------------------------------------------- |
+| Free       | $0         | OSS, hobby, non-commercial         | AGPLv3, full SDK, community forum/GitHub Issues                                                          |
+| Indie      | $149/yr    | Solo dev, <5 employees, <$500K ARR | 1 commercial project, commercial license, best-effort email support                                      |
+| Startup    | $599/yr    | 5–50 employees, $500K–$5M ARR      | 3 commercial projects, priority email (typically 2 business days), future premium features when released |
+| Growth     | $1,999/yr  | 50–200 employees, $5M–$20M ARR     | Unlimited projects (1 org), same-day best effort (IST hours), no-warranty commercial license             |
+| Enterprise | Custom     | 200+ employees, CDPs, AdTech, OEM  | Custom license terms, scoped support hours, direct async communication                                   |
 
 ## What "commercial use" means
 

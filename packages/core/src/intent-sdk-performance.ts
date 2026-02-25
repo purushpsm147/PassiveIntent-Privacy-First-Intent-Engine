@@ -1,6 +1,6 @@
 /**
  * Copyright (c) 2026 Purushottam <purushpsm147@yahoo.co.in>
- * 
+ *
  * This source code is licensed under the AGPL-3.0-only license found in the
  * LICENSE file in the root directory of this source tree.
  */
@@ -179,12 +179,12 @@ const MAX_WINDOW_LENGTH = 32;
 
 /**
  * Calibrate baseline statistics using independent samples at the reference window size.
- * 
+ *
  * Statistical approach:
  * 1. Generate trajectories of MAX_WINDOW_LENGTH states (the reference size)
  * 2. Compute average log-likelihood per transition for each trajectory
  * 3. Calculate mean and std from these independent samples
- * 
+ *
  * At runtime, variance is scaled by sqrt(MAX_WINDOW_LENGTH / N) for windows of size N.
  */
 function calibrateBaseline(
@@ -199,7 +199,7 @@ function calibrateBaseline(
 
   // Generate many independent samples at the reference window size
   const samplesPerSession = Math.max(1, Math.floor(transitionsPerSession / MAX_WINDOW_LENGTH));
-  
+
   for (let session = 0; session < sessions; session += 1) {
     for (let sample = 0; sample < samplesPerSession; sample += 1) {
       const sequence: string[] = [];
@@ -211,21 +211,18 @@ function calibrateBaseline(
         sequence.push(statePool[current]);
       }
 
-      const ll = MarkovGraph.logLikelihoodTrajectory(
-        baselineGraph,
-        sequence,
-        SMOOTHING_EPSILON,
-      );
+      const ll = MarkovGraph.logLikelihoodTrajectory(baselineGraph, sequence, SMOOTHING_EPSILON);
       const denominator = Math.max(1, sequence.length - 1);
       averages.push(ll / denominator);
     }
   }
 
   const mean = averages.reduce((acc, value) => acc + value, 0) / Math.max(1, averages.length);
-  const variance = averages.reduce((acc, value) => {
-    const delta = value - mean;
-    return acc + delta * delta;
-  }, 0) / Math.max(1, averages.length);
+  const variance =
+    averages.reduce((acc, value) => {
+      const delta = value - mean;
+      return acc + delta * delta;
+    }, 0) / Math.max(1, averages.length);
 
   return {
     mean,

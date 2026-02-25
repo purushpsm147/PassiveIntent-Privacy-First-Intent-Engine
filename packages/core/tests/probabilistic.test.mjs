@@ -1,6 +1,6 @@
 /**
  * Copyright (c) 2026 Purushottam <purushpsm147@yahoo.co.in>
- * 
+ *
  * This source code is licensed under the AGPL-3.0-only license found in the
  * LICENSE file in the root directory of this source tree.
  */
@@ -8,10 +8,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 
-import {
-  IntentManager,
-  MarkovGraph,
-} from '../dist/src/intent-sdk.js';
+import { IntentManager, MarkovGraph } from '../dist/src/intent-sdk.js';
 import {
   BenchmarkSimulationEngine,
   evaluatePredictionMatrix,
@@ -91,7 +88,10 @@ test('baseline trajectory sessions keep anomaly false positive rate below 0.1', 
   }
 
   // Baseline (structured) trajectories should rarely trigger false positives
-  assert.ok(anomalies / sessions < 0.1, `Expected FPR < 0.1, got ${anomalies}/${sessions} = ${(anomalies/sessions).toFixed(2)}`);
+  assert.ok(
+    anomalies / sessions < 0.1,
+    `Expected FPR < 0.1, got ${anomalies}/${sessions} = ${(anomalies / sessions).toFixed(2)}`,
+  );
 });
 
 test('adversarial trajectory sessions keep anomaly true positive rate above 0.8', () => {
@@ -105,7 +105,7 @@ test('adversarial trajectory sessions keep anomaly true positive rate above 0.8'
   const SMOOTHING_EPSILON = 0.01;
   const CALIBRATION_WINDOW = 32;
   const calibrationSamples = [];
-  
+
   for (let i = 0; i < 100; i += 1) {
     const sequence = [];
     for (let j = 0; j < CALIBRATION_WINDOW; j += 1) {
@@ -114,12 +114,13 @@ test('adversarial trajectory sessions keep anomaly true positive rate above 0.8'
     const ll = MarkovGraph.logLikelihoodTrajectory(baseline, sequence, SMOOTHING_EPSILON);
     calibrationSamples.push(ll / Math.max(1, sequence.length - 1));
   }
-  
+
   const baselineMeanLL = calibrationSamples.reduce((a, b) => a + b, 0) / calibrationSamples.length;
-  const variance = calibrationSamples.reduce((a, v) => {
-    const d = v - baselineMeanLL;
-    return a + d * d;
-  }, 0) / calibrationSamples.length;
+  const variance =
+    calibrationSamples.reduce((a, v) => {
+      const d = v - baselineMeanLL;
+      return a + d * d;
+    }, 0) / calibrationSamples.length;
   const baselineStdLL = Math.sqrt(variance);
 
   let rngState = 1337;
@@ -136,7 +137,7 @@ test('adversarial trajectory sessions keep anomaly true positive rate above 0.8'
       storageKey: `tpr-adversarial-check-${session}`,
       baseline: baseline.toJSON(),
       graph: {
-        divergenceThreshold: 2.0,  // More sensitive threshold for adversarial detection
+        divergenceThreshold: 2.0, // More sensitive threshold for adversarial detection
         baselineMeanLL,
         baselineStdLL,
       },
@@ -159,5 +160,8 @@ test('adversarial trajectory sessions keep anomaly true positive rate above 0.8'
   }
 
   // Random navigation should trigger anomalies with high probability when calibrated.
-  assert.ok(detected / sessions > 0.8, `Expected TPR > 0.8, got ${detected}/${sessions} = ${(detected/sessions).toFixed(2)}`);
+  assert.ok(
+    detected / sessions > 0.8,
+    `Expected TPR > 0.8, got ${detected}/${sessions} = ${(detected / sessions).toFixed(2)}`,
+  );
 });

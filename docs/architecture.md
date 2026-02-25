@@ -43,33 +43,37 @@ EdgeSignal takes the opposite approach. It is a tiny, tree-shakeable TypeScript 
 9. [Configuration Reference](#configuration-reference)
 10. [Testing Guide](#testing-guide)
 11. [Technical Deep Dive](#technical-deep-dive)
-   - [Architecture Overview](#architecture-overview)
-   - [Bloom Filter](#bloom-filter)
-   - [Markov Graph](#markov-graph)
-   - [Transition Entropy](#transition-entropy)
-   - [Log-Likelihood Trajectory Analysis](#log-likelihood-trajectory-analysis)
-   - [Z-Score Anomaly Gate](#z-score-anomaly-gate)
-   - [EntropyGuard — Bot & Anti-Gaming Protection](#entropyguard--bot--anti-gaming-protection)
-   - [Dwell-Time Anomaly Detection](#dwell-time-anomaly-detection)
-   - [Tab-Visibility Dwell-Time Correction](#tab-visibility-dwell-time-correction)
-   - [Baseline Drift Auto-Killswitch](#baseline-drift-auto-killswitch)
-   - [Selective Bigram Markov Transitions](#selective-bigram-markov-transitions)
-   - [Event Cooldown](#event-cooldown)
-   - [IntentManager Orchestration](#intentmanager-orchestration)
-   - [Deterministic Counter API](#deterministic-counter-api)
-   - [Route State Normalizer](#route-state-normalizer)
-   - [A/B Testing Holdout](#ab-testing-holdout)
-   - [Binary Serialization](#binary-serialization)
-   - [LFU Pruning](#lfu-pruning)
+
+- [Architecture Overview](#architecture-overview)
+- [Bloom Filter](#bloom-filter)
+- [Markov Graph](#markov-graph)
+- [Transition Entropy](#transition-entropy)
+- [Log-Likelihood Trajectory Analysis](#log-likelihood-trajectory-analysis)
+- [Z-Score Anomaly Gate](#z-score-anomaly-gate)
+- [EntropyGuard — Bot & Anti-Gaming Protection](#entropyguard--bot--anti-gaming-protection)
+- [Dwell-Time Anomaly Detection](#dwell-time-anomaly-detection)
+- [Tab-Visibility Dwell-Time Correction](#tab-visibility-dwell-time-correction)
+- [Baseline Drift Auto-Killswitch](#baseline-drift-auto-killswitch)
+- [Selective Bigram Markov Transitions](#selective-bigram-markov-transitions)
+- [Event Cooldown](#event-cooldown)
+- [IntentManager Orchestration](#intentmanager-orchestration)
+- [Deterministic Counter API](#deterministic-counter-api)
+- [Route State Normalizer](#route-state-normalizer)
+- [A/B Testing Holdout](#ab-testing-holdout)
+- [Binary Serialization](#binary-serialization)
+- [LFU Pruning](#lfu-pruning)
+
 12. [Performance](#performance)
 13. [Bundle Size](#bundle-size)
 14. [Privacy & GDPR Compliance](#privacy--gdpr-compliance)
-   - [Verified Privacy Claims](#verified-privacy-claims)
-   - [GDPR Article Mapping](#gdpr-article-mapping)
-   - [No Consent Required](#no-consent-required)
-   - [CCPA / ePrivacy](#ccpa--eprivacy)
-   - [EdgeSignal vs. Traditional Analytics](#edgesignal-vs-traditional-analytics)
-   - [Privacy-Preserving Intent Decay](#privacy-preserving-intent-decay)
+
+- [Verified Privacy Claims](#verified-privacy-claims)
+- [GDPR Article Mapping](#gdpr-article-mapping)
+- [No Consent Required](#no-consent-required)
+- [CCPA / ePrivacy](#ccpa--eprivacy)
+- [EdgeSignal vs. Traditional Analytics](#edgesignal-vs-traditional-analytics)
+- [Privacy-Preserving Intent Decay](#privacy-preserving-intent-decay)
+
 15. [License](#license)
 
 ---
@@ -84,12 +88,12 @@ Competing intent platforms rely on opaque neural models trained on aggregated po
 
 EdgeSignal uses only **transparent, auditable algorithms**:
 
-| Algorithm | What it does | How a compliance officer can audit it |
-|---|---|---|
-| **Markov chain transition graph** | Counts how often the user moved from state A to state B | Inspect `intent.getGraph()` — every transition count is a plain integer |
-| **Bloom filter** | Tracks which states have ever been visited | Examine the raw `Uint8Array` bitset — no hidden data |
-| **Welford online z-score** | Measures whether dwell time is anomalously long or short | Formula is O(1) and published in every statistics textbook |
-| **Shannon entropy** | Quantifies navigation randomness | A one-line formula: $H = -\sum p_i \log p_i$ |
+| Algorithm                         | What it does                                             | How a compliance officer can audit it                                   |
+| --------------------------------- | -------------------------------------------------------- | ----------------------------------------------------------------------- |
+| **Markov chain transition graph** | Counts how often the user moved from state A to state B  | Inspect `intent.getGraph()` — every transition count is a plain integer |
+| **Bloom filter**                  | Tracks which states have ever been visited               | Examine the raw `Uint8Array` bitset — no hidden data                    |
+| **Welford online z-score**        | Measures whether dwell time is anomalously long or short | Formula is O(1) and published in every statistics textbook              |
+| **Shannon entropy**               | Quantifies navigation randomness                         | A one-line formula: $H = -\sum p_i \log p_i$                            |
 
 Because every inference step is deterministic math with integer inputs, a compliance officer can reproduce any EdgeSignal decision on paper, given the stored graph. No black box. No population model. No proprietary weights.
 
@@ -143,28 +147,28 @@ All of this happens inside the user’s browser. No analytics endpoint. No finge
 
 ## Strengths
 
-| Property | Detail |
-|---|---|
-| **Zero data egress** | Every computation runs on the device. Nothing leaves the browser. |
-| **Tiny footprint** | Minified bundle ≈ 6 kB gzip. Bloom filter default: 256 bytes. Serialized graph: ~1.4 kB for 100 states. |
-| **Sub-millisecond hot path** | `track()` averages **0.0019 ms** at steady state (p99 < 0.005 ms). |
-| **SSR-safe** | All browser globals are behind `StorageAdapter` / `TimerAdapter` interfaces. Works in Next.js, Nuxt, Remix, and Cloudflare Workers without a `typeof window` guard. |
-| **Isomorphic adapters** | Ship your own storage and timer implementations for testing, Redis, or any other backing store. |
-| **Dirty-flag persistence** | `localStorage` writes only happen when state actually changed, eliminating jank on high-frequency routes. |
-| **Bounded memory growth** | LFU pruning evicts the least-used 20 % of states when the graph exceeds `maxStates` (default: 500). |
-| **Bot-resilient** | EntropyGuard detects impossibly-fast timing patterns and silently suppresses entropy/trajectory events for suspected bots, preventing discount abuse. |
-| **Dwell-time anomaly** | O(1) Welford’s online z-score per state — fires `dwell_time_anomaly` when a user lingers or rushes through a page anomalously. |
-| **Selective bigrams** | Optional second-order Markov transitions, frequency-gated and LFU-pruned. Only 18 bytes additional graph overhead at 50 states. |
-| **Event cooldown** | Per-channel cooldown gating (`eventCooldownMs`) prevents event flooding without losing detection fidelity. |
-| **Tab-visibility correction** | Dwell timer is automatically paused while `document.hidden === true`. Tabs switched away for 30 seconds do not produce a 30-second dwell reading. No configuration required. |
-| **Drift auto-killswitch** | A rolling-window guard monitors the `trajectory_anomaly`/`track()` ratio. When it exceeds `driftProtection.maxAnomalyRate`, trajectory evaluation is silently disabled so a stale baseline can never flood your UI with false positives. `getTelemetry().baselineStatus` reflects `'drifted'` when the killswitch has engaged. |
-| **Deterministic counters** | `incrementCounter(key)` / `getCounter(key)` / `resetCounter(key)` — exact integer counters, zero false positives, session-scoped. Use for business metrics like “articles read” where the Bloom filter’s probabilistic nature is unacceptable. |
-| **Route normalization** | `track()` auto-normalizes raw URLs: strips `?query`, `#hash`, trailing slashes, and replaces UUIDs / MongoDB ObjectIDs with `:id`. Pass `window.location.href` directly — the engine always receives a stable state label. |
-| **A/B holdout** | `holdoutConfig: { percentage: 10 }` routes ~10 % of sessions to a `control` group. Control sessions run all inference and increment `anomaliesFired` identically to treatment but suppress behavioral event emissions, giving you clean conversion-lift data with zero server-side tracking. |
-| **Clean teardown** | `destroy()` API flushes state, cancels timers, and removes listeners for leak-free SPA lifecycle management. |
-| **Fully typed** | Ships `.d.ts` declarations for every public API and event payload. |
-| **Dual CJS + ESM** | `dist/index.js` (ESM) + `dist/index.cjs` (CommonJS) with source maps. |
-| **Zero runtime deps** | The entire package has no external runtime dependencies. |
+| Property                      | Detail                                                                                                                                                                                                                                                                                                                         |
+| ----------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| **Zero data egress**          | Every computation runs on the device. Nothing leaves the browser.                                                                                                                                                                                                                                                              |
+| **Tiny footprint**            | Minified bundle ≈ 6 kB gzip. Bloom filter default: 256 bytes. Serialized graph: ~1.4 kB for 100 states.                                                                                                                                                                                                                        |
+| **Sub-millisecond hot path**  | `track()` averages **0.0019 ms** at steady state (p99 < 0.005 ms).                                                                                                                                                                                                                                                             |
+| **SSR-safe**                  | All browser globals are behind `StorageAdapter` / `TimerAdapter` interfaces. Works in Next.js, Nuxt, Remix, and Cloudflare Workers without a `typeof window` guard.                                                                                                                                                            |
+| **Isomorphic adapters**       | Ship your own storage and timer implementations for testing, Redis, or any other backing store.                                                                                                                                                                                                                                |
+| **Dirty-flag persistence**    | `localStorage` writes only happen when state actually changed, eliminating jank on high-frequency routes.                                                                                                                                                                                                                      |
+| **Bounded memory growth**     | LFU pruning evicts the least-used 20 % of states when the graph exceeds `maxStates` (default: 500).                                                                                                                                                                                                                            |
+| **Bot-resilient**             | EntropyGuard detects impossibly-fast timing patterns and silently suppresses entropy/trajectory events for suspected bots, preventing discount abuse.                                                                                                                                                                          |
+| **Dwell-time anomaly**        | O(1) Welford’s online z-score per state — fires `dwell_time_anomaly` when a user lingers or rushes through a page anomalously.                                                                                                                                                                                                 |
+| **Selective bigrams**         | Optional second-order Markov transitions, frequency-gated and LFU-pruned. Only 18 bytes additional graph overhead at 50 states.                                                                                                                                                                                                |
+| **Event cooldown**            | Per-channel cooldown gating (`eventCooldownMs`) prevents event flooding without losing detection fidelity.                                                                                                                                                                                                                     |
+| **Tab-visibility correction** | Dwell timer is automatically paused while `document.hidden === true`. Tabs switched away for 30 seconds do not produce a 30-second dwell reading. No configuration required.                                                                                                                                                   |
+| **Drift auto-killswitch**     | A rolling-window guard monitors the `trajectory_anomaly`/`track()` ratio. When it exceeds `driftProtection.maxAnomalyRate`, trajectory evaluation is silently disabled so a stale baseline can never flood your UI with false positives. `getTelemetry().baselineStatus` reflects `'drifted'` when the killswitch has engaged. |
+| **Deterministic counters**    | `incrementCounter(key)` / `getCounter(key)` / `resetCounter(key)` — exact integer counters, zero false positives, session-scoped. Use for business metrics like “articles read” where the Bloom filter’s probabilistic nature is unacceptable.                                                                                 |
+| **Route normalization**       | `track()` auto-normalizes raw URLs: strips `?query`, `#hash`, trailing slashes, and replaces UUIDs / MongoDB ObjectIDs with `:id`. Pass `window.location.href` directly — the engine always receives a stable state label.                                                                                                     |
+| **A/B holdout**               | `holdoutConfig: { percentage: 10 }` routes ~10 % of sessions to a `control` group. Control sessions run all inference and increment `anomaliesFired` identically to treatment but suppress behavioral event emissions, giving you clean conversion-lift data with zero server-side tracking.                                   |
+| **Clean teardown**            | `destroy()` API flushes state, cancels timers, and removes listeners for leak-free SPA lifecycle management.                                                                                                                                                                                                                   |
+| **Fully typed**               | Ships `.d.ts` declarations for every public API and event payload.                                                                                                                                                                                                                                                             |
+| **Dual CJS + ESM**            | `dist/index.js` (ESM) + `dist/index.cjs` (CommonJS) with source maps.                                                                                                                                                                                                                                                          |
+| **Zero runtime deps**         | The entire package has no external runtime dependencies.                                                                                                                                                                                                                                                                       |
 
 ---
 
@@ -261,11 +265,11 @@ The package ships **zero runtime dependencies**.
 import { IntentManager } from 'edge-signal';
 
 const intent = new IntentManager({
-  storageKey: 'my-app-intent',   // localStorage key
+  storageKey: 'my-app-intent', // localStorage key
   graph: {
-    highEntropyThreshold: 0.75,  // normalized entropy in [0..1]
-    divergenceThreshold: 3.5,    // z-score magnitude to trigger anomaly
-    maxStates: 500,              // LFU prune limit
+    highEntropyThreshold: 0.75, // normalized entropy in [0..1]
+    divergenceThreshold: 3.5, // z-score magnitude to trigger anomaly
+    maxStates: 500, // LFU prune limit
   },
 });
 
@@ -295,7 +299,7 @@ intent.track('/cart');
 // Fires when normalized entropy >= highEntropyThreshold for a state
 interface HighEntropyPayload {
   state: string;
-  entropy: number;           // raw Shannon entropy in nats
+  entropy: number; // raw Shannon entropy in nats
   normalizedEntropy: number; // [0..1], 1.0 = maximum randomness
 }
 
@@ -303,18 +307,18 @@ interface HighEntropyPayload {
 interface TrajectoryAnomalyPayload {
   stateFrom: string;
   stateTo: string;
-  realLogLikelihood: number;             // LL under the live graph
+  realLogLikelihood: number; // LL under the live graph
   expectedBaselineLogLikelihood: number; // LL under the baseline graph
-  zScore: number;                        // standard deviations from baseline mean
+  zScore: number; // standard deviations from baseline mean
 }
 
 // Fires when dwell time on a state deviates from the learned mean
 interface DwellTimeAnomalyPayload {
-  state: string;        // the state where anomalous dwell was observed
-  dwellMs: number;      // actual dwell time in milliseconds
-  meanMs: number;       // learned mean dwell for this state
-  stdMs: number;        // learned standard deviation
-  zScore: number;       // (dwellMs - mean) / std
+  state: string; // the state where anomalous dwell was observed
+  dwellMs: number; // actual dwell time in milliseconds
+  meanMs: number; // learned mean dwell for this state
+  stdMs: number; // learned standard deviation
+  zScore: number; // (dwellMs - mean) / std
 }
 
 // Fires on every track() call
@@ -325,17 +329,17 @@ interface StateChangePayload {
 
 // Fired by intent.trackConversion() — application-controlled
 interface ConversionPayload {
-  type: string;       // e.g. 'purchase', 'signup', 'trial_start'
-  value?: number;     // optional monetary value
-  currency?: string;  // ISO 4217 code, e.g. 'USD'
+  type: string; // e.g. 'purchase', 'signup', 'trial_start'
+  value?: number; // optional monetary value
+  currency?: string; // ISO 4217 code, e.g. 'USD'
 }
 
 // Returned by intent.getTelemetry() — aggregate counters only, no raw data
 interface EdgeSignalTelemetry {
-  sessionId: string;                                        // local UUID, never transmitted
-  transitionsEvaluated: number;                            // total track() calls with a prior state
-  botStatus: 'human' | 'suspected_bot';                   // current EntropyGuard classification
-  anomaliesFired: number;                                  // sum of high_entropy + trajectory_anomaly + dwell_time_anomaly
+  sessionId: string; // local UUID, never transmitted
+  transitionsEvaluated: number; // total track() calls with a prior state
+  botStatus: 'human' | 'suspected_bot'; // current EntropyGuard classification
+  anomaliesFired: number; // sum of high_entropy + trajectory_anomaly + dwell_time_anomaly
   engineHealth: 'healthy' | 'pruning_active' | 'quota_exceeded'; // storage health
 }
 ```
@@ -356,7 +360,7 @@ import { IntentManager } from 'edge-signal';
 const intent = new IntentManager({
   storageKey: 'b2b-retention-intent',
   graph: {
-    highEntropyThreshold: 0.80, // start learning early; action fires at 0.90 below
+    highEntropyThreshold: 0.8, // start learning early; action fires at 0.90 below
   },
   eventCooldownMs: 60_000, // at most one intervention per minute
 });
@@ -364,7 +368,7 @@ const intent = new IntentManager({
 intent.on('high_entropy', ({ state, normalizedEntropy }) => {
   const isRetentionPage = state === '/billing' || state === '/settings';
 
-  if (isRetentionPage && normalizedEntropy > 0.90) {
+  if (isRetentionPage && normalizedEntropy > 0.9) {
     // Full churn signal: open live support chat immediately.
     // EdgeSignal detected this in < 2 ms — no server round-trip required.
     openSupportChat({
@@ -420,18 +424,13 @@ function onRouteChange(route: string) {
 
   const articleCount = intent.getCounter('articles_read');
   // hasSeen() is O(1) — backed by the Bloom filter, persisted across sessions
-  const hasEngagedWithFeatures =
-    intent.hasSeen('/features') || intent.hasSeen('/pricing');
+  const hasEngagedWithFeatures = intent.hasSeen('/features') || intent.hasSeen('/pricing');
 
   // Trigger the email capture modal only when intent peaks:
   // - Visited 3+ distinct article pages (genuine reading intent)
   // - Explored a core product page (purchase consideration)
   // - Has not already been shown the modal this device
-  if (
-    articleCount >= 3 &&
-    hasEngagedWithFeatures &&
-    !intent.hasSeen('/lead-captured')
-  ) {
+  if (articleCount >= 3 && hasEngagedWithFeatures && !intent.hasSeen('/lead-captured')) {
     intent.track('/lead-captured'); // Bloom filter prevents re-showing across sessions
     showEmailCaptureModal();
   }
@@ -458,10 +457,38 @@ import { IntentManager, SerializedMarkovGraph } from 'edge-signal';
 const checkoutBaseline: SerializedMarkovGraph = {
   states: ['/home', '/search', '/product', '/cart', '/checkout'],
   rows: [
-    [0, 100, [[1, 80], [2, 20]]],     // /home → mostly /search
-    [1, 80,  [[2, 75], [0, 5]]],      // /search → /product
-    [2, 75,  [[3, 60], [1, 15]]],     // /product → /cart
-    [3, 60,  [[4, 55], [2, 5]]],      // /cart → /checkout
+    [
+      0,
+      100,
+      [
+        [1, 80],
+        [2, 20],
+      ],
+    ], // /home → mostly /search
+    [
+      1,
+      80,
+      [
+        [2, 75],
+        [0, 5],
+      ],
+    ], // /search → /product
+    [
+      2,
+      75,
+      [
+        [3, 60],
+        [1, 15],
+      ],
+    ], // /product → /cart
+    [
+      3,
+      60,
+      [
+        [4, 55],
+        [2, 5],
+      ],
+    ], // /cart → /checkout
   ],
   freedIndices: [],
 };
@@ -477,10 +504,10 @@ const intent = new IntentManager({
   },
   dwellTime: {
     enabled: true,
-    minSamples: 5,        // learn quickly within a session
+    minSamples: 5, // learn quickly within a session
     zScoreThreshold: 2.0, // lower individual threshold — the combo gate does the heavy lifting
   },
-  eventCooldownMs: 15_000,             // prevent re-triggering within 15 s
+  eventCooldownMs: 15_000, // prevent re-triggering within 15 s
   hesitationCorrelationWindowMs: 30_000,
 });
 
@@ -533,12 +560,12 @@ import { IntentManager } from 'edge-signal';
 const intent = new IntentManager({
   storageKey: 'support-intent',
   graph: {
-    highEntropyThreshold: 0.80, // trigger earlier for support use case
+    highEntropyThreshold: 0.8, // trigger earlier for support use case
   },
 });
 
 intent.on('high_entropy', ({ state, normalizedEntropy }) => {
-  if (normalizedEntropy > 0.90) {
+  if (normalizedEntropy > 0.9) {
     // Full rage-click pattern: open live chat immediately
     openLiveChat({ context: `User stuck at: ${state}` });
   } else {
@@ -564,11 +591,11 @@ This recipe shows how to connect EdgeSignal's local event bus to Google Analytic
 
 > **Event name reference**
 >
-> | What you want to detect | Simple API | Low-level (power users) |
-> |---|---|---|
-> | Bot traffic intercepted | `bot_detected` ✅ | `high_entropy` + `getTelemetry().botStatus` guard |
-> | User hesitation detected | `hesitation_detected` ✅ | `trajectory_anomaly` + `dwell_time_anomaly` dual-signal |
-> | Conversion completed | `trackConversion()` / `conversion` | same |
+> | What you want to detect  | Simple API                         | Low-level (power users)                                 |
+> | ------------------------ | ---------------------------------- | ------------------------------------------------------- |
+> | Bot traffic intercepted  | `bot_detected` ✅                  | `high_entropy` + `getTelemetry().botStatus` guard       |
+> | User hesitation detected | `hesitation_detected` ✅           | `trajectory_anomaly` + `dwell_time_anomaly` dual-signal |
+> | Conversion completed     | `trackConversion()` / `conversion` | same                                                    |
 
 ```ts
 import { IntentManager } from 'edge-signal';
@@ -641,12 +668,12 @@ function onCheckoutComplete(orderTotal: number): void {
 
 **What GA4 receives — and what it does NOT receive:**
 
-| Data sent to GA4 | Contains PII? | Contains behavioral data? |
-|---|---|---|
-| `edgesignal_bot_mitigated` event name + category | No | No — a count signal only |
-| `edgesignal_intervention_triggered` + `intervention_type` | No | No — an enum label, not a path sequence |
-| `edgesignal_assisted_conversion` + `value` | No | No — a purchase value you already send to GA4 for revenue reporting |
-| `session_correlation_id` (random UUID) | No — not linkable to identity | No |
+| Data sent to GA4                                          | Contains PII?                 | Contains behavioral data?                                           |
+| --------------------------------------------------------- | ----------------------------- | ------------------------------------------------------------------- |
+| `edgesignal_bot_mitigated` event name + category          | No                            | No — a count signal only                                            |
+| `edgesignal_intervention_triggered` + `intervention_type` | No                            | No — an enum label, not a path sequence                             |
+| `edgesignal_assisted_conversion` + `value`                | No                            | No — a purchase value you already send to GA4 for revenue reporting |
+| `session_correlation_id` (random UUID)                    | No — not linkable to identity | No                                                                  |
 
 The Markov graph, Bloom filter, transition sequences, dwell-time measurements, entropy scores, and raw event payloads **never leave the device**. GA4 only sees dimensionless count signals that tell you whether EdgeSignal worked — not _how_ it worked or _who_ it worked on.
 
@@ -691,9 +718,9 @@ intent.on('conversion', (payload) => {
   myAnalytics.send({
     event: 'purchase',
     ...payload,
-    assignmentGroup,  // 'treatment' | 'control'
-    anomaliesFired,   // how many behavioral signals fired
-    sessionId,        // local ephemeral ID — you control whether to send it
+    assignmentGroup, // 'treatment' | 'control'
+    anomaliesFired, // how many behavioral signals fired
+    sessionId, // local ephemeral ID — you control whether to send it
   });
 });
 
@@ -741,8 +768,8 @@ intent.on('conversion', () => {
   myAnalytics.send({
     event: 'purchase',
     assignmentGroup,
-    articles_read:     intent.getCounter('articles_read'),
-    checkout_visits:   intent.getCounter('checkout_visits'),
+    articles_read: intent.getCounter('articles_read'),
+    checkout_visits: intent.getCounter('checkout_visits'),
   });
 });
 ```
@@ -770,9 +797,9 @@ intent.on('state_change', ({ to }) => {
 
   likelyNextStates
     // ─── COMPLIANCE GUARDRAIL: see warning below ───────────────────────────────
-    .filter(state => !isSensitiveRoute(state))
+    .filter((state) => !isSensitiveRoute(state))
     // ───────────────────────────────────────────────────────────────────────────
-    .forEach(state => {
+    .forEach((state) => {
       // router.prefetch() fetches the page bundle without navigating to it.
       // The page appears to load instantly when the user clicks.
       router.prefetch(state);
@@ -797,13 +824,13 @@ The result is not just a performance gain — it is a **retention signal**. A fa
 >
 > **Routes you must always exclude from prefetching:**
 >
-> | Route pattern | Risk if prefetched |
-> |---|---|
-> | `/logout`, `/signout` | Silently logs the user out |
-> | `/api/delete-account` | Triggers account deletion |
-> | `/api/confirm-*` | Executes one-time confirmation actions |
-> | `/api/unsubscribe` | Silently cancels a subscription |
-> | Any route that mutates state on HTTP `GET` | Unintended data modification |
+> | Route pattern                              | Risk if prefetched                     |
+> | ------------------------------------------ | -------------------------------------- |
+> | `/logout`, `/signout`                      | Silently logs the user out             |
+> | `/api/delete-account`                      | Triggers account deletion              |
+> | `/api/confirm-*`                           | Executes one-time confirmation actions |
+> | `/api/unsubscribe`                         | Silently cancels a subscription        |
+> | Any route that mutates state on HTTP `GET` | Unintended data modification           |
 >
 > Implement the `isSensitiveRoute` guard above as an allowlist (not a blocklist):
 >
@@ -811,7 +838,7 @@ The result is not just a performance gain — it is a **retention signal**. A fa
 > // ✅ SAFE — allowlist approach: only prefetch explicitly approved routes
 > function isSensitiveRoute(state: string): boolean {
 >   const PREFETCH_ALLOWLIST = ['/dashboard', '/features', '/pricing', '/docs'];
->   return !PREFETCH_ALLOWLIST.some(allowed => state.startsWith(allowed));
+>   return !PREFETCH_ALLOWLIST.some((allowed) => state.startsWith(allowed));
 > }
 > ```
 >
@@ -831,26 +858,26 @@ interface IntentManagerConfig {
 
   // Bloom filter sizing
   bloom?: {
-    bitSize?: number;    // default: 2048  (256 bytes)
-    hashCount?: number;  // default: 4
+    bitSize?: number; // default: 2048  (256 bytes)
+    hashCount?: number; // default: 4
   };
 
   // Markov graph behavior
   graph?: {
-    highEntropyThreshold?: number;  // [0..1], default: 0.75
-    divergenceThreshold?: number;   // z-score magnitude, default: 3.5
-    baselineMeanLL?: number;        // calibrated mean avg log-likelihood
-    baselineStdLL?: number;         // calibrated std dev of avg log-likelihood
-    smoothingEpsilon?: number;      // Laplace epsilon, default: 0.01
-    maxStates?: number;             // LFU prune cap, default: 500
+    highEntropyThreshold?: number; // [0..1], default: 0.75
+    divergenceThreshold?: number; // z-score magnitude, default: 3.5
+    baselineMeanLL?: number; // calibrated mean avg log-likelihood
+    baselineStdLL?: number; // calibrated std dev of avg log-likelihood
+    smoothingEpsilon?: number; // Laplace epsilon, default: 0.01
+    maxStates?: number; // LFU prune cap, default: 500
   };
 
   // Pre-built reference graph for trajectory comparison
   baseline?: SerializedMarkovGraph;
 
   // Isomorphic adapters — swap out for SSR / testing
-  storage?: StorageAdapter;  // default: BrowserStorageAdapter
-  timer?: TimerAdapter;      // default: BrowserTimerAdapter
+  storage?: StorageAdapter; // default: BrowserStorageAdapter
+  timer?: TimerAdapter; // default: BrowserTimerAdapter
 
   // Called on QuotaExceededError / SecurityError during persist()
   onError?: (err: Error) => void;
@@ -872,14 +899,14 @@ interface IntentManagerConfig {
   // NOTE: dwell-time accumulators are session-scoped and not persisted.
   // The learning phase restarts on every page reload / new IntentManager instance.
   dwellTime?: {
-    enabled?: boolean;          // default: false
-    minSamples?: number;        // minimum observations before firing (default: 10)
-                                // raise this value for short-session applications
-    zScoreThreshold?: number;   // |z| >= this fires the event (default: 2.5)
+    enabled?: boolean; // default: false
+    minSamples?: number; // minimum observations before firing (default: 10)
+    // raise this value for short-session applications
+    zScoreThreshold?: number; // |z| >= this fires the event (default: 2.5)
   };
 
   // Selective bigram (second-order) Markov transitions
-  enableBigrams?: boolean;          // default: false
+  enableBigrams?: boolean; // default: false
   bigramFrequencyThreshold?: number; // min unigram rowTotal before recording bigrams (default: 5)
 
   // Auto-killswitch: disable trajectory evaluation if the anomaly/track() ratio
@@ -887,8 +914,8 @@ interface IntentManagerConfig {
   // Default: { maxAnomalyRate: 0.4, evaluationWindowMs: 300_000 }
   // Set maxAnomalyRate: 1 to effectively disable the killswitch.
   driftProtection?: {
-    maxAnomalyRate: number;       // 0–1; e.g. 0.4 = 40 % of track() calls
-    evaluationWindowMs: number;   // rolling window length, e.g. 300_000 (5 min)
+    maxAnomalyRate: number; // 0–1; e.g. 0.4 = 40 % of track() calls
+    evaluationWindowMs: number; // rolling window length, e.g. 300_000 (5 min)
   };
 
   // A/B holdout: randomly assign each session to 'treatment' or 'control'.
@@ -907,8 +934,8 @@ interface IntentManagerConfig {
 
   // Built-in performance instrumentation
   benchmark?: {
-    enabled?: boolean;       // default: false
-    maxSamples?: number;     // default: 4096
+    enabled?: boolean; // default: false
+    maxSamples?: number; // default: 4096
   };
 }
 ```
@@ -921,8 +948,8 @@ Use the static helper to compute optimal parameters for your known state-space:
 import { BloomFilter } from 'edge-signal';
 
 const { bitSize, hashCount } = BloomFilter.computeOptimal(
-  200,   // expected distinct states
-  0.01,  // target false-positive rate (1 %)
+  200, // expected distinct states
+  0.01, // target false-positive rate (1 %)
 );
 // → { bitSize: 1918, hashCount: 7 }
 
@@ -936,10 +963,7 @@ filter.estimateCurrentFPR(150); // → ~0.004 (0.4 %)
 ### Custom Adapters (SSR / Testing)
 
 ```ts
-import {
-  IntentManager,
-  MemoryStorageAdapter,
-} from 'edge-signal';
+import { IntentManager, MemoryStorageAdapter } from 'edge-signal';
 
 // Server-side rendering — no localStorage access, no persistence
 const intent = new IntentManager({
@@ -950,10 +974,18 @@ const intent = new IntentManager({
 // Controllable clock for deterministic timing tests
 class FakeTimerAdapter {
   private _now = 1000;
-  tick(ms: number) { this._now += ms; }
-  now() { return this._now; }
-  setTimeout(fn: () => void, ms: number) { return setTimeout(fn, ms); }
-  clearTimeout(id: ReturnType<typeof setTimeout>) { clearTimeout(id); }
+  tick(ms: number) {
+    this._now += ms;
+  }
+  now() {
+    return this._now;
+  }
+  setTimeout(fn: () => void, ms: number) {
+    return setTimeout(fn, ms);
+  }
+  clearTimeout(id: ReturnType<typeof setTimeout>) {
+    clearTimeout(id);
+  }
 }
 const fakeTimer = new FakeTimerAdapter();
 const testIntent = new IntentManager({
@@ -1094,18 +1126,18 @@ flowchart LR
     style STORE fill:#3d405b,color:#fff,stroke:#81b29a
 ```
 
-| Component | Role | Key constraint |
-|---|---|---|
-| **IntentManager** | Single public orchestrator — routes every `track()` call through all subsystems | `readonly` fields prevent accidental mutation; never throws |
-| **BloomFilter** | Probabilistic set membership for `hasSeen()` | Fixed-size `Uint8Array`; O(k) per operation regardless of state count |
-| **MarkovGraph** | Sparse first-order Markov chain; learns transition counts in real time | State labels interned to `uint16` indices; max 65 535 states |
-| **EntropyGuard** | Bot / automation detector based on inter-call timing | Fixed-size circular buffer; zero heap allocations in hot path |
-| **DwellTimeDetector** | Per-state dwell-time anomaly detection via Welford's online algorithm | O(1) per call; Map of `[count, mean, m2]` tuples |
-| **Bigram Recorder** | Selective second-order Markov transitions (`A→B` → `B→C`) | Frequency-gated; shares graph with LFU pruning under `maxStates` |
-| **EventEmitter** | Typed mini event bus: `high_entropy`, `trajectory_anomaly`, `dwell_time_anomaly`, `state_change` | ~20 lines; no `EventTarget` dependency for SSR safety; per-channel cooldown applies to anomaly events only (`high_entropy`, `trajectory_anomaly`, `dwell_time_anomaly`); `state_change` is always emitted immediately |
-| **BenchmarkRecorder** | Optional per-operation p95/p99 latency sampler | Disabled by default; ring-buffer avoids unbounded growth |
-| **Persistence Layer** | Debounced, dirty-flag-gated `localStorage` write | Writes only on actual state change; binary format, not JSON |
-| **StorageAdapter / TimerAdapter** | Isomorphic interfaces wrapping `localStorage` and `setTimeout` | Swap for `MemoryStorageAdapter` in SSR / tests |
+| Component                         | Role                                                                                             | Key constraint                                                                                                                                                                                                        |
+| --------------------------------- | ------------------------------------------------------------------------------------------------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **IntentManager**                 | Single public orchestrator — routes every `track()` call through all subsystems                  | `readonly` fields prevent accidental mutation; never throws                                                                                                                                                           |
+| **BloomFilter**                   | Probabilistic set membership for `hasSeen()`                                                     | Fixed-size `Uint8Array`; O(k) per operation regardless of state count                                                                                                                                                 |
+| **MarkovGraph**                   | Sparse first-order Markov chain; learns transition counts in real time                           | State labels interned to `uint16` indices; max 65 535 states                                                                                                                                                          |
+| **EntropyGuard**                  | Bot / automation detector based on inter-call timing                                             | Fixed-size circular buffer; zero heap allocations in hot path                                                                                                                                                         |
+| **DwellTimeDetector**             | Per-state dwell-time anomaly detection via Welford's online algorithm                            | O(1) per call; Map of `[count, mean, m2]` tuples                                                                                                                                                                      |
+| **Bigram Recorder**               | Selective second-order Markov transitions (`A→B` → `B→C`)                                        | Frequency-gated; shares graph with LFU pruning under `maxStates`                                                                                                                                                      |
+| **EventEmitter**                  | Typed mini event bus: `high_entropy`, `trajectory_anomaly`, `dwell_time_anomaly`, `state_change` | ~20 lines; no `EventTarget` dependency for SSR safety; per-channel cooldown applies to anomaly events only (`high_entropy`, `trajectory_anomaly`, `dwell_time_anomaly`); `state_change` is always emitted immediately |
+| **BenchmarkRecorder**             | Optional per-operation p95/p99 latency sampler                                                   | Disabled by default; ring-buffer avoids unbounded growth                                                                                                                                                              |
+| **Persistence Layer**             | Debounced, dirty-flag-gated `localStorage` write                                                 | Writes only on actual state change; binary format, not JSON                                                                                                                                                           |
+| **StorageAdapter / TimerAdapter** | Isomorphic interfaces wrapping `localStorage` and `setTimeout`                                   | Swap for `MemoryStorageAdapter` in SSR / tests                                                                                                                                                                        |
 
 ---
 
@@ -1209,9 +1241,9 @@ flowchart TD
 The critical invariants visible in this flow:
 
 - **EntropyGuard runs unconditionally** before all signal evaluation — bot classification happens even on the very first `track()` call.
-- **Bloom add always runs** regardless of bot status — the filter and graph continue learning even for suspected bots. Only event *emission* is suppressed.
+- **Bloom add always runs** regardless of bot status — the filter and graph continue learning even for suspected bots. Only event _emission_ is suppressed.
 - **`isDirty` is set in two places** — new Bloom state and new graph transition are tracked independently so the persistence gate captures both.
-- **Dwell-time evaluation runs before trajectory push** — the dwell on the *previous* state is measured before the new state enters the window, ensuring the measurement reflects actual time on the departing state.
+- **Dwell-time evaluation runs before trajectory push** — the dwell on the _previous_ state is measured before the new state enters the window, ensuring the measurement reflects actual time on the departing state.
 - **Bigram recording is frequency-gated** — `graph.rowTotal(from) >= bigramFrequencyThreshold` prevents state explosion from rare transitions.
 - **Entropy is gated at `rowTotal ≥ 10`** — prevents spurious `high_entropy` events on states with only 2–3 recorded transitions.
 - **Trajectory evaluation needs both a warm window (≥ 16) and a baseline** — neither is sufficient alone.
@@ -1350,11 +1382,11 @@ $$
 
 Interpretation:
 
-| $\hat{H}(i)$ | Meaning |
-|---|---|
-| 0 | User always transitions to the same next state |
-| 0.5 | Moderate spread; some preferred paths exist |
-| 1.0 | Completely random; user transitions with equal probability to all neighbors |
+| $\hat{H}(i)$ | Meaning                                                                     |
+| ------------ | --------------------------------------------------------------------------- |
+| 0            | User always transitions to the same next state                              |
+| 0.5          | Moderate spread; some preferred paths exist                                 |
+| 1.0          | Completely random; user transitions with equal probability to all neighbors |
 
 The `high_entropy` event fires when $\hat{H}(i) \geq \theta_\text{entropy}$ (default 0.75) **and** the state has at least `MIN_SAMPLE_TRANSITIONS` (10) observed outgoing transitions. The minimum-sample guard prevents spurious triggers on newly-seen states with only 2–3 transitions recorded.
 
@@ -1378,7 +1410,7 @@ The library maintains a **sliding window** of states of length 16–32 (`MIN_WIN
 
 **Why evaluate against the baseline, not the live graph?**
 
-The live graph is learned from the current session — it always assigns high probability to paths it has already seen. The meaningful question is: *does this user's path look unusual under the known-good baseline?* Comparing session behavior against a pre-calibrated reference avoids circular self-reinforcement.
+The live graph is learned from the current session — it always assigns high probability to paths it has already seen. The meaningful question is: _does this user's path look unusual under the known-good baseline?_ Comparing session behavior against a pre-calibrated reference avoids circular self-reinforcement.
 
 ---
 
@@ -1460,27 +1492,27 @@ const intent = new IntentManager({
 
 `IntentManager` is the single orchestration class consumers interact with.
 
-| Concern | Implementation |
-|---|---|
-| State machine | `previousState: string \| null` field; `recentTrajectory: string[]` sliding window |
-| Bloom | `BloomFilter` instance, hydrated from `localStorage` on construction |
-| Graph | `MarkovGraph` instance, hydrated from binary `localStorage` blob on construction |
-| Baseline | Second `MarkovGraph` deserialized from `config.baseline` JSON at construction |
-| Events | Internal `EventEmitter<IntentEventMap>` — 20 lines, zero external deps |
-| Persistence | Debounced write (2 s default), dirty-flag guards every write |
-| Bot detection | `EntropyGuard` circular buffer, synchronized to `timer.now()` |
-| Dwell-time | Welford’s online accumulator per state; z-score anomaly detection |
-| Tab-visibility | `visibilitychange` listener offsets `previousStateEnteredAt` by hidden duration; SSR-safe |
-| Drift killswitch | Rolling-window `trajectory_anomaly`/`track()` ratio; sets `isBaselineDrifted` flag when threshold exceeded |
-| Route normalization | `normalizeRouteState()` called at the top of every `track()` call |
-| Bigrams | Selective second-order Markov transitions, frequency-gated |
-| Event cooldown | Per-channel cooldown gating via `eventCooldownMs` |
-| Deterministic counters | `incrementCounter` / `getCounter` / `resetCounter` — exact integer map, session-scoped |
-| A/B holdout | `assignmentGroup: 'treatment' | 'control'` set at construction; control group skips event emissions |
-| Benchmarking | `BenchmarkRecorder` with per-operation ring-buffer sample accumulators |
-| Error handling | All `try/catch` blocks route to `onError?: (err: Error) => void`; never throws |
-| Telemetry | `getTelemetry()` returns `EdgeSignalTelemetry` — aggregate counters only, no raw states or PII |
-| Conversion tracking | `trackConversion(payload)` emits a `conversion` event through the local event bus; nothing leaves the device |
+| Concern                | Implementation                                                                                               |
+| ---------------------- | ------------------------------------------------------------------------------------------------------------ | ------------------------------------------------------------------- |
+| State machine          | `previousState: string \| null` field; `recentTrajectory: string[]` sliding window                           |
+| Bloom                  | `BloomFilter` instance, hydrated from `localStorage` on construction                                         |
+| Graph                  | `MarkovGraph` instance, hydrated from binary `localStorage` blob on construction                             |
+| Baseline               | Second `MarkovGraph` deserialized from `config.baseline` JSON at construction                                |
+| Events                 | Internal `EventEmitter<IntentEventMap>` — 20 lines, zero external deps                                       |
+| Persistence            | Debounced write (2 s default), dirty-flag guards every write                                                 |
+| Bot detection          | `EntropyGuard` circular buffer, synchronized to `timer.now()`                                                |
+| Dwell-time             | Welford’s online accumulator per state; z-score anomaly detection                                            |
+| Tab-visibility         | `visibilitychange` listener offsets `previousStateEnteredAt` by hidden duration; SSR-safe                    |
+| Drift killswitch       | Rolling-window `trajectory_anomaly`/`track()` ratio; sets `isBaselineDrifted` flag when threshold exceeded   |
+| Route normalization    | `normalizeRouteState()` called at the top of every `track()` call                                            |
+| Bigrams                | Selective second-order Markov transitions, frequency-gated                                                   |
+| Event cooldown         | Per-channel cooldown gating via `eventCooldownMs`                                                            |
+| Deterministic counters | `incrementCounter` / `getCounter` / `resetCounter` — exact integer map, session-scoped                       |
+| A/B holdout            | `assignmentGroup: 'treatment'                                                                                | 'control'` set at construction; control group skips event emissions |
+| Benchmarking           | `BenchmarkRecorder` with per-operation ring-buffer sample accumulators                                       |
+| Error handling         | All `try/catch` blocks route to `onError?: (err: Error) => void`; never throws                               |
+| Telemetry              | `getTelemetry()` returns `EdgeSignalTelemetry` — aggregate counters only, no raw states or PII               |
+| Conversion tracking    | `trackConversion(payload)` emits a `conversion` event through the local event bus; nothing leaves the device |
 
 **Session reset:**
 
@@ -1530,8 +1562,7 @@ const t = intent.getTelemetry();
 // 'type' must be an application-defined label — never a user identifier.
 intent.on('conversion', ({ type, value, currency }) => {
   // Entirely under your control — you decide whether/how to forward this.
-  myAnalytics.send({ event: 'conversion', type, value, currency,
-    ...intent.getTelemetry() }); // attach telemetry for ROI analysis
+  myAnalytics.send({ event: 'conversion', type, value, currency, ...intent.getTelemetry() }); // attach telemetry for ROI analysis
 });
 
 // After a successful purchase:
@@ -1559,6 +1590,7 @@ Population standard deviation: $\sigma = \sqrt{M_2 / n}$
 Z-score: $z = (x - \bar{x}) / \sigma$
 
 The `dwell_time_anomaly` event fires when:
+
 - At least `minSamples` (default: 10) dwell observations have been recorded for the state
 - $|z| \geq$ `zScoreThreshold` (default: 2.5)
 - The session is not flagged as bot-suspected
@@ -1570,13 +1602,15 @@ The `dwell_time_anomaly` event fires when:
 const intent = new IntentManager({
   dwellTime: {
     enabled: true,
-    minSamples: 10,      // wait for statistical significance
+    minSamples: 10, // wait for statistical significance
     zScoreThreshold: 2.5, // ~1.2% two-tailed under normal distribution
   },
 });
 
 intent.on('dwell_time_anomaly', ({ state, dwellMs, meanMs, stdMs, zScore }) => {
-  console.log(`Unusual dwell on "${state}": ${dwellMs}ms (mean=${meanMs.toFixed(0)}ms, z=${zScore.toFixed(2)})`);
+  console.log(
+    `Unusual dwell on "${state}": ${dwellMs}ms (mean=${meanMs.toFixed(0)}ms, z=${zScore.toFixed(2)})`,
+  );
 });
 ```
 
@@ -1608,17 +1642,23 @@ The listener is removed by `destroy()` using the exact same function reference, 
 let mockHidden = false;
 let listener = null;
 globalThis.document = {
-  get hidden() { return mockHidden; },
-  addEventListener(_e, fn) { listener = fn; },
+  get hidden() {
+    return mockHidden;
+  },
+  addEventListener(_e, fn) {
+    listener = fn;
+  },
   removeEventListener() {},
 };
 
 const intent = new IntentManager({ botProtection: false, dwellTime: { enabled: true } });
 // ... track some states to build baseline ...
 
-mockHidden = true;  listener(); // tab hidden
+mockHidden = true;
+listener(); // tab hidden
 // ... 30 seconds pass ...
-mockHidden = false; listener(); // tab visible again
+mockHidden = false;
+listener(); // tab visible again
 
 // Next track() will NOT see a 30 s dwell on the previous state
 intent.track('/next-page');
@@ -1647,7 +1687,7 @@ When `driftWindowAnomalyCount / driftWindowTrackCount > driftProtection.maxAnoma
 const intent = new IntentManager({
   baseline: myBaselineGraph,
   driftProtection: {
-    maxAnomalyRate: 0.4,        // engage if >40% of tracks produce an anomaly
+    maxAnomalyRate: 0.4, // engage if >40% of tracks produce an anomaly
     evaluationWindowMs: 300_000, // rolling 5-minute window
   },
 });
@@ -1662,11 +1702,11 @@ if (baselineStatus === 'drifted') {
 
 **Tuning guidance:**
 
-| `maxAnomalyRate` | Effect |
-|---|---|
-| `0.05` (5 %) | Very sensitive — triggers quickly if the baseline is even slightly stale. Good for production with a freshly calibrated baseline. |
-| `0.4` (40 %, default) | Balanced — tolerates natural session variance before engaging. |
-| `1.0` (100 %) | Effectively disables the killswitch. Use only during baseline calibration or testing. |
+| `maxAnomalyRate`      | Effect                                                                                                                            |
+| --------------------- | --------------------------------------------------------------------------------------------------------------------------------- |
+| `0.05` (5 %)          | Very sensitive — triggers quickly if the baseline is even slightly stale. Good for production with a freshly calibrated baseline. |
+| `0.4` (40 %, default) | Balanced — tolerates natural session variance before engaging.                                                                    |
+| `1.0` (100 %)         | Effectively disables the killswitch. Use only during baseline calibration or testing.                                             |
 
 ---
 
@@ -1678,17 +1718,17 @@ The Bloom filter provides O(1) probabilistic membership tests (`hasSeen()`), but
 
 ```ts
 // Increment by 1 (default) and return the new value
-const count = intent.incrementCounter('articles_read');   // → 1
-intent.incrementCounter('articles_read');                 // → 2
-intent.incrementCounter('articles_read', 3);              // → 5
+const count = intent.incrementCounter('articles_read'); // → 1
+intent.incrementCounter('articles_read'); // → 2
+intent.incrementCounter('articles_read', 3); // → 5
 
 // Read the current value (0 if never set)
-intent.getCounter('articles_read');   // → 5
-intent.getCounter('never_touched');   // → 0
+intent.getCounter('articles_read'); // → 5
+intent.getCounter('never_touched'); // → 0
 
 // Reset to 0 (removes the entry from the map)
 intent.resetCounter('articles_read');
-intent.getCounter('articles_read');   // → 0
+intent.getCounter('articles_read'); // → 0
 ```
 
 **Key properties:**
@@ -1716,13 +1756,13 @@ intent.on('state_change', ({ to }) => {
 
 **Transformations applied in order:**
 
-| Step | Input | Output |
-|---|---|---|
-| Strip query string | `/search?q=shoes&page=2` | `/search` |
-| Strip hash fragment | `/docs#section-3` | `/docs` |
-| Replace v4 UUID | `/users/550e8400-e29b-41d4-a716-446655440000/profile` | `/users/:id/profile` |
-| Replace MongoDB ObjectID (24-char hex) | `/products/507f1f77bcf86cd799439011` | `/products/:id` |
-| Remove trailing slash | `/checkout/` | `/checkout` |
+| Step                                   | Input                                                 | Output               |
+| -------------------------------------- | ----------------------------------------------------- | -------------------- |
+| Strip query string                     | `/search?q=shoes&page=2`                              | `/search`            |
+| Strip hash fragment                    | `/docs#section-3`                                     | `/docs`              |
+| Replace v4 UUID                        | `/users/550e8400-e29b-41d4-a716-446655440000/profile` | `/users/:id/profile` |
+| Replace MongoDB ObjectID (24-char hex) | `/products/507f1f77bcf86cd799439011`                  | `/products/:id`      |
+| Remove trailing slash                  | `/checkout/`                                          | `/checkout`          |
 
 **Stability guarantee:** Two different UUIDs on the same route produce exactly the same state label — so `/users/UUID-A/profile` and `/users/UUID-B/profile` both map to `/users/:id/profile` and contribute to the same Markov edge. This is essential for trajectory analysis to work across a dynamic user population.
 
@@ -1779,9 +1819,9 @@ intent.on('conversion', (payload) => {
   myAnalytics.send({
     event: 'conversion',
     ...payload,
-    assignmentGroup,   // 'treatment' | 'control'
-    anomaliesFired,    // how many signals fired before conversion
-    sessionId,         // local session ID — never transmitted by the SDK itself
+    assignmentGroup, // 'treatment' | 'control'
+    anomaliesFired, // how many signals fired before conversion
+    sessionId, // local session ID — never transmitted by the SDK itself
   });
 });
 
@@ -1818,6 +1858,7 @@ Bigram transitions are only recorded when the unigram from-state has accumulated
 **Example recording logic:**
 
 Given trajectory `[A, B, C]`, when `B` is the current from-state:
+
 - Unigram transition: `B → C` (always recorded)
 - Bigram transition: `A→B` → `B→C` (recorded only if `graph.rowTotal('B') >= bigramFrequencyThreshold`)
 
@@ -1828,8 +1869,8 @@ Given trajectory `[A, B, C]`, when `B` is the current from-state:
 ```ts
 const intent = new IntentManager({
   enableBigrams: true,
-  bigramFrequencyThreshold: 5,  // require 5+ unigram transitions before recording bigrams
-  graph: { maxStates: 500 },    // bigram states share this cap
+  bigramFrequencyThreshold: 5, // require 5+ unigram transitions before recording bigrams
+  graph: { maxStates: 500 }, // bigram states share this cap
 });
 ```
 
@@ -1880,6 +1921,7 @@ The Markov graph is persisted in a custom binary format (`version 0x02`), not as
 ```
 
 Key properties:
+
 - **Single-allocation encode:** total buffer size is computed before any writes; `new Uint8Array(totalSize)` is called exactly once.
 - Supports **up to 65,535 distinct states** (Uint16 index space) without format changes.
 - Supports **up to 4,294,967,295 transitions per row** (Uint32 count).
@@ -1911,25 +1953,25 @@ Tombstoned slots are **reused** on the next `ensureState()` call, preventing the
 
 Benchmarks run on **Node.js v24.1.0**, default configuration (2048-bit Bloom filter, 500-state graph cap, dwell-time and bigram features active).
 
-| Metric | Value |
-|---|---|
-| `track()` average latency | **0.0020 ms** |
-| `track()` p95 latency | 0.0028 ms |
-| `track()` p99 latency | 0.0045 ms |
-| Process RSS (Node.js hot) | ~29 MB (engine overhead dominates; SDK adds < 1 MB) |
-| Serialized graph — 50 states | **1,409 bytes** (incl. bigram metadata) |
-| Bloom bitset — default config | **256 bytes** |
+| Metric                        | Value                                               |
+| ----------------------------- | --------------------------------------------------- |
+| `track()` average latency     | **0.0020 ms**                                       |
+| `track()` p95 latency         | 0.0028 ms                                           |
+| `track()` p99 latency         | 0.0045 ms                                           |
+| Process RSS (Node.js hot)     | ~29 MB (engine overhead dominates; SDK adds < 1 MB) |
+| Serialized graph — 50 states  | **1,409 bytes** (incl. bigram metadata)             |
+| Bloom bitset — default config | **256 bytes**                                       |
 
 **Impact of new features (dwell-time + selective bigrams):**
 
-| Metric | Before | After | Delta |
-|---|---|---|---|
-| `avgTrackMs` | 0.0019 ms | 0.0020 ms | +5% (within noise) |
-| `serializedGraphSizeBytes` | 1,391 B | 1,409 B | +18 bytes |
-| Perf regression gate | — | **PASSED** | — |
-| Scenario matrix (F1) | 1.000 | **1.000** | No change |
-| ROC AUC @Δ0.05 | 0.739 | **0.739** | No change |
-| ROC AUC @Δ0.30 | 0.999 | **0.999** | No change |
+| Metric                     | Before    | After      | Delta              |
+| -------------------------- | --------- | ---------- | ------------------ |
+| `avgTrackMs`               | 0.0019 ms | 0.0020 ms  | +5% (within noise) |
+| `serializedGraphSizeBytes` | 1,391 B   | 1,409 B    | +18 bytes          |
+| Perf regression gate       | —         | **PASSED** | —                  |
+| Scenario matrix (F1)       | 1.000     | **1.000**  | No change          |
+| ROC AUC @Δ0.05             | 0.739     | **0.739**  | No change          |
+| ROC AUC @Δ0.30             | 0.999     | **0.999**  | No change          |
 
 Enable the built-in profiler for per-operation breakdowns:
 
@@ -1986,16 +2028,16 @@ EdgeSignal's privacy guarantee is architectural, not policy-based. It is enforce
 
 The privacy properties of this library are not marketing copy. Here is how each claim is enforced and verifiable:
 
-| Claim | Verification |
-|---|---|
-| **No network calls** | `grep -r "fetch\|XMLHttpRequest\|sendBeacon\|WebSocket" src/` returns zero results. The `package.json` has no runtime dependencies. The minified bundle can be audited in `dist/index.js`. |
-| **No fingerprinting** | No access to `navigator`, `screen`, `canvas`, `AudioContext`, or any known fingerprinting surface. EntropyGuard uses only `performance.now()` deltas from your own explicit `track()` calls. |
-| **No PII** | `track()` accepts a `string` label chosen entirely by the application. The library never reads cookies, URL query parameters, form fields, local storage keys other than `storageKey`, or any DOM content. |
-| **Local storage only** | Persistence routes exclusively through the `StorageAdapter` interface, which defaults to `window.localStorage`. Inspect the stored state at any time: `localStorage.getItem('edge-signal')`. |
-| **Transparent & auditable** | `src/` is the exact code that ships. `tsup` minifies but does not inject code. Source maps in `dist/` make the minified output human-readable. |
-| **User can clear state** | `localStorage.removeItem('edge-signal')` wipes all learned state. No server-side copy exists. |
-| **Temporal data is non-persistent** | Dwell-time accumulators (`dwellStats`) are held in memory only and never written to `localStorage`. Per-state timing distributions cannot be reconstructed across sessions. |
-| **Zero runtime dependencies** | The dependency graph is empty — no transitive code paths can introduce egress, telemetry, or tracking. |
+| Claim                               | Verification                                                                                                                                                                                               |
+| ----------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **No network calls**                | `grep -r "fetch\|XMLHttpRequest\|sendBeacon\|WebSocket" src/` returns zero results. The `package.json` has no runtime dependencies. The minified bundle can be audited in `dist/index.js`.                 |
+| **No fingerprinting**               | No access to `navigator`, `screen`, `canvas`, `AudioContext`, or any known fingerprinting surface. EntropyGuard uses only `performance.now()` deltas from your own explicit `track()` calls.               |
+| **No PII**                          | `track()` accepts a `string` label chosen entirely by the application. The library never reads cookies, URL query parameters, form fields, local storage keys other than `storageKey`, or any DOM content. |
+| **Local storage only**              | Persistence routes exclusively through the `StorageAdapter` interface, which defaults to `window.localStorage`. Inspect the stored state at any time: `localStorage.getItem('edge-signal')`.               |
+| **Transparent & auditable**         | `src/` is the exact code that ships. `tsup` minifies but does not inject code. Source maps in `dist/` make the minified output human-readable.                                                             |
+| **User can clear state**            | `localStorage.removeItem('edge-signal')` wipes all learned state. No server-side copy exists.                                                                                                              |
+| **Temporal data is non-persistent** | Dwell-time accumulators (`dwellStats`) are held in memory only and never written to `localStorage`. Per-state timing distributions cannot be reconstructed across sessions.                                |
+| **Zero runtime dependencies**       | The dependency graph is empty — no transitive code paths can introduce egress, telemetry, or tracking.                                                                                                     |
 
 ---
 
@@ -2003,21 +2045,21 @@ The privacy properties of this library are not marketing copy. Here is how each 
 
 Because EdgeSignal processes no personal data as defined under GDPR Article 4(1), the majority of GDPR obligations simply do not attach. The table below maps each relevant GDPR article to EdgeSignal's behavior:
 
-| GDPR Article | Requirement | EdgeSignal status |
-|---|---|---|
-| **Art. 4(1)** — Personal data definition | Data relating to an identified or identifiable natural person | **Not applicable.** State labels are application-defined strings (e.g. `/checkout`). No user identifier, IP address, device ID, or biometric is ever processed. |
-| **Art. 5(1)(a)** — Lawfulness, fairness, transparency | Processing must have a lawful basis | **Not triggered.** No personal data is processed, so no lawful basis is required. |
-| **Art. 5(1)(b)** — Purpose limitation | Data collected for specified purposes only | **Not triggered.** No personal data is collected. |
-| **Art. 5(1)(c)** — Data minimisation | Only data adequate and necessary for the purpose | **Satisfied by design.** The library stores transition counts and anonymous timing statistics. No user-identifying field exists in the data model. |
-| **Art. 5(1)(e)** — Storage limitation | Data retained no longer than necessary | **Satisfied.** Dwell-time statistics are session-scoped and never persisted. The Markov graph stores only aggregate counts, not timestamped event logs. |
-| **Art. 6** — Lawful basis for processing | Consent, contract, legitimate interest, etc. | **Not required.** GDPR Article 6 applies only to personal data processing. EdgeSignal does not process personal data. |
-| **Art. 7** — Conditions for consent | Freely given, specific, informed, unambiguous | **No consent banner required.** No personal data is collected, so ePrivacy / PECR consent for analytics cookies does not apply to this SDK. |
-| **Art. 13/14** — Information obligations | Privacy notice must disclose processing | **No disclosure required** for EdgeSignal itself. Your existing privacy notice need not reference this SDK unless you pass personal data as state labels (which you should not do). |
-| **Art. 17** — Right to erasure | Users can request deletion of their data | **Trivially satisfied.** `localStorage.removeItem('edge-signal')` is the complete deletion path. No server-side data exists to delete. |
-| **Art. 20** — Right to data portability | Users can receive their data in machine-readable form | **Not triggered.** No personal data is processed. |
-| **Art. 25** — Privacy by design and by default | Privacy protections built into the system architecture | **Satisfied by architecture.** Zero-egress design, session-scoped temporal data, and absence of fingerprinting APIs are hardcoded behaviors, not configuration choices. |
-| **Art. 28** — Data processor agreement | Written contract required with processors | **No DPA required.** EdgeSignal is a client-side library, not a data processor. No personal data is transferred to any third party. |
-| **Art. 33/34** — Breach notification | Controller must notify supervisory authority within 72h | **Not triggered.** There is no server-side data store to breach. A user's `localStorage` being compromised is outside the scope of GDPR breach notification obligations for your organization. |
+| GDPR Article                                          | Requirement                                                   | EdgeSignal status                                                                                                                                                                              |
+| ----------------------------------------------------- | ------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **Art. 4(1)** — Personal data definition              | Data relating to an identified or identifiable natural person | **Not applicable.** State labels are application-defined strings (e.g. `/checkout`). No user identifier, IP address, device ID, or biometric is ever processed.                                |
+| **Art. 5(1)(a)** — Lawfulness, fairness, transparency | Processing must have a lawful basis                           | **Not triggered.** No personal data is processed, so no lawful basis is required.                                                                                                              |
+| **Art. 5(1)(b)** — Purpose limitation                 | Data collected for specified purposes only                    | **Not triggered.** No personal data is collected.                                                                                                                                              |
+| **Art. 5(1)(c)** — Data minimisation                  | Only data adequate and necessary for the purpose              | **Satisfied by design.** The library stores transition counts and anonymous timing statistics. No user-identifying field exists in the data model.                                             |
+| **Art. 5(1)(e)** — Storage limitation                 | Data retained no longer than necessary                        | **Satisfied.** Dwell-time statistics are session-scoped and never persisted. The Markov graph stores only aggregate counts, not timestamped event logs.                                        |
+| **Art. 6** — Lawful basis for processing              | Consent, contract, legitimate interest, etc.                  | **Not required.** GDPR Article 6 applies only to personal data processing. EdgeSignal does not process personal data.                                                                          |
+| **Art. 7** — Conditions for consent                   | Freely given, specific, informed, unambiguous                 | **No consent banner required.** No personal data is collected, so ePrivacy / PECR consent for analytics cookies does not apply to this SDK.                                                    |
+| **Art. 13/14** — Information obligations              | Privacy notice must disclose processing                       | **No disclosure required** for EdgeSignal itself. Your existing privacy notice need not reference this SDK unless you pass personal data as state labels (which you should not do).            |
+| **Art. 17** — Right to erasure                        | Users can request deletion of their data                      | **Trivially satisfied.** `localStorage.removeItem('edge-signal')` is the complete deletion path. No server-side data exists to delete.                                                         |
+| **Art. 20** — Right to data portability               | Users can receive their data in machine-readable form         | **Not triggered.** No personal data is processed.                                                                                                                                              |
+| **Art. 25** — Privacy by design and by default        | Privacy protections built into the system architecture        | **Satisfied by architecture.** Zero-egress design, session-scoped temporal data, and absence of fingerprinting APIs are hardcoded behaviors, not configuration choices.                        |
+| **Art. 28** — Data processor agreement                | Written contract required with processors                     | **No DPA required.** EdgeSignal is a client-side library, not a data processor. No personal data is transferred to any third party.                                                            |
+| **Art. 33/34** — Breach notification                  | Controller must notify supervisory authority within 72h       | **Not triggered.** There is no server-side data store to breach. A user's `localStorage` being compromised is outside the scope of GDPR breach notification obligations for your organization. |
 
 > **Important caveat:** If your application passes personal data as state labels — for example `intent.track(user.email)` or `intent.track('/user/'+userId)` — GDPR obligations re-attach immediately. EdgeSignal's privacy guarantee depends entirely on the state labels remaining anonymous. Route paths and UI milestone names (`'/checkout'`, `'video-played'`) are inherently anonymous. User identifiers are not.
 
@@ -2041,12 +2083,12 @@ The net result: **no cookie banner, no consent prompt, and no opt-out mechanism 
 
 ### CCPA / ePrivacy
 
-| Regulation | Status |
-|---|---|
-| **CCPA / CPRA** (California) | EdgeSignal does not "sell" or "share" personal information as defined under CCPA. No data leaves the device. No opt-out mechanism is required for this SDK. |
+| Regulation                              | Status                                                                                                                                                                                                                                                                                                                        |
+| --------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **CCPA / CPRA** (California)            | EdgeSignal does not "sell" or "share" personal information as defined under CCPA. No data leaves the device. No opt-out mechanism is required for this SDK.                                                                                                                                                                   |
 | **ePrivacy Directive / PECR** (EU / UK) | Analytics cookies require consent when used to track user behavior. EdgeSignal's `localStorage` write does not track the user across sessions in a cross-site or cross-service manner and contains no personal data — placing it in the same category as strictly-necessary functional storage rather than analytics cookies. |
-| **LGPD** (Brazil) | No personal data is processed; no legal basis or data subject rights obligations are triggered. |
-| **PIPEDA** (Canada) | No personal information is collected or disclosed. |
+| **LGPD** (Brazil)                       | No personal data is processed; no legal basis or data subject rights obligations are triggered.                                                                                                                                                                                                                               |
+| **PIPEDA** (Canada)                     | No personal information is collected or disclosed.                                                                                                                                                                                                                                                                            |
 
 ---
 
@@ -2054,18 +2096,18 @@ The net result: **no cookie banner, no consent prompt, and no opt-out mechanism 
 
 The table below compares EdgeSignal against a typical behavioral analytics platform (heatmaps, session replay, A/B testing) from a compliance perspective:
 
-| Dimension | Traditional analytics SDK | EdgeSignal |
-|---|---|---|
-| Data leaves the device | Yes — streamed to third-party servers | **No** — all computation is local |
-| Personal data processed | Yes — IP address, user ID, device fingerprint | **No** — anonymous state labels only |
-| GDPR lawful basis required | Yes — typically legitimate interest or consent | **No** |
-| Consent banner required | Yes — under ePrivacy / PECR | **No** |
-| Data Processing Agreement required | Yes — with the analytics vendor | **No** |
-| Data breach notification risk | Yes — server-side data store is in scope | **No** — nothing to breach |
-| DSAR (data subject access request) exposure | Yes — must retrieve and potentially delete user data | **No** — no server-side user data exists |
-| Cross-border data transfer (SCCs, adequacy) | Yes — if vendor servers are outside EEA | **No** — data never crosses a border |
-| Third-party script risk | Yes — vendor JS loaded from CDN | **No** — bundled locally, auditable |
-| User can delete their data | Only via vendor portal / API | **Yes** — `localStorage.removeItem('edge-signal')` |
+| Dimension                                   | Traditional analytics SDK                            | EdgeSignal                                         |
+| ------------------------------------------- | ---------------------------------------------------- | -------------------------------------------------- |
+| Data leaves the device                      | Yes — streamed to third-party servers                | **No** — all computation is local                  |
+| Personal data processed                     | Yes — IP address, user ID, device fingerprint        | **No** — anonymous state labels only               |
+| GDPR lawful basis required                  | Yes — typically legitimate interest or consent       | **No**                                             |
+| Consent banner required                     | Yes — under ePrivacy / PECR                          | **No**                                             |
+| Data Processing Agreement required          | Yes — with the analytics vendor                      | **No**                                             |
+| Data breach notification risk               | Yes — server-side data store is in scope             | **No** — nothing to breach                         |
+| DSAR (data subject access request) exposure | Yes — must retrieve and potentially delete user data | **No** — no server-side user data exists           |
+| Cross-border data transfer (SCCs, adequacy) | Yes — if vendor servers are outside EEA              | **No** — data never crosses a border               |
+| Third-party script risk                     | Yes — vendor JS loaded from CDN                      | **No** — bundled locally, auditable                |
+| User can delete their data                  | Only via vendor portal / API                         | **Yes** — `localStorage.removeItem('edge-signal')` |
 
 ---
 
@@ -2087,11 +2129,11 @@ The practical consequence: EdgeSignal cannot permanently track how quickly a use
 
 This architecture directly satisfies GDPR Article 5(1)(e) (storage limitation) and Article 5(1)(c) (data minimisation) without any configuration:
 
-| Privacy property | Mechanism | GDPR benefit |
-|---|---|---|
-| Markov graph can be cleared by browser policies | Browser privacy mechanisms (ITP, user-initiated clear) apply; no server-side copy exists | Storage limitation satisfied; user retains full control |
-| Dwell-time stats are never persisted | In-memory only; destroyed on tab close | Temporal behavioral fingerprinting is architecturally impossible |
-| No cross-session timing correlation | Each session relearns from scratch | Cannot infer long-term attention or reading-speed patterns |
+| Privacy property                                | Mechanism                                                                                | GDPR benefit                                                     |
+| ----------------------------------------------- | ---------------------------------------------------------------------------------------- | ---------------------------------------------------------------- |
+| Markov graph can be cleared by browser policies | Browser privacy mechanisms (ITP, user-initiated clear) apply; no server-side copy exists | Storage limitation satisfied; user retains full control          |
+| Dwell-time stats are never persisted            | In-memory only; destroyed on tab close                                                   | Temporal behavioral fingerprinting is architecturally impossible |
+| No cross-session timing correlation             | Each session relearns from scratch                                                       | Cannot infer long-term attention or reading-speed patterns       |
 
 The intent model provides **actionable signals for the current active session** while being structurally incapable of building the kind of longitudinal behavioral profile that would attract regulatory scrutiny under GDPR's data minimisation and purpose limitation principles.
 
@@ -2103,13 +2145,13 @@ The `getTelemetry()` and `trackConversion()` APIs were designed to let B2B clien
 
 #### `getTelemetry()` — Field-by-field personal data assessment
 
-| Field | Type | Personal data under GDPR Art. 4(1)? | Reasoning |
-|---|---|---|---|
-| `sessionId` | Random UUID per page load | **No** | Generated client-side with `crypto.randomUUID()`. Never persisted to `localStorage`, never transmitted, and not linkable to any user identity or device. Regenerated on every page reload, making cross-session correlation impossible. |
-| `transitionsEvaluated` | Integer counter | **No** | An aggregate count of state transitions evaluated. Contains no information about which states were visited, their sequence, or any user-identifying context. |
-| `botStatus` | `'human' \| 'suspected_bot'` | **No** | A binary runtime classification derived solely from anonymous inter-call timing deltas. Does not identify who the user is — only whether the call pattern resembles automation. |
-| `anomaliesFired` | Integer counter | **No** | An aggregate count of anomaly events emitted. Does not expose which event types fired, on which states, at what times, or in what sequence. |
-| `engineHealth` | String enum | **No** | A storage-layer status flag (`healthy`, `pruning_active`, `quota_exceeded`). Reflects browser storage state, not user behaviour. |
+| Field                  | Type                         | Personal data under GDPR Art. 4(1)? | Reasoning                                                                                                                                                                                                                               |
+| ---------------------- | ---------------------------- | ----------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `sessionId`            | Random UUID per page load    | **No**                              | Generated client-side with `crypto.randomUUID()`. Never persisted to `localStorage`, never transmitted, and not linkable to any user identity or device. Regenerated on every page reload, making cross-session correlation impossible. |
+| `transitionsEvaluated` | Integer counter              | **No**                              | An aggregate count of state transitions evaluated. Contains no information about which states were visited, their sequence, or any user-identifying context.                                                                            |
+| `botStatus`            | `'human' \| 'suspected_bot'` | **No**                              | A binary runtime classification derived solely from anonymous inter-call timing deltas. Does not identify who the user is — only whether the call pattern resembles automation.                                                         |
+| `anomaliesFired`       | Integer counter              | **No**                              | An aggregate count of anomaly events emitted. Does not expose which event types fired, on which states, at what times, or in what sequence.                                                                                             |
+| `engineHealth`         | String enum                  | **No**                              | A storage-layer status flag (`healthy`, `pruning_active`, `quota_exceeded`). Reflects browser storage state, not user behaviour.                                                                                                        |
 
 **All five fields are aggregate counts or derived status flags. None relates to an identified or identifiable natural person.** GDPR Art. 4(1) does not apply, and no processing obligations under Arts. 5, 6, 7, 13, 17, or 28 are triggered by calling `getTelemetry()`.
 
@@ -2117,11 +2159,11 @@ The `getTelemetry()` and `trackConversion()` APIs were designed to let B2B clien
 
 The `ConversionPayload` is `{ type: string, value?: number, currency?: string }`. Whether this constitutes personal data depends entirely on what your application supplies as `type`:
 
-| Usage | Personal data? | Guidance |
-|---|---|---|
-| `trackConversion({ type: 'purchase', value: 49.99, currency: 'USD' })` | **No** | `type` is an event category, not a user identifier. `value` and `currency` are denominations, not identity signals. |
-| `trackConversion({ type: 'user-123-purchased' })` | **Yes** | Encoding a user identifier into `type` makes the payload personal data. Do not do this. |
-| `trackConversion({ type: user.email })` | **Yes** | An email address is unambiguously personal data under GDPR Art. 4(1). Do not do this. |
+| Usage                                                                  | Personal data? | Guidance                                                                                                            |
+| ---------------------------------------------------------------------- | -------------- | ------------------------------------------------------------------------------------------------------------------- |
+| `trackConversion({ type: 'purchase', value: 49.99, currency: 'USD' })` | **No**         | `type` is an event category, not a user identifier. `value` and `currency` are denominations, not identity signals. |
+| `trackConversion({ type: 'user-123-purchased' })`                      | **Yes**        | Encoding a user identifier into `type` makes the payload personal data. Do not do this.                             |
+| `trackConversion({ type: user.email })`                                | **Yes**        | An email address is unambiguously personal data under GDPR Art. 4(1). Do not do this.                               |
 
 **The SDK cannot enforce this constraint at runtime.** It is a documentation boundary. The same caveat applies to `track()` state labels.
 
@@ -2139,7 +2181,7 @@ intent.on('conversion', ({ type, value, currency }) => {
     method: 'POST',
     body: JSON.stringify({
       event: 'conversion',
-      type,   // e.g. 'purchase' — safe
+      type, // e.g. 'purchase' — safe
       value,
       currency,
       ...intent.getTelemetry(), // safe: all aggregate / status fields
@@ -2152,10 +2194,10 @@ This pattern does not require a consent banner, does not require a Data Processi
 
 #### Summary
 
-| API | Egress by default | Contains personal data | GDPR obligations triggered |
-|---|---|---|---|
-| `getTelemetry()` | **No** — returns a local object | **No** | None |
-| `trackConversion()` | **No** — emits locally only | **Only if you encode a user identifier in `type`** | None by default; depends on what your listener does |
+| API                 | Egress by default               | Contains personal data                             | GDPR obligations triggered                          |
+| ------------------- | ------------------------------- | -------------------------------------------------- | --------------------------------------------------- |
+| `getTelemetry()`    | **No** — returns a local object | **No**                                             | None                                                |
+| `trackConversion()` | **No** — emits locally only     | **Only if you encode a user identifier in `type`** | None by default; depends on what your listener does |
 
 ---
 
@@ -2171,10 +2213,10 @@ The AGPL-3.0 requires that if you distribute software incorporating this library
 
 **What this means in practice:**
 
-| Use case | Obligation |
-|---|---|
-| Open-source projects | Free to use, modify, and distribute under AGPL-3.0 |
-| Internal company tooling (not distributed) | No copyleft obligation triggered |
+| Use case                                       | Obligation                                                 |
+| ---------------------------------------------- | ---------------------------------------------------------- |
+| Open-source projects                           | Free to use, modify, and distribute under AGPL-3.0         |
+| Internal company tooling (not distributed)     | No copyleft obligation triggered                           |
 | Commercial SaaS / products served to end-users | Must provide source access, or obtain a commercial license |
 
 To obtain a commercial license that removes the copyleft requirement, contact the author at **purushpsm147@yahoo.co.in**.
@@ -2183,4 +2225,4 @@ For the authoritative license text, see [LICENSE](./LICENSE).
 
 ---
 
-*Built by [Purushottam](https://github.com/purushpsm147). Contributions welcome — see [CONTRIBUTING.md](./CONTRIBUTING.md). Security disclosures — see [SECURITY.md](./SECURITY.md).*
+_Built by [Purushottam](https://github.com/purushpsm147). Contributions welcome — see [CONTRIBUTING.md](./CONTRIBUTING.md). Security disclosures — see [SECURITY.md](./SECURITY.md)._

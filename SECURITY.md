@@ -29,7 +29,7 @@ A public issue immediately discloses the flaw to every user of the repository �
 
 Send an email to:
 
-**purushpsm147@yahoo.co.in** 
+**purushpsm147@yahoo.co.in**
 
 Please include all of the following in your report:
 
@@ -43,11 +43,11 @@ Encrypt sensitive details using our PGP public key if you prefer (key available 
 
 ### What to Expect
 
-| Timeline         | Action                                                                 |
-| ---------------- | ---------------------------------------------------------------------- |
-| Within **48 h**  | We acknowledge receipt of your report.                                 |
-| Within **7 days**| We provide an initial assessment and severity rating (CVSS score).    |
-| Within **90 days**| We aim to release a patch and publish a CVE (if applicable). We will keep you updated throughout. |
+| Timeline           | Action                                                                                            |
+| ------------------ | ------------------------------------------------------------------------------------------------- |
+| Within **48 h**    | We acknowledge receipt of your report.                                                            |
+| Within **7 days**  | We provide an initial assessment and severity rating (CVSS score).                                |
+| Within **90 days** | We aim to release a patch and publish a CVE (if applicable). We will keep you updated throughout. |
 
 We will coordinate the public disclosure date with you. If you require more time before public disclosure (e.g., for your own advisory), please say so in your report.
 
@@ -84,4 +84,4 @@ We follow the [Google Project Zero 90-day disclosure policy](https://googleproje
 
 We thank the following researchers for responsible disclosures:
 
-*(No disclosures yet — be the first!)*
+_(No disclosures yet — be the first!)_

@@ -1,6 +1,6 @@
 /**
  * Copyright (c) 2026 Purushottam <purushpsm147@yahoo.co.in>
- * 
+ *
  * This source code is licensed under the AGPL-3.0-only license found in the
  * LICENSE file in the root directory of this source tree.
  */
@@ -8,11 +8,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 
-import {
-  BloomFilter,
-  IntentManager,
-  MarkovGraph,
-} from '../dist/src/intent-sdk.js';
+import { BloomFilter, IntentManager, MarkovGraph } from '../dist/src/intent-sdk.js';
 import {
   BenchmarkSimulationEngine,
   evaluatePredictionMatrix,
@@ -95,26 +91,27 @@ test('MarkovGraph LFU pruning reuses freed indices and round-trips without resur
   // A↔B is high-use; C and D are low-use targets.
   for (let i = 0; i < 20; i++) graph.incrementTransition('A', 'B');
   for (let i = 0; i < 15; i++) graph.incrementTransition('B', 'A');
-  graph.incrementTransition('A', 'C');  // low-use — candidate for eviction
+  graph.incrementTransition('A', 'C'); // low-use — candidate for eviction
   graph.incrementTransition('C', 'A');
-  graph.incrementTransition('A', 'D');  // 4th state pushes size over maxStates
+  graph.incrementTransition('A', 'D'); // 4th state pushes size over maxStates
 
   // stateToIndex.size == 4 > maxStates=3 → prune evicts 1 least-used state
   graph.prune();
 
-  const jsonAfterPrune  = graph.toJSON();
+  const jsonAfterPrune = graph.toJSON();
   const statesAfterPrune = jsonAfterPrune.states;
-  const liveAfterPrune   = statesAfterPrune.filter(s => s !== '');
-  const tombstoneCount   = statesAfterPrune.filter(s => s === '').length;
+  const liveAfterPrune = statesAfterPrune.filter((s) => s !== '');
+  const tombstoneCount = statesAfterPrune.filter((s) => s === '').length;
 
-  assert.ok(liveAfterPrune.length <= 3,  `Expected ≤3 live states, got ${liveAfterPrune.length}`);
-  assert.ok(tombstoneCount >= 1,          `Expected ≥1 tombstone slot, got ${tombstoneCount}`);
+  assert.ok(liveAfterPrune.length <= 3, `Expected ≤3 live states, got ${liveAfterPrune.length}`);
+  assert.ok(tombstoneCount >= 1, `Expected ≥1 tombstone slot, got ${tombstoneCount}`);
 
   // V2: toJSON() must emit an explicit freedIndices array
   assert.ok(Array.isArray(jsonAfterPrune.freedIndices), 'toJSON() must emit freedIndices array');
   assert.equal(
-    jsonAfterPrune.freedIndices.length, tombstoneCount,
-    `freedIndices.length must equal tombstone count (${tombstoneCount})`
+    jsonAfterPrune.freedIndices.length,
+    tombstoneCount,
+    `freedIndices.length must equal tombstone count (${tombstoneCount})`,
   );
   // Every freed index must point to a '' slot in states
   for (const idx of jsonAfterPrune.freedIndices) {
@@ -123,11 +120,12 @@ test('MarkovGraph LFU pruning reuses freed indices and round-trips without resur
 
   // ── In-memory slot reuse ──
   const arrayLenBeforeReuse = statesAfterPrune.length;
-  graph.incrementTransition('A', 'E');   // E must occupy the freed slot
+  graph.incrementTransition('A', 'E'); // E must occupy the freed slot
 
   assert.equal(
-    graph.toJSON().states.length, arrayLenBeforeReuse,
-    `ensureState must reuse freed slot, not grow array (was ${arrayLenBeforeReuse})`
+    graph.toJSON().states.length,
+    arrayLenBeforeReuse,
+    `ensureState must reuse freed slot, not grow array (was ${arrayLenBeforeReuse})`,
   );
   assert.ok(graph.getProbability('A', 'E') > 0, 'A→E probability must be > 0 after slot reuse');
 
@@ -138,27 +136,31 @@ test('MarkovGraph LFU pruning reuses freed indices and round-trips without resur
   g2.incrementTransition('A', 'C');
   g2.incrementTransition('C', 'A');
   g2.incrementTransition('A', 'D');
-  g2.prune();  // leaves ≥1 tombstone
+  g2.prune(); // leaves ≥1 tombstone
 
-  assert.ok(g2.toJSON().states.includes(''), 'Precondition: g2 must have tombstone before binary encode');
+  assert.ok(
+    g2.toJSON().states.includes(''),
+    'Precondition: g2 must have tombstone before binary encode',
+  );
   const pAB = g2.getProbability('A', 'B');
 
-  const bin     = g2.toBinary();
+  const bin = g2.toBinary();
   const fromBin = MarkovGraph.fromBinary(bin);
 
   assert.equal(fromBin.getProbability('', 'A'), 0, "fromBinary: '' must not be a live fromState");
   assert.equal(fromBin.getProbability('A', ''), 0, "fromBinary: '' must not be a live toState");
   assert.ok(
     Math.abs(pAB - fromBin.getProbability('A', 'B')) < 1e-9,
-    `fromBinary: A→B probability mismatch`
+    `fromBinary: A→B probability mismatch`,
   );
 
   // freedIndices must be repopulated — next new state must reuse a slot, not grow the array
   const arrayLenBin = fromBin.toJSON().states.length;
   fromBin.incrementTransition('A', 'F');
   assert.equal(
-    fromBin.toJSON().states.length, arrayLenBin,
-    `fromBinary: adding F must reuse a freed slot, not extend the array`
+    fromBin.toJSON().states.length,
+    arrayLenBin,
+    `fromBinary: adding F must reuse a freed slot, not extend the array`,
   );
 
   // ── Secondary path: fromJSON (baseline config loading path) ──
@@ -167,37 +169,40 @@ test('MarkovGraph LFU pruning reuses freed indices and round-trips without resur
   assert.equal(fromJson.getProbability('A', ''), 0, "fromJSON: '' must not be a live toState");
   assert.ok(
     Math.abs(pAB - fromJson.getProbability('A', 'B')) < 1e-9,
-    `fromJSON: A→B probability mismatch`
+    `fromJSON: A→B probability mismatch`,
   );
   const arrayLenJson = fromJson.toJSON().states.length;
   fromJson.incrementTransition('A', 'G');
   assert.equal(
-    fromJson.toJSON().states.length, arrayLenJson,
-    `fromJSON: adding G must reuse a freed slot, not extend the array`
+    fromJson.toJSON().states.length,
+    arrayLenJson,
+    `fromJSON: adding G must reuse a freed slot, not extend the array`,
   );
 });
 
 test('fromJSON rejects inconsistent payloads (freedIndices / label mismatch)', () => {
   // Case 1: slot in freedIndices has a non-empty label
   assert.throws(
-    () => MarkovGraph.fromJSON({
-      states: ['A', 'oops'],
-      rows: [],
-      freedIndices: [1],   // slot 1 is 'oops', not ''
-    }),
+    () =>
+      MarkovGraph.fromJSON({
+        states: ['A', 'oops'],
+        rows: [],
+        freedIndices: [1], // slot 1 is 'oops', not ''
+      }),
     /freedIndices.*non-empty label/,
-    'Should throw when freedIndices slot has a non-empty label'
+    'Should throw when freedIndices slot has a non-empty label',
   );
 
   // Case 2: '' label not listed in freedIndices
   assert.throws(
-    () => MarkovGraph.fromJSON({
-      states: ['A', ''],
-      rows: [],
-      freedIndices: [],    // slot 1 is '' but not declared freed
-    }),
+    () =>
+      MarkovGraph.fromJSON({
+        states: ['A', ''],
+        rows: [],
+        freedIndices: [], // slot 1 is '' but not declared freed
+      }),
     /empty-string label.*not listed in freedIndices/,
-    'Should throw when an unlisted slot has an empty-string label'
+    'Should throw when an unlisted slot has an empty-string label',
   );
 });
 
@@ -238,7 +243,10 @@ test("IntentManager.track('') is a no-op and surfaces a non-fatal error via onEr
 
   // onError must be called with a descriptive message
   assert.equal(errors.length, 1);
-  assert.ok(errors[0].includes('empty string'), `Expected 'empty string' in error message, got: "${errors[0]}"`);
+  assert.ok(
+    errors[0].includes('empty string'),
+    `Expected 'empty string' in error message, got: "${errors[0]}"`,
+  );
 
   // No state_change event must fire for an empty-string call
   const stateChanges = [];
@@ -264,7 +272,9 @@ test('EntropyGuard: botProtection:false never suppresses events regardless of ca
   });
 
   let eventCount = 0;
-  manager.on('high_entropy', () => { eventCount += 1; });
+  manager.on('high_entropy', () => {
+    eventCount += 1;
+  });
 
   // Hub-spoke pattern: alternate between 'hub' and 5 different destinations.
   // This builds >= MIN_SAMPLE_TRANSITIONS (10) outgoing edges from 'hub',
@@ -280,7 +290,10 @@ test('EntropyGuard: botProtection:false never suppresses events regardless of ca
   }
 
   // highEntropyThreshold=0 means any entropy fires; events must flow through.
-  assert.ok(eventCount > 0, `Expected high_entropy events with botProtection:false, got ${eventCount}`);
+  assert.ok(
+    eventCount > 0,
+    `Expected high_entropy events with botProtection:false, got ${eventCount}`,
+  );
   manager.flushNow();
 });
 
@@ -295,8 +308,12 @@ test('EntropyGuard: botProtection:true suppresses high_entropy and trajectory_an
 
   let entropyCount = 0;
   let anomalyCount = 0;
-  manager.on('high_entropy', () => { entropyCount += 1; });
-  manager.on('trajectory_anomaly', () => { anomalyCount += 1; });
+  manager.on('high_entropy', () => {
+    entropyCount += 1;
+  });
+  manager.on('trajectory_anomaly', () => {
+    anomalyCount += 1;
+  });
 
   // 60 rapid synchronous calls produce near-zero deltas (< 50 ms each),
   // pushing botScore past the threshold of 5 well before transitions accumulate.
@@ -305,8 +322,16 @@ test('EntropyGuard: botProtection:true suppresses high_entropy and trajectory_an
     manager.track(states[i % states.length]);
   }
 
-  assert.equal(entropyCount, 0, `Expected 0 entropy events after bot flag set, got ${entropyCount}`);
-  assert.equal(anomalyCount, 0, `Expected 0 anomaly events after bot flag set, got ${anomalyCount}`);
+  assert.equal(
+    entropyCount,
+    0,
+    `Expected 0 entropy events after bot flag set, got ${entropyCount}`,
+  );
+  assert.equal(
+    anomalyCount,
+    0,
+    `Expected 0 anomaly events after bot flag set, got ${anomalyCount}`,
+  );
   manager.flushNow();
 });
 
@@ -319,7 +344,9 @@ test('EntropyGuard: state_change events are still emitted for suspected bots', (
   });
 
   const changes = [];
-  manager.on('state_change', ({ from, to }) => { changes.push({ from, to }); });
+  manager.on('state_change', ({ from, to }) => {
+    changes.push({ from, to });
+  });
 
   for (let i = 0; i < 30; i += 1) {
     manager.track(i % 2 === 0 ? 'X' : 'Y');
@@ -367,11 +394,15 @@ test('EntropyGuard: events flow freely until bot threshold is crossed', () => {
   });
 
   let freeCount = 0;
-  withProtection.on('high_entropy', () => { freeCount += 1; });
+  withProtection.on('high_entropy', () => {
+    freeCount += 1;
+  });
 
   // Must accumulate >= MIN_SAMPLE_TRANSITIONS (10) on one state to get entropy events.
   for (let i = 0; i < 30; i += 1) {
-    withProtection.track(i % 2 === 0 ? 'home' : ['search', 'product', 'cart', 'help', 'checkout'][i % 5]);
+    withProtection.track(
+      i % 2 === 0 ? 'home' : ['search', 'product', 'cart', 'help', 'checkout'][i % 5],
+    );
   }
 
   assert.ok(freeCount > 0, `With botProtection:false, expected entropy events; got ${freeCount}`);
@@ -385,13 +416,19 @@ test('EntropyGuard: events flow freely until bot threshold is crossed', () => {
   });
 
   let suppressedCount = 0;
-  withBot.on('high_entropy', () => { suppressedCount += 1; });
+  withBot.on('high_entropy', () => {
+    suppressedCount += 1;
+  });
 
   for (let i = 0; i < 30; i += 1) {
     withBot.track(i % 2 === 0 ? 'home' : ['search', 'product', 'cart', 'help', 'checkout'][i % 5]);
   }
 
-  assert.equal(suppressedCount, 0, `With botProtection:true, expected 0 entropy events; got ${suppressedCount}`);
+  assert.equal(
+    suppressedCount,
+    0,
+    `With botProtection:true, expected 0 entropy events; got ${suppressedCount}`,
+  );
   withProtection.flushNow();
   withBot.flushNow();
 });
@@ -412,7 +449,9 @@ test('EntropyGuard: bot flag clears automatically after sufficient human-paced i
     });
 
     let eventCount = 0;
-    manager.on('high_entropy', () => { eventCount += 1; });
+    manager.on('high_entropy', () => {
+      eventCount += 1;
+    });
 
     // Phase 1 — rapid calls (0 ms delta): all deltas < BOT_MIN_DELTA_MS (50 ms).
     // After 12 calls the circular buffer (size 10) is full of zero-delta entries,
@@ -434,7 +473,10 @@ test('EntropyGuard: bot flag clears automatically after sufficient human-paced i
     }
 
     assert.equal(countAfterFastPhase, 0, 'Expected no events while bot flag was active');
-    assert.ok(eventCount > 0, `Expected high_entropy events after bot flag cleared, got ${eventCount}`);
+    assert.ok(
+      eventCount > 0,
+      `Expected high_entropy events after bot flag cleared, got ${eventCount}`,
+    );
     manager.flushNow();
   } finally {
     globalThis.performance.now = originalNow;
@@ -447,10 +489,34 @@ test('EntropyGuard: bot flag clears automatically after sufficient human-paced i
 
 test('prediction matrix evaluation computes expected rates', () => {
   const summary = evaluatePredictionMatrix([
-    { isGroundTruthHesitation: true, entropyTriggered: true, divergenceTriggered: false, detectionLatency: 2, hesitationAtTrigger: 0.8 },
-    { isGroundTruthHesitation: true, entropyTriggered: false, divergenceTriggered: false, detectionLatency: null, hesitationAtTrigger: null },
-    { isGroundTruthHesitation: false, entropyTriggered: true, divergenceTriggered: false, detectionLatency: 1, hesitationAtTrigger: 0.7 },
-    { isGroundTruthHesitation: false, entropyTriggered: false, divergenceTriggered: false, detectionLatency: null, hesitationAtTrigger: null },
+    {
+      isGroundTruthHesitation: true,
+      entropyTriggered: true,
+      divergenceTriggered: false,
+      detectionLatency: 2,
+      hesitationAtTrigger: 0.8,
+    },
+    {
+      isGroundTruthHesitation: true,
+      entropyTriggered: false,
+      divergenceTriggered: false,
+      detectionLatency: null,
+      hesitationAtTrigger: null,
+    },
+    {
+      isGroundTruthHesitation: false,
+      entropyTriggered: true,
+      divergenceTriggered: false,
+      detectionLatency: 1,
+      hesitationAtTrigger: 0.7,
+    },
+    {
+      isGroundTruthHesitation: false,
+      entropyTriggered: false,
+      divergenceTriggered: false,
+      detectionLatency: null,
+      hesitationAtTrigger: null,
+    },
   ]);
 
   assert.equal(summary.precision, 0.5);
@@ -488,7 +554,9 @@ test('eventCooldownMs: default (0) fires on every qualifying track()', () => {
   });
 
   let eventCount = 0;
-  manager.on('high_entropy', () => { eventCount += 1; });
+  manager.on('high_entropy', () => {
+    eventCount += 1;
+  });
 
   // Hub-spoke to build up transitions above MIN_SAMPLE_TRANSITIONS
   const destinations = ['A', 'B', 'C', 'D', 'E'];
@@ -517,7 +585,9 @@ test('eventCooldownMs: suppresses repeated events within cooldown window', () =>
     });
 
     let eventCount = 0;
-    manager.on('high_entropy', () => { eventCount += 1; });
+    manager.on('high_entropy', () => {
+      eventCount += 1;
+    });
 
     // Hub-spoke pattern to exceed MIN_SAMPLE_TRANSITIONS (10)
     const destinations = ['A', 'B', 'C', 'D', 'E'];
@@ -528,7 +598,11 @@ test('eventCooldownMs: suppresses repeated events within cooldown window', () =>
 
     // Total elapsed: 40 × 100ms = 4000ms, which is less than the 5000ms cooldown.
     // So only the first qualifying event should have fired.
-    assert.equal(eventCount, 1, `Expected exactly 1 entropy event within cooldown, got ${eventCount}`);
+    assert.equal(
+      eventCount,
+      1,
+      `Expected exactly 1 entropy event within cooldown, got ${eventCount}`,
+    );
 
     // Advance past the cooldown window and trigger more events
     mockTime += 5000;
@@ -538,7 +612,11 @@ test('eventCooldownMs: suppresses repeated events within cooldown window', () =>
     }
 
     // Now a second event should have fired
-    assert.equal(eventCount, 2, `Expected 2 entropy events after cooldown expired, got ${eventCount}`);
+    assert.equal(
+      eventCount,
+      2,
+      `Expected 2 entropy events after cooldown expired, got ${eventCount}`,
+    );
     manager.flushNow();
   } finally {
     globalThis.performance.now = originalNow;
@@ -570,7 +648,9 @@ test('eventCooldownMs: trajectory_anomaly respects cooldown independently', () =
     });
 
     let anomalyCount = 0;
-    manager.on('trajectory_anomaly', () => { anomalyCount += 1; });
+    manager.on('trajectory_anomaly', () => {
+      anomalyCount += 1;
+    });
 
     // Random walk to trigger anomaly — need ≥ MIN_WINDOW_LENGTH (16) steps
     const states = ['A', 'B', 'C', 'D', 'E', 'F'];
@@ -590,7 +670,10 @@ test('eventCooldownMs: trajectory_anomaly respects cooldown independently', () =
       manager.track(states[i % states.length]);
     }
 
-    assert.ok(anomalyCount > countBefore, `Expected more anomaly events after cooldown expired, got ${anomalyCount} (was ${countBefore})`);
+    assert.ok(
+      anomalyCount > countBefore,
+      `Expected more anomaly events after cooldown expired, got ${anomalyCount} (was ${countBefore})`,
+    );
     manager.flushNow();
   } finally {
     globalThis.performance.now = originalNow;
@@ -620,7 +703,9 @@ test('dwell_time_anomaly fires for z-score above threshold', () => {
     });
 
     const events = [];
-    manager.on('dwell_time_anomaly', (payload) => { events.push(payload); });
+    manager.on('dwell_time_anomaly', (payload) => {
+      events.push(payload);
+    });
 
     // Build up 10 consistent dwell times of ~100ms on state A
     for (let i = 0; i < 10; i++) {
@@ -638,7 +723,10 @@ test('dwell_time_anomaly fires for z-score above threshold', () => {
     manager.track('A');
 
     // Should fire for state B (dwell of 1000ms vs mean ~100ms)
-    assert.ok(events.length >= 1, `Expected at least 1 dwell_time_anomaly event, got ${events.length}`);
+    assert.ok(
+      events.length >= 1,
+      `Expected at least 1 dwell_time_anomaly event, got ${events.length}`,
+    );
     const ev = events[events.length - 1];
     assert.strictEqual(ev.state, 'B');
     assert.strictEqual(ev.dwellMs, 1000);
@@ -671,7 +759,9 @@ test('dwell_time_anomaly respects minSamples gate', () => {
     });
 
     const events = [];
-    manager.on('dwell_time_anomaly', (payload) => { events.push(payload); });
+    manager.on('dwell_time_anomaly', (payload) => {
+      events.push(payload);
+    });
 
     // Only 5 cycles — not enough samples (10 transitions but each state gets ~5)
     for (let i = 0; i < 5; i++) {
@@ -716,7 +806,9 @@ test('dwell_time_anomaly is suppressed for suspected bots', () => {
     });
 
     const dwellEvents = [];
-    manager.on('dwell_time_anomaly', (payload) => { dwellEvents.push(payload); });
+    manager.on('dwell_time_anomaly', (payload) => {
+      dwellEvents.push(payload);
+    });
 
     // Rapid, identical-interval transitions to trigger bot detection
     for (let i = 0; i < 30; i++) {
@@ -729,7 +821,11 @@ test('dwell_time_anomaly is suppressed for suspected bots', () => {
     manager.track('A');
 
     // Bot flag should suppress dwell_time_anomaly
-    assert.strictEqual(dwellEvents.length, 0, 'Dwell anomaly should be suppressed when bot is suspected');
+    assert.strictEqual(
+      dwellEvents.length,
+      0,
+      'Dwell anomaly should be suppressed when bot is suspected',
+    );
 
     manager.flushNow();
   } finally {
@@ -757,7 +853,9 @@ test('dwell_time_anomaly respects eventCooldownMs', () => {
     });
 
     const events = [];
-    manager.on('dwell_time_anomaly', (payload) => { events.push(payload); });
+    manager.on('dwell_time_anomaly', (payload) => {
+      events.push(payload);
+    });
 
     // Build baseline: 10 uniform cycles
     for (let i = 0; i < 10; i++) {
@@ -778,7 +876,11 @@ test('dwell_time_anomaly respects eventCooldownMs', () => {
     manager.track('B');
     mockTime += 5000;
     manager.track('A');
-    assert.strictEqual(events.length, afterFirst, 'Second anomaly within cooldown should be suppressed');
+    assert.strictEqual(
+      events.length,
+      afterFirst,
+      'Second anomaly within cooldown should be suppressed',
+    );
 
     // Advance past cooldown — next anomaly should fire
     mockTime += 11000;
@@ -821,7 +923,9 @@ test('dwell-time stats reset on resetSession (previousStateEnteredAt)', () => {
 
     // After reset, first track should not compute dwell from stale previousStateEnteredAt
     const events = [];
-    manager.on('dwell_time_anomaly', (payload) => { events.push(payload); });
+    manager.on('dwell_time_anomaly', (payload) => {
+      events.push(payload);
+    });
 
     mockTime += 100;
     manager.track('X');
@@ -868,8 +972,11 @@ test('bigrams are recorded when enableBigrams is true and threshold met', () => 
 
     // Export and check for bigram-style keys (contain →)
     const exported = manager.exportGraph();
-    const bigramStates = exported.states.filter(s => s.includes('\u2192'));
-    assert.ok(bigramStates.length > 0, `Expected bigram state names in graph, found states: ${JSON.stringify(exported.states.slice(0, 10))}`);
+    const bigramStates = exported.states.filter((s) => s.includes('\u2192'));
+    assert.ok(
+      bigramStates.length > 0,
+      `Expected bigram state names in graph, found states: ${JSON.stringify(exported.states.slice(0, 10))}`,
+    );
 
     manager.flushNow();
   } finally {
@@ -901,8 +1008,12 @@ test('bigrams are NOT recorded when enableBigrams is false (default)', () => {
     }
 
     const exported = manager.exportGraph();
-    const bigramStates = exported.states.filter(s => s.includes('\u2192'));
-    assert.strictEqual(bigramStates.length, 0, 'No bigram states should exist when enableBigrams is false');
+    const bigramStates = exported.states.filter((s) => s.includes('\u2192'));
+    assert.strictEqual(
+      bigramStates.length,
+      0,
+      'No bigram states should exist when enableBigrams is false',
+    );
 
     manager.flushNow();
   } finally {
@@ -935,7 +1046,7 @@ test('bigrams are not recorded when unigram threshold is not met', () => {
     }
 
     const exported = manager.exportGraph();
-    const bigramStates = exported.states.filter(s => s.includes('\u2192'));
+    const bigramStates = exported.states.filter((s) => s.includes('\u2192'));
     assert.strictEqual(bigramStates.length, 0, 'No bigram states when threshold is not met');
 
     manager.flushNow();
@@ -980,16 +1091,21 @@ test('getTelemetry() transitionsEvaluated is 0 for the first track() call (no pr
   });
 
   manager.track('A');
-  assert.equal(manager.getTelemetry().transitionsEvaluated, 0,
-    'First track() has no prior state, so no transition is evaluated');
+  assert.equal(
+    manager.getTelemetry().transitionsEvaluated,
+    0,
+    'First track() has no prior state, so no transition is evaluated',
+  );
 
   manager.track('B');
-  assert.equal(manager.getTelemetry().transitionsEvaluated, 1,
-    'Second track() produces the first A→B transition');
+  assert.equal(
+    manager.getTelemetry().transitionsEvaluated,
+    1,
+    'Second track() produces the first A→B transition',
+  );
 
   manager.track('C');
-  assert.equal(manager.getTelemetry().transitionsEvaluated, 2,
-    'Third track() produces B→C');
+  assert.equal(manager.getTelemetry().transitionsEvaluated, 2, 'Third track() produces B→C');
 
   manager.flushNow();
 });
@@ -1013,12 +1129,23 @@ test('getTelemetry() sessionId is stable within a single IntentManager instance'
 
 test('getTelemetry() sessionId differs across IntentManager instances (unique per page load)', () => {
   storage.clear();
-  const m1 = new IntentManager({ storageKey: 'telemetry-session-unique-a', storage, botProtection: false });
-  const m2 = new IntentManager({ storageKey: 'telemetry-session-unique-b', storage, botProtection: false });
+  const m1 = new IntentManager({
+    storageKey: 'telemetry-session-unique-a',
+    storage,
+    botProtection: false,
+  });
+  const m2 = new IntentManager({
+    storageKey: 'telemetry-session-unique-b',
+    storage,
+    botProtection: false,
+  });
 
   // crypto.randomUUID() or the Math.random fallback should produce distinct values
-  assert.notEqual(m1.getTelemetry().sessionId, m2.getTelemetry().sessionId,
-    'Two distinct IntentManager instances must have different sessionIds');
+  assert.notEqual(
+    m1.getTelemetry().sessionId,
+    m2.getTelemetry().sessionId,
+    'Two distinct IntentManager instances must have different sessionIds',
+  );
   m1.flushNow();
   m2.flushNow();
 });
@@ -1043,9 +1170,15 @@ test('getTelemetry() anomaliesFired increments when high_entropy fires', () => {
   }
 
   const t = manager.getTelemetry();
-  assert.ok(t.anomaliesFired > 0, `anomaliesFired must be > 0 after high_entropy events, got ${t.anomaliesFired}`);
-  assert.equal(t.anomaliesFired, received.length,
-    'anomaliesFired must equal the number of high_entropy events actually delivered');
+  assert.ok(
+    t.anomaliesFired > 0,
+    `anomaliesFired must be > 0 after high_entropy events, got ${t.anomaliesFired}`,
+  );
+  assert.equal(
+    t.anomaliesFired,
+    received.length,
+    'anomaliesFired must equal the number of high_entropy events actually delivered',
+  );
 
   manager.flushNow();
 });
@@ -1090,9 +1223,15 @@ test('getTelemetry() anomaliesFired increments when trajectory_anomaly fires', (
     }
 
     const t = manager.getTelemetry();
-    assert.ok(t.anomaliesFired > 0, `anomaliesFired must be > 0 after trajectory_anomaly events, got ${t.anomaliesFired}`);
-    assert.equal(t.anomaliesFired, received.length,
-      'anomaliesFired must equal the number of trajectory_anomaly events actually delivered');
+    assert.ok(
+      t.anomaliesFired > 0,
+      `anomaliesFired must be > 0 after trajectory_anomaly events, got ${t.anomaliesFired}`,
+    );
+    assert.equal(
+      t.anomaliesFired,
+      received.length,
+      'anomaliesFired must equal the number of trajectory_anomaly events actually delivered',
+    );
 
     manager.flushNow();
   } finally {
@@ -1119,20 +1258,29 @@ test('getTelemetry() anomaliesFired increments when dwell_time_anomaly fires', (
 
     // Build baseline: dwell ~100 ms on A each time
     for (let i = 0; i < 5; i++) {
-      mockTime += 100; manager.track('A');
-      mockTime += 100; manager.track('B');
+      mockTime += 100;
+      manager.track('A');
+      mockTime += 100;
+      manager.track('B');
     }
 
     const snapshotBefore = manager.getTelemetry().anomaliesFired;
 
     // Spike: dwell 5000 ms on A — should produce a high positive z-score
-    mockTime += 5000; manager.track('A');
-    mockTime += 100;  manager.track('B');
+    mockTime += 5000;
+    manager.track('A');
+    mockTime += 100;
+    manager.track('B');
 
-    assert.ok(manager.getTelemetry().anomaliesFired > snapshotBefore,
-      'anomaliesFired must increment after dwell_time_anomaly fires');
-    assert.equal(received.length, manager.getTelemetry().anomaliesFired - snapshotBefore,
-      'delta in anomaliesFired must equal number of dwell_time_anomaly events delivered');
+    assert.ok(
+      manager.getTelemetry().anomaliesFired > snapshotBefore,
+      'anomaliesFired must increment after dwell_time_anomaly fires',
+    );
+    assert.equal(
+      received.length,
+      manager.getTelemetry().anomaliesFired - snapshotBefore,
+      'delta in anomaliesFired must equal number of dwell_time_anomaly events delivered',
+    );
 
     manager.flushNow();
   } finally {
@@ -1159,10 +1307,15 @@ test('getTelemetry() anomaliesFired does NOT increment when event is suppressed 
   }
 
   // Cooldown means at most 1 event fires regardless of how many qualifying evaluations occur
-  assert.ok(received.length <= 1,
-    `With 60s cooldown, at most 1 high_entropy event should fire; got ${received.length}`);
-  assert.equal(manager.getTelemetry().anomaliesFired, received.length,
-    'anomaliesFired must match the number of events that actually passed the cooldown gate');
+  assert.ok(
+    received.length <= 1,
+    `With 60s cooldown, at most 1 high_entropy event should fire; got ${received.length}`,
+  );
+  assert.equal(
+    manager.getTelemetry().anomaliesFired,
+    received.length,
+    'anomaliesFired must match the number of events that actually passed the cooldown gate',
+  );
 
   manager.flushNow();
 });
@@ -1189,8 +1342,11 @@ test('getTelemetry() botStatus reflects EntropyGuard classification', () => {
       manager.track(i % 2 === 0 ? 'X' : 'Y');
     }
 
-    assert.equal(manager.getTelemetry().botStatus, 'suspected_bot',
-      'botStatus must be suspected_bot after rapid-fire track() calls');
+    assert.equal(
+      manager.getTelemetry().botStatus,
+      'suspected_bot',
+      'botStatus must be suspected_bot after rapid-fire track() calls',
+    );
 
     // Now advance time so each call is 200ms apart — bot flag should clear
     for (let i = 0; i < 12; i++) {
@@ -1198,8 +1354,11 @@ test('getTelemetry() botStatus reflects EntropyGuard classification', () => {
       manager.track(i % 2 === 0 ? 'X' : 'Y');
     }
 
-    assert.equal(manager.getTelemetry().botStatus, 'human',
-      'botStatus must recover to human after human-paced interactions fill the buffer');
+    assert.equal(
+      manager.getTelemetry().botStatus,
+      'human',
+      'botStatus must recover to human after human-paced interactions fill the buffer',
+    );
 
     manager.flushNow();
   } finally {
@@ -1262,12 +1421,21 @@ test('trackConversion() does not affect transitionsEvaluated or anomaliesFired',
 
   const snapshotAfter = manager.getTelemetry();
 
-  assert.equal(snapshotAfter.transitionsEvaluated, snapshotBefore.transitionsEvaluated,
-    'trackConversion() must not increment transitionsEvaluated');
-  assert.equal(snapshotAfter.anomaliesFired, snapshotBefore.anomaliesFired,
-    'trackConversion() must not increment anomaliesFired');
-  assert.equal(snapshotAfter.sessionId, snapshotBefore.sessionId,
-    'trackConversion() must not change sessionId');
+  assert.equal(
+    snapshotAfter.transitionsEvaluated,
+    snapshotBefore.transitionsEvaluated,
+    'trackConversion() must not increment transitionsEvaluated',
+  );
+  assert.equal(
+    snapshotAfter.anomaliesFired,
+    snapshotBefore.anomaliesFired,
+    'trackConversion() must not increment anomaliesFired',
+  );
+  assert.equal(
+    snapshotAfter.sessionId,
+    snapshotBefore.sessionId,
+    'trackConversion() must not change sessionId',
+  );
 
   manager.flushNow();
 });
@@ -1295,10 +1463,14 @@ test('bot_detected fires on the false→true EntropyGuard transition', () => {
     manager.track(states[i % states.length]);
   }
 
-  assert.ok(detected.length >= 1,
-    `Expected bot_detected to fire at least once, got ${detected.length}`);
-  assert.ok(typeof detected[0].state === 'string',
-    'bot_detected payload must have a string state property');
+  assert.ok(
+    detected.length >= 1,
+    `Expected bot_detected to fire at least once, got ${detected.length}`,
+  );
+  assert.ok(
+    typeof detected[0].state === 'string',
+    'bot_detected payload must have a string state property',
+  );
   manager.flushNow();
 });
 
@@ -1312,15 +1484,20 @@ test('bot_detected fires at most once per false→true transition (not on every 
   });
 
   let fireCount = 0;
-  manager.on('bot_detected', () => { fireCount += 1; });
+  manager.on('bot_detected', () => {
+    fireCount += 1;
+  });
 
   const states = ['A', 'B'];
   for (let i = 0; i < 60; i++) {
     manager.track(states[i % states.length]);
   }
 
-  assert.equal(fireCount, 1,
-    `bot_detected must fire exactly once per false→true transition, got ${fireCount}`);
+  assert.equal(
+    fireCount,
+    1,
+    `bot_detected must fire exactly once per false→true transition, got ${fireCount}`,
+  );
   manager.flushNow();
 });
 
@@ -1372,13 +1549,18 @@ test('hesitation_detected fires when trajectory_anomaly and positive dwell_time_
     mockTime += 5000;
     manager.track('W');
 
-    assert.ok(hesitations.length >= 1,
+    assert.ok(
+      hesitations.length >= 1,
       `Expected ≥1 hesitation_detected, got ${hesitations.length}. ` +
-      `trajectory_anomaly: ${trajFires.length}, dwell_time_anomaly: ${dwellFires.length}`);
+        `trajectory_anomaly: ${trajFires.length}, dwell_time_anomaly: ${dwellFires.length}`,
+    );
     const h = hesitations[0];
     // hesitation_detected fires from evaluateDwellTime's maybeEmitHesitation call,
     // so state = the state where the user lingered (the 'from' state of the final track).
-    assert.ok(typeof h.state === 'string' && h.state.length > 0, 'state must be a non-empty string');
+    assert.ok(
+      typeof h.state === 'string' && h.state.length > 0,
+      'state must be a non-empty string',
+    );
     assert.ok(typeof h.trajectoryZScore === 'number', 'trajectoryZScore must be a number');
     assert.ok(typeof h.dwellZScore === 'number', 'dwellZScore must be a number');
     assert.ok(h.dwellZScore > 0, 'dwellZScore must be positive (lingering, not rushing)');
@@ -1422,8 +1604,11 @@ test('hesitation_detected does NOT fire when only trajectory_anomaly fires (dwel
       manager.track(loop[i % 3]);
     }
 
-    assert.equal(hesitations.length, 0,
-      `hesitation_detected must NOT fire without dwell_time_anomaly, got ${hesitations.length}`);
+    assert.equal(
+      hesitations.length,
+      0,
+      `hesitation_detected must NOT fire without dwell_time_anomaly, got ${hesitations.length}`,
+    );
 
     manager.flushNow();
   } finally {
@@ -1469,8 +1654,11 @@ test('hesitation_detected does NOT fire when dwell_time_anomaly has negative z-s
     mockTime += 10;
     manager.track('W');
 
-    assert.equal(hesitations.length, 0,
-      `hesitation_detected must NOT fire for negative z-score (rushing), got ${hesitations.length}`);
+    assert.equal(
+      hesitations.length,
+      0,
+      `hesitation_detected must NOT fire for negative z-score (rushing), got ${hesitations.length}`,
+    );
 
     manager.flushNow();
   } finally {
@@ -1519,10 +1707,14 @@ test('low-level events (trajectory_anomaly, dwell_time_anomaly) still fire indep
 
     // Only assert the composition constraint when hesitation actually fired
     if (hesitationFires.length > 0) {
-      assert.ok(trajFires.length >= 1,
-        'trajectory_anomaly must have fired alongside hesitation_detected');
-      assert.ok(dwellFires.length >= 1,
-        'dwell_time_anomaly must have fired alongside hesitation_detected');
+      assert.ok(
+        trajFires.length >= 1,
+        'trajectory_anomaly must have fired alongside hesitation_detected',
+      );
+      assert.ok(
+        dwellFires.length >= 1,
+        'dwell_time_anomaly must have fired alongside hesitation_detected',
+      );
     }
 
     manager.flushNow();
@@ -1541,8 +1733,11 @@ test('getTelemetry() baselineStatus is "active" by default', () => {
     botProtection: false,
   });
 
-  assert.equal(manager.getTelemetry().baselineStatus, 'active',
-    'baselineStatus must start as "active"');
+  assert.equal(
+    manager.getTelemetry().baselineStatus,
+    'active',
+    'baselineStatus must start as "active"',
+  );
 });
 
 test('driftProtection: isBaselineDrifted set when trajectory_anomaly ratio exceeds maxAnomalyRate', () => {
@@ -1588,8 +1783,11 @@ test('driftProtection: isBaselineDrifted set when trajectory_anomaly ratio excee
 
     const t = manager.getTelemetry();
     // The killswitch must have engaged given the anomaly rate well exceeds 10%
-    assert.equal(t.baselineStatus, 'drifted',
-      `baselineStatus must be "drifted" after anomaly rate exceeded; anomaliesFired=${t.anomaliesFired}`);
+    assert.equal(
+      t.baselineStatus,
+      'drifted',
+      `baselineStatus must be "drifted" after anomaly rate exceeded; anomaliesFired=${t.anomaliesFired}`,
+    );
 
     manager.flushNow();
   } finally {
@@ -1635,8 +1833,7 @@ test('driftProtection: evaluateTrajectory is silently skipped once isBaselineDri
       manager.track(states[i % states.length]);
     }
 
-    assert.equal(manager.getTelemetry().baselineStatus, 'drifted',
-      'must be drifted after phase 1');
+    assert.equal(manager.getTelemetry().baselineStatus, 'drifted', 'must be drifted after phase 1');
 
     const anomaliesBeforePhase2 = anomalies.length;
 
@@ -1646,8 +1843,11 @@ test('driftProtection: evaluateTrajectory is silently skipped once isBaselineDri
       manager.track(states[i % states.length]);
     }
 
-    assert.equal(anomalies.length, anomaliesBeforePhase2,
-      'no new trajectory_anomaly events must fire after killswitch engages');
+    assert.equal(
+      anomalies.length,
+      anomaliesBeforePhase2,
+      'no new trajectory_anomaly events must fire after killswitch engages',
+    );
 
     manager.flushNow();
   } finally {
@@ -1695,16 +1895,17 @@ test('driftProtection: rolling window resets allow anomaly counter to restart', 
     }
 
     // baselineStatus must still be active (maxAnomalyRate=1.0 can never be exceeded)
-    assert.equal(manager.getTelemetry().baselineStatus, 'active',
-      'baselineStatus must remain "active" when maxAnomalyRate=1.0');
+    assert.equal(
+      manager.getTelemetry().baselineStatus,
+      'active',
+      'baselineStatus must remain "active" when maxAnomalyRate=1.0',
+    );
 
     manager.flushNow();
   } finally {
     globalThis.performance.now = originalNow;
   }
 });
-
-
 
 // ── Tab-Visibility Dwell-Time Correction ────────────────────────────────────
 
@@ -1719,8 +1920,12 @@ test('visibilitychange: hidden time is excluded from dwellMs so no spurious dwel
   let capturedListener = null;
   const originalDocument = globalThis.document;
   globalThis.document = {
-    get hidden() { return docHidden; },
-    addEventListener(_evt, fn) { capturedListener = fn; },
+    get hidden() {
+      return docHidden;
+    },
+    addEventListener(_evt, fn) {
+      capturedListener = fn;
+    },
     removeEventListener() {},
   };
 
@@ -1739,39 +1944,50 @@ test('visibilitychange: hidden time is excluded from dwellMs so no spurious dwel
 
     // Build 8 uniform dwell samples: ~100 ms on A, ~100 ms on B
     for (let i = 0; i < 8; i++) {
-      mockTime += 100; manager.track('A');
-      mockTime += 100; manager.track('B');
+      mockTime += 100;
+      manager.track('A');
+      mockTime += 100;
+      manager.track('B');
     }
     assert.equal(anomalies.length, 0, 'no anomalies during uniform baseline phase');
 
     // User switches away — tab becomes hidden
     docHidden = true;
-    capturedListener();               // fire visibilitychange (hidden)
-    mockTime += 30000;                // 30 seconds hidden — would inflate dwellMs massively
+    capturedListener(); // fire visibilitychange (hidden)
+    mockTime += 30000; // 30 seconds hidden — would inflate dwellMs massively
 
     // User returns — tab becomes visible
     docHidden = false;
-    capturedListener();               // fire visibilitychange (visible)
+    capturedListener(); // fire visibilitychange (visible)
 
     // Navigate away from B — dwell on B should reflect only ~100 ms, not 30 100 ms.
     // We record the anomaly list to inspect the actual dwellMs payload if one fires.
-    mockTime += 100; manager.track('A');
-    mockTime += 100; manager.track('B');
+    mockTime += 100;
+    manager.track('A');
+    mockTime += 100;
+    manager.track('B');
 
-    assert.equal(anomalies.length, 0,
-      'dwell_time_anomaly must NOT fire after tab-switch because hidden time was excluded');
+    assert.equal(
+      anomalies.length,
+      0,
+      'dwell_time_anomaly must NOT fire after tab-switch because hidden time was excluded',
+    );
 
     // Positive control: introduce a genuine anomalous dwell AFTER the correction
     // and confirm the payload dwellMs reflects only visible time (not hidden time).
     mockTime += 2000; // genuine long dwell on B (~2 000 ms visible — anomalous vs ~100 ms mean)
     manager.track('A');
 
-    assert.ok(anomalies.length >= 1,
-      'dwell_time_anomaly MUST fire for a genuine long dwell after the tab-switch fix');
+    assert.ok(
+      anomalies.length >= 1,
+      'dwell_time_anomaly MUST fire for a genuine long dwell after the tab-switch fix',
+    );
     const payload = anomalies[anomalies.length - 1];
     // dwellMs must be ~2 000 ms, NOT ~32 100 ms (hidden + genuine)
-    assert.ok(payload.dwellMs < 5000,
-      `dwellMs should be ~2 000 ms (genuine dwell only), got ${payload.dwellMs} ms`);
+    assert.ok(
+      payload.dwellMs < 5000,
+      `dwellMs should be ~2 000 ms (genuine dwell only), got ${payload.dwellMs} ms`,
+    );
 
     manager.flushNow();
   } finally {
@@ -1788,8 +2004,12 @@ test('visibilitychange: destroy() removes the visibilitychange listener', () => 
   let removedListener = null;
   globalThis.document = {
     hidden: false,
-    addEventListener(_evt, fn) { capturedListener = fn; },
-    removeEventListener(_evt, fn) { removedListener = fn; },
+    addEventListener(_evt, fn) {
+      capturedListener = fn;
+    },
+    removeEventListener(_evt, fn) {
+      removedListener = fn;
+    },
   };
 
   try {
@@ -1801,8 +2021,11 @@ test('visibilitychange: destroy() removes the visibilitychange listener', () => 
 
     assert.ok(capturedListener !== null, 'listener must be registered on construction');
     manager.destroy();
-    assert.equal(removedListener, capturedListener,
-      'destroy() must remove the exact same listener reference that was registered');
+    assert.equal(
+      removedListener,
+      capturedListener,
+      'destroy() must remove the exact same listener reference that was registered',
+    );
   } finally {
     globalThis.document = originalDocument;
   }
@@ -1888,7 +2111,10 @@ test('holdoutConfig: control group suppresses high_entropy emit but still increm
   // No event emitted for control group
   assert.equal(emitted.length, 0, 'control group must not emit high_entropy');
   // But anomaliesFired must have been incremented
-  assert.ok(manager.getTelemetry().anomaliesFired > 0, 'control group must still increment anomaliesFired');
+  assert.ok(
+    manager.getTelemetry().anomaliesFired > 0,
+    'control group must still increment anomaliesFired',
+  );
   manager.flushNow();
 });
 
@@ -1916,7 +2142,11 @@ test('holdoutConfig: treatment group still emits high_entropy normally', () => {
 
 test('incrementCounter: starts at 0 and increments by 1 by default', () => {
   storage.clear();
-  const manager = new IntentManager({ storageKey: 'counter-basic-test', storage, botProtection: false });
+  const manager = new IntentManager({
+    storageKey: 'counter-basic-test',
+    storage,
+    botProtection: false,
+  });
 
   assert.equal(manager.getCounter('articles_read'), 0, 'counter starts at 0');
   assert.equal(manager.incrementCounter('articles_read'), 1);
@@ -1927,7 +2157,11 @@ test('incrementCounter: starts at 0 and increments by 1 by default', () => {
 
 test('incrementCounter: supports custom increment amounts', () => {
   storage.clear();
-  const manager = new IntentManager({ storageKey: 'counter-by-test', storage, botProtection: false });
+  const manager = new IntentManager({
+    storageKey: 'counter-by-test',
+    storage,
+    botProtection: false,
+  });
 
   manager.incrementCounter('score', 10);
   manager.incrementCounter('score', 5);
@@ -1937,7 +2171,11 @@ test('incrementCounter: supports custom increment amounts', () => {
 
 test('incrementCounter: multiple counters are independent', () => {
   storage.clear();
-  const manager = new IntentManager({ storageKey: 'counter-multi-test', storage, botProtection: false });
+  const manager = new IntentManager({
+    storageKey: 'counter-multi-test',
+    storage,
+    botProtection: false,
+  });
 
   manager.incrementCounter('articles_read');
   manager.incrementCounter('articles_read');
@@ -1951,7 +2189,11 @@ test('incrementCounter: multiple counters are independent', () => {
 
 test('resetCounter: resets the counter to 0', () => {
   storage.clear();
-  const manager = new IntentManager({ storageKey: 'counter-reset-test', storage, botProtection: false });
+  const manager = new IntentManager({
+    storageKey: 'counter-reset-test',
+    storage,
+    botProtection: false,
+  });
 
   manager.incrementCounter('articles_read', 5);
   assert.equal(manager.getCounter('articles_read'), 5);
@@ -1967,7 +2209,11 @@ test('resetCounter: resets the counter to 0', () => {
 
 test('resetCounter: resetting an unknown counter is a no-op', () => {
   storage.clear();
-  const manager = new IntentManager({ storageKey: 'counter-reset-noop-test', storage, botProtection: false });
+  const manager = new IntentManager({
+    storageKey: 'counter-reset-noop-test',
+    storage,
+    botProtection: false,
+  });
 
   assert.doesNotThrow(() => manager.resetCounter('nonexistent'));
   assert.equal(manager.getCounter('nonexistent'), 0);
@@ -1987,7 +2233,10 @@ test('incrementCounter: empty key is rejected with onError and returns 0', () =>
   const result = manager.incrementCounter('');
   assert.equal(result, 0, 'must return 0 for empty key');
   assert.equal(errors.length, 1);
-  assert.ok(errors[0].includes('empty string'), `Expected 'empty string' in error, got: "${errors[0]}"`);
+  assert.ok(
+    errors[0].includes('empty string'),
+    `Expected 'empty string' in error, got: "${errors[0]}"`,
+  );
   manager.flushNow();
 });
 
@@ -2052,14 +2301,18 @@ test('normalizeRouteState: replaces MongoDB ObjectID (24-char hex) in path', () 
 
 test('normalizeRouteState: replaces multiple IDs in one path', () => {
   assert.equal(
-    normalizeRouteState('/orgs/507f1f77bcf86cd799439011/users/550e8400-e29b-41d4-a716-446655440000'),
+    normalizeRouteState(
+      '/orgs/507f1f77bcf86cd799439011/users/550e8400-e29b-41d4-a716-446655440000',
+    ),
     '/orgs/:id/users/:id',
   );
 });
 
 test('normalizeRouteState: replaces both UUID and ObjectID along with query and hash', () => {
   assert.equal(
-    normalizeRouteState('/users/550e8400-e29b-41d4-a716-446655440000/posts/507f1f77bcf86cd799439011?sort=asc#top'),
+    normalizeRouteState(
+      '/users/550e8400-e29b-41d4-a716-446655440000/posts/507f1f77bcf86cd799439011?sort=asc#top',
+    ),
     '/users/:id/posts/:id',
   );
 });
@@ -2107,7 +2360,11 @@ test('normalizeRouteState is re-exported from the intent-sdk barrel', () => {
 // ─── Integration: IntentManager.track() auto-normalizes URLs ─────────────────
 test('track() auto-normalizes: strips query string before processing', () => {
   storage.clear();
-  const manager = new IntentManager({ storageKey: 'track-norm-query', storage, botProtection: false });
+  const manager = new IntentManager({
+    storageKey: 'track-norm-query',
+    storage,
+    botProtection: false,
+  });
   const changes = [];
   manager.on('state_change', ({ to }) => changes.push(to));
 
@@ -2120,7 +2377,11 @@ test('track() auto-normalizes: strips query string before processing', () => {
 
 test('track() auto-normalizes: strips hash fragment before processing', () => {
   storage.clear();
-  const manager = new IntentManager({ storageKey: 'track-norm-hash', storage, botProtection: false });
+  const manager = new IntentManager({
+    storageKey: 'track-norm-hash',
+    storage,
+    botProtection: false,
+  });
   const changes = [];
   manager.on('state_change', ({ to }) => changes.push(to));
 
@@ -2132,7 +2393,11 @@ test('track() auto-normalizes: strips hash fragment before processing', () => {
 
 test('track() auto-normalizes: removes trailing slash', () => {
   storage.clear();
-  const manager = new IntentManager({ storageKey: 'track-norm-slash', storage, botProtection: false });
+  const manager = new IntentManager({
+    storageKey: 'track-norm-slash',
+    storage,
+    botProtection: false,
+  });
 
   manager.track('/checkout/');
   manager.track('/checkout');
@@ -2146,7 +2411,11 @@ test('track() auto-normalizes: removes trailing slash', () => {
 
 test('track() auto-normalizes: replaces UUID segments with :id', () => {
   storage.clear();
-  const manager = new IntentManager({ storageKey: 'track-norm-uuid', storage, botProtection: false });
+  const manager = new IntentManager({
+    storageKey: 'track-norm-uuid',
+    storage,
+    botProtection: false,
+  });
   const changes = [];
   manager.on('state_change', ({ to }) => changes.push(to));
 
@@ -2158,7 +2427,11 @@ test('track() auto-normalizes: replaces UUID segments with :id', () => {
 
 test('track() auto-normalizes: two different UUIDs map to the same canonical state', () => {
   storage.clear();
-  const manager = new IntentManager({ storageKey: 'track-norm-uuid2', storage, botProtection: false });
+  const manager = new IntentManager({
+    storageKey: 'track-norm-uuid2',
+    storage,
+    botProtection: false,
+  });
   const changes = [];
   manager.on('state_change', ({ to }) => changes.push(to));
 
@@ -2172,7 +2445,11 @@ test('track() auto-normalizes: two different UUIDs map to the same canonical sta
 
 test('track() auto-normalizes: replaces MongoDB ObjectID segments with :id', () => {
   storage.clear();
-  const manager = new IntentManager({ storageKey: 'track-norm-mongo', storage, botProtection: false });
+  const manager = new IntentManager({
+    storageKey: 'track-norm-mongo',
+    storage,
+    botProtection: false,
+  });
   const changes = [];
   manager.on('state_change', ({ to }) => changes.push(to));
 
@@ -2183,7 +2460,11 @@ test('track() auto-normalizes: replaces MongoDB ObjectID segments with :id', () 
 
 test('track() auto-normalizes: plain semantic states are unchanged', () => {
   storage.clear();
-  const manager = new IntentManager({ storageKey: 'track-norm-plain', storage, botProtection: false });
+  const manager = new IntentManager({
+    storageKey: 'track-norm-plain',
+    storage,
+    botProtection: false,
+  });
   const changes = [];
   manager.on('state_change', ({ to }) => changes.push(to));
 
@@ -2263,7 +2544,11 @@ test('IntentManager.predictNextStates returns empty array before any state is tr
 
 test('IntentManager.predictNextStates applies sanitize predicate to filter results', () => {
   storage.clear();
-  const manager = new IntentManager({ storageKey: 'predict-sanitize', storage, botProtection: false });
+  const manager = new IntentManager({
+    storageKey: 'predict-sanitize',
+    storage,
+    botProtection: false,
+  });
   manager.track('/home');
   manager.track('/logout');
   manager.track('/home');
@@ -2279,7 +2564,11 @@ test('IntentManager.predictNextStates applies sanitize predicate to filter resul
 
 test('IntentManager.predictNextStates uses default threshold of 0.3', () => {
   storage.clear();
-  const manager = new IntentManager({ storageKey: 'predict-default-threshold', storage, botProtection: false });
+  const manager = new IntentManager({
+    storageKey: 'predict-default-threshold',
+    storage,
+    botProtection: false,
+  });
   // Create a low-probability edge: /home → /rare (1/10) and a high one: /home → /common (9/10)
   for (let i = 0; i < 9; i++) {
     manager.track('/home');
@@ -2291,17 +2580,20 @@ test('IntentManager.predictNextStates uses default threshold of 0.3', () => {
   // previousState = '/home'
 
   const hints = manager.predictNextStates(); // default threshold = 0.3
-  assert.ok(hints.some(({ state }) => state === '/common'), '/common should be included');
-  assert.ok(!hints.some(({ state }) => state === '/rare'), '/rare should be excluded at 0.3 threshold');
+  assert.ok(
+    hints.some(({ state }) => state === '/common'),
+    '/common should be included',
+  );
+  assert.ok(
+    !hints.some(({ state }) => state === '/rare'),
+    '/rare should be excluded at 0.3 threshold',
+  );
   manager.flushNow();
 });
 
 // ── BroadcastSync tests ──────────────────────────────────────────────────
 
-import {
-  BroadcastSync,
-  MAX_STATE_LENGTH,
-} from '../dist/src/intent-sdk.js';
+import { BroadcastSync, MAX_STATE_LENGTH } from '../dist/src/intent-sdk.js';
 
 test('BroadcastSync: MAX_STATE_LENGTH is 256', () => {
   assert.equal(MAX_STATE_LENGTH, 256);
@@ -2469,7 +2761,11 @@ test('IntentManager: crossTabSync:false (default) does not broadcast', () => {
 
   return new Promise((resolve) => {
     setTimeout(() => {
-      assert.equal(received.length, 0, 'No messages should be broadcast when crossTabSync is false');
+      assert.equal(
+        received.length,
+        0,
+        'No messages should be broadcast when crossTabSync is false',
+      );
       listener.close();
       manager.destroy();
       resolve();
@@ -2631,7 +2927,11 @@ test('IntentManager: incrementCounter broadcasts counter message when crossTabSy
   return new Promise((resolve) => {
     setTimeout(() => {
       const counterMsgs = received.filter((m) => m.type === 'counter' && m.key === 'articles_read');
-      assert.equal(counterMsgs.length, 2, 'exactly 2 counter messages must be broadcast (one per incrementCounter call)');
+      assert.equal(
+        counterMsgs.length,
+        2,
+        'exactly 2 counter messages must be broadcast (one per incrementCounter call)',
+      );
       const total = counterMsgs.reduce((sum, m) => sum + m.by, 0);
       assert.equal(total, 5, 'broadcast increments must sum to 5 (1 + 4)');
       listener.close();
@@ -2660,7 +2960,11 @@ test('IntentManager: incrementCounter does not broadcast when crossTabSync:false
   return new Promise((resolve) => {
     setTimeout(() => {
       const counterMsgs = received.filter((m) => m.type === 'counter');
-      assert.equal(counterMsgs.length, 0, 'no counter messages should be broadcast when crossTabSync is false');
+      assert.equal(
+        counterMsgs.length,
+        0,
+        'no counter messages should be broadcast when crossTabSync is false',
+      );
       listener.close();
       manager.destroy();
       resolve();
@@ -2686,8 +2990,11 @@ test('IntentManager: remote counter increment from another tab is reflected in g
 
   return new Promise((resolve) => {
     setTimeout(() => {
-      assert.equal(managerA.getCounter('articles_read'), 7,
-        'getCounter() must reflect the remotely-broadcast increment');
+      assert.equal(
+        managerA.getCounter('articles_read'),
+        7,
+        'getCounter() must reflect the remotely-broadcast increment',
+      );
       sender.close();
       managerA.destroy();
       resolve();
@@ -2708,7 +3015,9 @@ test('IntentManager.createAsync() initializes from async storage and tracks stat
   let stored = null;
   const asyncStorage = {
     getItem: async (_key) => stored,
-    setItem: async (_key, value) => { stored = value; },
+    setItem: async (_key, value) => {
+      stored = value;
+    },
   };
 
   const manager = await IntentManager.createAsync({
@@ -2734,7 +3043,9 @@ test('IntentManager.createAsync() restores persisted state from async storage', 
   let stored = null;
   const asyncStorage = {
     getItem: async (_key) => stored,
-    setItem: async (_key, value) => { stored = value; },
+    setItem: async (_key, value) => {
+      stored = value;
+    },
   };
 
   const m1 = await IntentManager.createAsync({
@@ -2796,7 +3107,11 @@ test('IntentManager async persist: isDirty reset on success, overlapping writes 
   manager.flushNow();
   await new Promise((r) => setTimeout(r, 50));
 
-  assert.equal(writes.length, 2, 'dirty state accumulated during in-flight write should be saved on next flush');
+  assert.equal(
+    writes.length,
+    2,
+    'dirty state accumulated during in-flight write should be saved on next flush',
+  );
   // The second write should contain /c's transition
   const secondPayload = JSON.parse(writes[1]);
   assert.ok(secondPayload.graphBinary, 'second write should include graph data');
@@ -2808,7 +3123,9 @@ test('IntentManager async persist: isDirty restored on error, onError is called'
   const errors = [];
   const asyncStorage = {
     getItem: async () => null,
-    setItem: async () => { throw new Error('storage unavailable'); },
+    setItem: async () => {
+      throw new Error('storage unavailable');
+    },
   };
 
   const manager = await IntentManager.createAsync({

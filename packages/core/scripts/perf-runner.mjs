@@ -1,6 +1,6 @@
 /**
  * Copyright (c) 2026 Purushottam <purushpsm147@yahoo.co.in>
- * 
+ *
  * This source code is licensed under the AGPL-3.0-only license found in the
  * LICENSE file in the root directory of this source tree.
  */
@@ -14,8 +14,12 @@ class MemoryStorage {
   constructor() {
     this.map = new Map();
   }
-  getItem(key) { return this.map.has(key) ? this.map.get(key) : null; }
-  setItem(key, value) { this.map.set(key, value); }
+  getItem(key) {
+    return this.map.has(key) ? this.map.get(key) : null;
+  }
+  setItem(key, value) {
+    this.map.set(key, value);
+  }
 }
 
 if (!globalThis.localStorage) globalThis.localStorage = new MemoryStorage();
@@ -65,7 +69,8 @@ const endHeap = process.memoryUsage?.().heapUsed ?? 0;
 // If the delta is legitimately ≤ 0 (everything GC'd), fall back to the
 // graph's serialized size as a lower-bound proxy.
 const heapDelta = endHeap - startHeap;
-const memoryUsageEstimate = heapDelta > 0 ? heapDelta : report.memoryFootprint.serializedGraphBytes * 10;
+const memoryUsageEstimate =
+  heapDelta > 0 ? heapDelta : report.memoryFootprint.serializedGraphBytes * 10;
 
 const benchmarkReport = {
   sdkVersion: process.env.npm_package_version ?? '0.0.0',
@@ -79,9 +84,15 @@ const benchmarkReport = {
 
 const benchmarkDir = path.resolve('benchmarks');
 fs.mkdirSync(benchmarkDir, { recursive: true });
-fs.writeFileSync(path.join(benchmarkDir, 'latest.json'), `${JSON.stringify(benchmarkReport, null, 2)}\n`);
+fs.writeFileSync(
+  path.join(benchmarkDir, 'latest.json'),
+  `${JSON.stringify(benchmarkReport, null, 2)}\n`,
+);
 if (process.argv.includes('--update-baseline')) {
-  fs.writeFileSync(path.join(benchmarkDir, 'baseline.json'), `${JSON.stringify(benchmarkReport, null, 2)}\n`);
+  fs.writeFileSync(
+    path.join(benchmarkDir, 'baseline.json'),
+    `${JSON.stringify(benchmarkReport, null, 2)}\n`,
+  );
 }
 
 printPerfSummary(benchmarkReport);
