@@ -51,10 +51,11 @@
     "test:watch": "vitest",
     "test:coverage": "vitest run --coverage",
     "typecheck": "tsc --noEmit",
-    "clean": "node -e \"require('fs').rmSync('dist', { recursive: true, force: true })\""
+    "clean": "node -e \"require('fs').rmSync('dist', { recursive: true, force: true })\"",
+    "prepublishOnly": "npm run build"
   },
   "dependencies": {
-    "@edgesignal/core": "*"
+    "@edgesignal/core": "^1.0.0"
   },
   "peerDependencies": {
     "react": ">=18.0.0",

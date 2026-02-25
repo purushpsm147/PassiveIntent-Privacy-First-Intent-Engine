@@ -46,7 +46,9 @@
   ],
   "sideEffects": false,
   "scripts": {
-    "build": "tsup",
+    "build": "npm run build:js && npm run build:types",
+    "build:js": "tsup",
+    "build:types": "tsc --project tsconfig.types.json",
     "build:tsc": "tsc --project tsconfig.json --declaration --sourceMap",
     "test": "npm run test:unit",
     "test:unit": "npm run build:tsc && node --test tests/*.test.mjs",

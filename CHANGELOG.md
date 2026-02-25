@@ -37,6 +37,8 @@ _Branch: `codex/convert-to-npm-workspaces-monorepo` — included in v1.0.0 initi
 - All GitHub Actions steps now target `@edgesignal/core` explicitly via `-w @edgesignal/core` to avoid running against placeholder packages.
 - Added `format:check` step to `ci.yml` so unformatted code fails the pipeline.
 - Switched perf-matrix workflow to `npm ci` for reproducible installs.
+- Added `ci.react.yml` for `@edgesignal/react` typecheck/test/build coverage.
+- Added `release-gate.yml` to run full release-critical checks (typecheck, tests, build, package verification, and React pack dry-run) on publish-critical changes.
 
 ### Performance Tooling
 
@@ -49,6 +51,13 @@ _Branch: `codex/convert-to-npm-workspaces-monorepo` — included in v1.0.0 initi
   - Memory is now checked as a `%` regression vs baseline only (absolute heap bytes are too environment-dependent for a hard limit).
   - Added a "suspiciously fast" warning when a metric is >50 % below baseline — prompts a baseline update rather than silently drifting downward.
   - Fixed `pctChange()` returning `0` instead of skipping when the baseline value is `0`.
+
+### Runtime Hardening
+
+- **Async persist durability** — when `persist()` is called while an async write is already in flight, the engine now guarantees one follow-up persist pass after the in-flight write settles. This prevents dirty state from being stranded until a future manual flush.
+- **Destroy + async overlap safety** — `destroy()`/`flushNow()` now preserve queued async persistence work instead of silently dropping updates that arrive during an in-flight write.
+- **Trajectory smoothing correctness** — runtime trajectory scoring now honors `graph.smoothingEpsilon` with defensive fallback to the default `0.01` for invalid values.
+- **Compatibility note** — all changes above are non-breaking and preserve default runtime behavior when custom `smoothingEpsilon` is not provided.
 
 ---
 
@@ -66,4 +75,4 @@ _Branch: `codex/convert-to-npm-workspaces-monorepo` — included in v1.0.0 initi
 - **Event cooldown** — configurable `eventCooldownMs` suppresses repeated emissions of the same event type within a rolling window, protecting downstream consumers from event flooding.
 - **Cross-tab synchronization** — `BroadcastSync` uses the `BroadcastChannel` API to propagate `track()` deltas and deterministic counter increments across tabs, with input-length validation to prevent heap-amplification attacks from compromised tabs.
 - **Clean teardown** — `destroy()` flushes pending state, cancels all timers, and removes all event listeners; designed for SPA lifecycle hooks (`useEffect` teardown, `onUnmounted`, `ngOnDestroy`).
-- **Route state normalizer** — `normalizeRouteState()` strips UUIDs, MongoDB ObjectIDs, and numeric path segments from URLs, collapsing dynamic routes to stable canonical keys.
+- **Route state normalizer** — `normalizeRouteState()` strips UUIDs and MongoDB ObjectIDs from URLs, collapsing dynamic routes to stable canonical keys.

@@ -276,11 +276,11 @@ Inject `IntentService` in your root `AppComponent` (or import it in the root mod
 
 **Session counters** (exact integer counts, never persisted)
 
-| Method             | Signature                              | Description                                                                                                 |
-| ------------------ | -------------------------------------- | ----------------------------------------------------------------------------------------------------------- |
-| `incrementCounter` | `(key: string, by?: number) => number` | Increment a named counter (default +1); returns new value. Synced cross-tab when `BroadcastSync` is active. |
-| `getCounter`       | `(key: string) => number`              | Read a counter; returns `0` if never incremented.                                                           |
-| `resetCounter`     | `(key: string) => void`                | Reset a counter back to `0`.                                                                                |
+| Method             | Signature                              | Description                                                                                                                                                                |
+| ------------------ | -------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `incrementCounter` | `(key: string, by?: number) => number` | Increment a named counter (default `+1`); accepts any finite value (including negative deltas) and returns the new value. Synced cross-tab when `BroadcastSync` is active. |
+| `getCounter`       | `(key: string) => number`              | Read a counter; returns `0` if never incremented.                                                                                                                          |
+| `resetCounter`     | `(key: string) => void`                | Reset a counter back to `0`.                                                                                                                                               |
 
 **Conversion tracking**
 
@@ -290,15 +290,15 @@ Inject `IntentService` in your root `AppComponent` (or import it in the root mod
 
 **Events emitted** (`on(event, handler)`)
 
-| Event                 | Payload type                | Fired when                                                                      |
-| --------------------- | --------------------------- | ------------------------------------------------------------------------------- |
-| `state_change`        | `StateChangePayload`        | Every `track()` call that records a new transition.                             |
-| `high_entropy`        | `HighEntropyPayload`        | Outgoing-transition distribution exceeds `highEntropyThreshold`.                |
-| `trajectory_anomaly`  | `TrajectoryAnomalyPayload`  | Log-likelihood window diverges from baseline beyond `divergenceThreshold`.      |
-| `dwell_time_anomaly`  | `DwellTimeAnomalyPayload`   | Time on previous state deviates beyond z-score threshold (Welford's algorithm). |
-| `bot_detected`        | `BotDetectedPayload`        | `botScore` reaches 5 — EntropyGuard flags the session.                          |
-| `hesitation_detected` | `HesitationDetectedPayload` | Dwell time exceeds static `hesitationThresholdMs`.                              |
-| `conversion`          | `ConversionPayload`         | `trackConversion()` was called.                                                 |
+| Event                 | Payload type                | Fired when                                                                                             |
+| --------------------- | --------------------------- | ------------------------------------------------------------------------------------------------------ |
+| `state_change`        | `StateChangePayload`        | Every `track()` call that records a new transition.                                                    |
+| `high_entropy`        | `HighEntropyPayload`        | Outgoing-transition distribution exceeds `highEntropyThreshold`.                                       |
+| `trajectory_anomaly`  | `TrajectoryAnomalyPayload`  | Log-likelihood window diverges from baseline beyond `divergenceThreshold`.                             |
+| `dwell_time_anomaly`  | `DwellTimeAnomalyPayload`   | Time on previous state deviates beyond z-score threshold (Welford's algorithm).                        |
+| `bot_detected`        | `BotDetectedPayload`        | `botScore` reaches 5 — EntropyGuard flags the session.                                                 |
+| `hesitation_detected` | `HesitationDetectedPayload` | A `trajectory_anomaly` and positive `dwell_time_anomaly` occur within `hesitationCorrelationWindowMs`. |
+| `conversion`          | `ConversionPayload`         | `trackConversion()` was called.                                                                        |
 
 **`onError` callback** (in `IntentManagerConfig`)
 
@@ -326,15 +326,15 @@ new IntentManager({
 
 ### Utilities
 
-| Export                | Signature                                                                                       | Description                                                                                                                                                   |
-| --------------------- | ----------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `computeBloomConfig`  | `(expectedItems: number, falsePositiveRate: number) => { bitSize, hashCount, estimatedFpRate }` | Pure math helper — compute Bloom parameters without instantiating `BloomFilter`. Tree-shakeable.                                                              |
-| `normalizeRouteState` | `(url: string) => string`                                                                       | Strips query strings and hash fragments, collapses dynamic path segments, and lowercases — call this before `track()` to keep the Markov state space compact. |
-| `MAX_STATE_LENGTH`    | `256` (constant)                                                                                | Hard upper bound on state label length accepted by `BroadcastSync`. Payloads exceeding this are silently dropped.                                             |
+| Export                | Signature                                                                                       | Description                                                                                                                                                                              |
+| --------------------- | ----------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `computeBloomConfig`  | `(expectedItems: number, falsePositiveRate: number) => { bitSize, hashCount, estimatedFpRate }` | Pure math helper — compute Bloom parameters without instantiating `BloomFilter`. Tree-shakeable.                                                                                         |
+| `normalizeRouteState` | `(url: string) => string`                                                                       | Strips query strings/hash fragments, removes trailing slashes, and replaces UUID v4 / MongoDB ObjectID segments with `:id` — call this before `track()` to keep the state space compact. |
+| `MAX_STATE_LENGTH`    | `256` (constant)                                                                                | Hard upper bound on state label length accepted by `BroadcastSync`. Payloads exceeding this are silently dropped.                                                                        |
 
 ### BroadcastSync
 
-Cross-tab synchronization over the [BroadcastChannel API](https://developer.mozilla.org/en-US/docs/Web/API/BroadcastChannel). `IntentManager` manages this automatically when `broadcastChannelName` is set in config — you rarely need to use `BroadcastSync` directly.
+Cross-tab synchronization over the [BroadcastChannel API](https://developer.mozilla.org/en-US/docs/Web/API/BroadcastChannel). `IntentManager` manages this automatically when `crossTabSync: true` is set in config — you rarely need to use `BroadcastSync` directly.
 
 | Method / Property             | Description                                                                                   |
 | ----------------------------- | --------------------------------------------------------------------------------------------- |
@@ -362,7 +362,7 @@ const { track, on, getTelemetry, predictNextStates } = useEdgeSignal({
 });
 ```
 
-The hook is **Strict Mode safe** (instance held in `useRef`), **SSR safe** (`typeof window` guard), and exposes all eight `IntentManager` methods as stable `useCallback` wrappers. See [`packages/react/README.md`](../../react/README.md) for the full API table and Next.js / React Router examples.
+The hook is **Strict Mode safe** (instance held in `useRef`), **SSR safe** (`typeof window` guard), and exposes all eight `IntentManager` methods as stable `useCallback` wrappers. See [`packages/react/README.md`](../react/README.md) for the full API table and Next.js / React Router examples.
 
 ### EntropyGuard (Bot Protection)
 
@@ -408,7 +408,7 @@ After a successful write to storage, the flag is reset to `false`. This means ap
 - **Isomorphic adapters**: direct `window`/`localStorage` usage is avoided in core flow to keep SSR safe.
 - **Memory bounds by default**: `maxStates` defaults to `500`; low-frequency states are pruned first.
 - **Binary graph serialization**: reduces main-thread pressure compared to deep JSON graph snapshots.
-- **Compatibility-first migration**: restore supports both new binary payloads and legacy JSON payloads.
+- **Binary persistence contract**: restore expects the current binary payload (`bloomBase64` + `graphBinary`) and safely cold-starts on invalid/corrupt storage.
 - **Predictable anomaly math**:
   - entropy signal from normalized outgoing distribution,
   - trajectory anomaly from baseline log-likelihood window and optional z-score calibration,

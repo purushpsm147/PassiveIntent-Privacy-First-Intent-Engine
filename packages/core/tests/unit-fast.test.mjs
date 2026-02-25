@@ -2246,6 +2246,20 @@ test('incrementCounter: supports custom increment amounts', () => {
   manager.flushNow();
 });
 
+test('incrementCounter: accepts negative finite increments (decrement semantics)', () => {
+  storage.clear();
+  const manager = new IntentManager({
+    storageKey: 'counter-negative-by-test',
+    storage,
+    botProtection: false,
+  });
+
+  manager.incrementCounter('score', 10);
+  manager.incrementCounter('score', -3);
+  assert.equal(manager.getCounter('score'), 7);
+  manager.flushNow();
+});
+
 test('incrementCounter: multiple counters are independent', () => {
   storage.clear();
   const manager = new IntentManager({
@@ -3234,7 +3248,62 @@ test('IntentManager.createAsync() restores persisted state from async storage', 
   m2.destroy();
 });
 
-test('IntentManager async persist: isDirty reset on success, overlapping writes are coalesced', async () => {
+test('trajectory scoring: smoothingEpsilon config controls unseen-transition likelihood', () => {
+  const baseline = new MarkovGraph();
+  baseline.incrementTransition('/known', '/known');
+
+  const captureExpectedBaselineLL = (smoothingEpsilon) => {
+    const local = new MemoryStorage();
+    const manager = new IntentManager({
+      storageKey: `smooth-${String(smoothingEpsilon)}`,
+      storage: local,
+      botProtection: false,
+      baseline: baseline.toJSON(),
+      graph: {
+        divergenceThreshold: 0,
+        ...(smoothingEpsilon !== undefined ? { smoothingEpsilon } : {}),
+      },
+    });
+
+    let first = null;
+    manager.on('trajectory_anomaly', (payload) => {
+      if (!first) first = payload;
+    });
+
+    for (let i = 0; i < 20; i += 1) {
+      manager.track(i % 2 === 0 ? '/x' : '/y');
+    }
+
+    assert.ok(first, 'expected trajectory_anomaly payload');
+    manager.destroy();
+    return first.expectedBaselineLogLikelihood;
+  };
+
+  const llDefault = captureExpectedBaselineLL(undefined);
+  const llExplicitDefault = captureExpectedBaselineLL(0.01);
+  const llHigh = captureExpectedBaselineLL(0.5);
+  const llTiny = captureExpectedBaselineLL(1e-6);
+  const llInvalid = captureExpectedBaselineLL(-1);
+
+  assert.ok(
+    llHigh > llDefault,
+    `larger smoothingEpsilon should yield less-negative likelihood (${llHigh} > ${llDefault})`,
+  );
+  assert.ok(
+    llTiny < llDefault,
+    `smaller smoothingEpsilon should yield more-negative likelihood (${llTiny} < ${llDefault})`,
+  );
+  assert.ok(
+    Math.abs(llExplicitDefault - llDefault) < 1e-12,
+    `explicit default epsilon should match implicit default (${llExplicitDefault} vs ${llDefault})`,
+  );
+  assert.ok(
+    Math.abs(llInvalid - llDefault) < 1e-12,
+    `invalid smoothingEpsilon must fall back to default (${llInvalid} vs ${llDefault})`,
+  );
+});
+
+test('IntentManager async persist: overlapping writes are coalesced and auto-flushed', async () => {
   const writes = [];
   // Slow async storage to keep a write "in flight" long enough to test coalescing
   const asyncStorage = {
@@ -3249,7 +3318,7 @@ test('IntentManager async persist: isDirty reset on success, overlapping writes 
     storageKey: 'async-coalesce',
     asyncStorage,
     botProtection: false,
-    persistDebounceMs: 0,
+    persistDebounceMs: 60_000,
   });
 
   manager.track('/a');
@@ -3259,27 +3328,54 @@ test('IntentManager async persist: isDirty reset on success, overlapping writes 
   manager.track('/c');
   manager.flushNow(); // should be coalesced — write is still in flight
 
-  // Wait for first write to complete
-  await new Promise((r) => setTimeout(r, 50));
-
-  // Only one write should have landed so far (second was coalesced)
-  assert.equal(writes.length, 1, 'second persist while in-flight should be coalesced');
-
-  // Trigger another flush now that isAsyncWriting is false; this should write
-  // the accumulated dirty state (which includes /c).
-  manager.flushNow();
-  await new Promise((r) => setTimeout(r, 50));
+  // Wait for the in-flight write and queued follow-up pass to complete.
+  await new Promise((r) => setTimeout(r, 100));
 
   assert.equal(
     writes.length,
     2,
-    'dirty state accumulated during in-flight write should be saved on next flush',
+    'dirty state accumulated during in-flight write should be saved automatically',
   );
-  // The second write should contain /c's transition
+  // The second write should contain serialized graph data.
   const secondPayload = JSON.parse(writes[1]);
   assert.ok(secondPayload.graphBinary, 'second write should include graph data');
 
   manager.destroy();
+});
+
+test('IntentManager async persist: queued in-flight changes are persisted after destroy()', async () => {
+  const writes = [];
+  const asyncStorage = {
+    getItem: async () => null,
+    setItem: async (_key, value) => {
+      writes.push(value);
+      await new Promise((r) => setTimeout(r, 30));
+    },
+  };
+
+  const manager = await IntentManager.createAsync({
+    storageKey: 'async-destroy-overlap',
+    asyncStorage,
+    botProtection: false,
+    persistDebounceMs: 60_000,
+  });
+
+  manager.track('/a');
+  manager.track('/b');
+  manager.flushNow(); // first write in-flight
+
+  manager.track('/c');
+  manager.destroy(); // flushNow during in-flight should queue a follow-up persist
+
+  await new Promise((r) => setTimeout(r, 100));
+
+  assert.equal(
+    writes.length,
+    2,
+    'destroy() should not drop dirty state accumulated during an in-flight async write',
+  );
+  const secondPayload = JSON.parse(writes[1]);
+  assert.ok(secondPayload.graphBinary, 'queued follow-up write should include graph data');
 });
 
 test('IntentManager async persist: isDirty restored on error, onError is called', async () => {

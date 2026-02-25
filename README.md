@@ -52,6 +52,8 @@ Full documentation for each package lives inside the package directory:
 │   └── workflows/
 │       ├── ci.root.yml        # format:check (all packages)
 │       ├── ci.core.yml        # build / test / perf for @edgesignal/core
+│       ├── ci.react.yml       # build / test for @edgesignal/react
+│       ├── release-gate.yml   # full pre-release validation gates
 │       └── perf-matrix.core.yml
 └── packages/
     ├── core/                  # published as @edgesignal/core

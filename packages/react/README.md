@@ -11,8 +11,6 @@ npm install @edgesignal/react
 # react / react-dom are peer dependencies — install once at app level
 ```
 
-> **Workspace note:** the `package.json` dependency on `@edgesignal/core` is set to `"*"` for local npm workspace resolution during development. Change this to the current release tag (e.g. `"^1.0.0"`) before publishing to the npm registry.
-
 ---
 
 ## Quick Start
@@ -61,9 +59,9 @@ before the first mount (SSR, Suspense, concurrent transitions) and after unmount
 | `getTelemetry`      | `() => EdgeSignalTelemetry`                                           | Full engine snapshot                                 |
 | `predictNextStates` | `(threshold?, sanitize?) => { state: string; probability: number }[]` | Top-N Markov predictions                             |
 | `hasSeen`           | `(route: string) => boolean`                                          | Bloom filter membership test                         |
-| `incrementCounter`  | `(key: string, by?: number) => void`                                  | Persistent session counter                           |
-| `getCounter`        | `(key: string) => number`                                             | Read a session counter                               |
-| `resetCounter`      | `(key: string) => void`                                               | Reset a session counter                              |
+| `incrementCounter`  | `(key: string, by?: number) => void`                                  | Exact session-scoped counter                         |
+| `getCounter`        | `(key: string) => number`                                             | Read a session-scoped counter                        |
+| `resetCounter`      | `(key: string) => void`                                               | Reset a session-scoped counter                       |
 
 ---
 
@@ -88,7 +86,7 @@ packages/<name>/
   README.md          → this file pattern
 ```
 
-- `@edgesignal/core` dependency: use `"*"` for workspace dev, `"^x.y.z"` for npm publish.
+- `@edgesignal/core` dependency: pin to the corresponding release range (e.g. `"^1.0.0"`).
 - Build: `tsup src/index.ts --format esm,cjs --dts --sourcemap`
 - Types: dual `d.ts` via `tsup --dts`
 
