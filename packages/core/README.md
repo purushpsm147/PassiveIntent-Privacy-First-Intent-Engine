@@ -37,7 +37,7 @@ const intent = new IntentManager({
   timer: new BrowserTimerAdapter(),
 });
 
-intent.on('prediction', (e) => console.log(e));
+intent.on('state_change', (e) => console.log(e));
 intent.track('/home');
 ```
 
