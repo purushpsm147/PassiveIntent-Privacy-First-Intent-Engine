@@ -136,3 +136,48 @@ export class BloomFilter {
     return (this.bits[byteIndex] & mask) !== 0;
   }
 }
+
+/**
+ * Compute the optimal Bloom filter bit size and hash function count for a
+ * given workload, and return the estimated false-positive rate that results
+ * from those rounded parameters.
+ *
+ * Use this as a tree-shakeable, class-free alternative to
+ * `BloomFilter.computeOptimal` when you only need the sizing math without
+ * importing the full filter implementation.
+ *
+ * @param expectedItems     The number of unique routes or states the
+ *                          application is expected to track (e.g. 200 if your
+ *                          SPA has ~200 distinct URL patterns).  Must be > 0.
+ * @param falsePositiveRate Target false-positive probability expressed as a
+ *                          float in the range (0, 1).  For example, pass
+ *                          `0.01` for a 1 % false-positive rate.
+ * @returns `{ bitSize, hashCount, estimatedFpRate }` where `estimatedFpRate`
+ *          is the actual FPR achieved after rounding `m` and `k` to integers.
+ *
+ * @example
+ * const { bitSize, hashCount, estimatedFpRate } = computeBloomConfig(200, 0.01);
+ * // → { bitSize: 1918, hashCount: 7, estimatedFpRate: ~0.009 }
+ * const intent = new IntentManager({ bloom: { bitSize, hashCount } });
+ */
+export function computeBloomConfig(
+  expectedItems: number,
+  falsePositiveRate: number,
+): { bitSize: number; hashCount: number; estimatedFpRate: number } {
+  if (expectedItems <= 0) expectedItems = 1;
+  if (falsePositiveRate <= 0) falsePositiveRate = 1e-10;
+  if (falsePositiveRate >= 1) falsePositiveRate = 0.99;
+
+  // Standard optimal Bloom filter formulas:
+  //   m = ceil( -(n * ln(p)) / ln(2)^2 )
+  //   k = round( (m / n) * ln(2) )
+  const m = Math.ceil(-(expectedItems * Math.log(falsePositiveRate)) / (Math.LN2 * Math.LN2));
+  const k = Math.max(1, Math.round((m / expectedItems) * Math.log(2)));
+
+  // Recalculate the actual FPR achieved with the rounded (integer) m and k.
+  // Formula: p_actual = (1 - e^(-k*n/m))^k
+  const bitZeroProbability = Math.exp(-(k * expectedItems) / m);
+  const estimatedFpRate = Math.pow(1 - bitZeroProbability, k);
+
+  return { bitSize: m, hashCount: k, estimatedFpRate };
+}

@@ -42,7 +42,8 @@ EdgeSignal takes the opposite approach. It is a tiny, tree-shakeable TypeScript 
 8. [Cross-Tab Synchronization](#cross-tab-synchronization)
 9. [Configuration Reference](#configuration-reference)
 10. [Testing Guide](#testing-guide)
-11. [Technical Deep Dive](#technical-deep-dive)
+11. [Framework Packages](#framework-packages)
+12. [Technical Deep Dive](#technical-deep-dive)
 
 - [Architecture Overview](#architecture-overview)
 - [Bloom Filter](#bloom-filter)
@@ -189,11 +190,11 @@ For most product use cases (discount triggers, paywall decisions, support-chat p
 
 ### 2. Bloom filter false positives
 
-The Bloom filter never returns false negatives, but can return false positives — it may occasionally report `hasSeen('/checkout') === true` for a state the user has not actually visited. The default configuration (2048 bits, 4 hash functions) yields a false-positive rate under 1 % for up to ~200 distinct states. Use `BloomFilter.computeOptimal(n, fpr)` to tune for your application's state count.
+The Bloom filter never returns false negatives, but can return false positives — it may occasionally report `hasSeen('/checkout') === true` for a state the user has not actually visited. The default configuration (2048 bits, 4 hash functions) yields a false-positive rate under 1 % for up to ~200 distinct states. Use `computeBloomConfig(n, fpr)` (recommended — tree-shakeable, no class import required) or `BloomFilter.computeOptimal(n, fpr)` to size the filter for your state space.
 
 ### 3. `localStorage` quota limits
 
-`persist()` writes to `localStorage`. Browsers allow 5–10 MB per origin. The library's binary format keeps the payload to ~1.4 kB for 100 states, but extremely large graphs (thousands of states) can hit quota limits. Subscribe to `onError` to handle `QuotaExceededError` gracefully.
+`persist()` writes to `localStorage`. Browsers allow 5–10 MB per origin. The library's binary format keeps the payload to ~1.4 kB for 100 states, but extremely large graphs (thousands of states) can hit quota limits. Subscribe to `onError` to handle `QuotaExceededError` gracefully — the callback will receive `{ code: 'QUOTA_EXCEEDED', ... }` and `getTelemetry().engineHealth` will read `'quota_exceeded'`.
 
 ### 4. Quantization rounding
 
@@ -883,8 +884,20 @@ interface IntentManagerConfig {
   storage?: StorageAdapter; // default: BrowserStorageAdapter
   timer?: TimerAdapter; // default: BrowserTimerAdapter
 
-  // Called on QuotaExceededError / SecurityError during persist()
-  onError?: (err: Error) => void;
+  // Non-fatal structured error callback.
+  // Receives an EdgeSignalError object — never an Error instance.
+  // The engine never throws; all failures are forwarded here and then recovered gracefully.
+  onError?: (error: {
+    code:
+      | 'STORAGE_READ'
+      | 'STORAGE_WRITE'
+      | 'QUOTA_EXCEEDED'
+      | 'RESTORE_PARSE'
+      | 'SERIALIZE'
+      | 'VALIDATION';
+    message: string;
+    originalError?: unknown; // { cause, payload: string } for RESTORE_PARSE; raw Error otherwise
+  }) => void;
 
   // EntropyGuard bot detection (default: true)
   // Set to false in Cypress / Playwright E2E environments
@@ -946,7 +959,22 @@ interface IntentManagerConfig {
 
 ### Bloom Filter Tuning
 
-Use the static helper to compute optimal parameters for your known state-space:
+Use the standalone `computeBloomConfig` utility (tree-shakeable — no `BloomFilter` class import required) to compute optimal parameters for your known state-space:
+
+```ts
+import { computeBloomConfig } from '@edgesignal/core';
+
+const { bitSize, hashCount, estimatedFpRate } = computeBloomConfig(
+  200, // expected distinct states
+  0.01, // target false-positive rate (1 %)
+);
+// → { bitSize: 1918, hashCount: 7, estimatedFpRate: ~0.009 }
+
+const intent = new IntentManager({ bloom: { bitSize, hashCount } });
+console.log(`Actual FPR after sizing: ${(estimatedFpRate * 100).toFixed(2)}%`);
+```
+
+The equivalent class-method form remains available if you are already importing `BloomFilter`:
 
 ```ts
 import { BloomFilter } from '@edgesignal/core';
@@ -1067,6 +1095,108 @@ E2E tests launch the sandbox app (`sandbox/index.html`) and verify that toast no
 
 ---
 
+## Framework Packages
+
+All framework wrappers are published as separate scoped packages under the `@edgesignal/*` namespace so that `@edgesignal/core` stays zero-dependency. Each package lives at `packages/<name>/src/index.ts` and follows identical conventions: same TypeScript config base, `tsup` build, dual ESM + CJS output, `"@edgesignal/core": "*"` for workspace resolution (change to `"^x.y.z"` before publishing).
+
+### `@edgesignal/react`
+
+A lightweight React 18+ wrapper that manages the full `IntentManager` lifecycle as a single stable hook.
+
+#### Installation
+
+```bash
+npm install @edgesignal/react
+# react / react-dom are peer dependencies — install once at the app level
+```
+
+#### `useEdgeSignal(config)` → `UseEdgeSignalReturn`
+
+```typescript
+import { useEdgeSignal } from '@edgesignal/react';
+import type { IntentManagerConfig, UseEdgeSignalReturn } from '@edgesignal/react';
+```
+
+| Returned method     | Signature                             | Notes                              |
+| ------------------- | ------------------------------------- | ---------------------------------- |
+| `track`             | `(event: string) => void`             | no-op before mount / after unmount |
+| `on`                | `(event, handler) => () => void`      | returns a NOOP unsubscribe on SSR  |
+| `getTelemetry`      | `() => EdgeSignalTelemetry`           | empty object cast before mount     |
+| `predictNextStates` | `(threshold?, sanitize?) => string[]` | `[]` before first mount            |
+| `hasSeen`           | `(route: string) => boolean`          | `false` before first mount         |
+| `incrementCounter`  | `(key: string, by?: number) => void`  | —                                  |
+| `getCounter`        | `(key: string) => number`             | `0` before first mount             |
+| `resetCounter`      | `(key: string) => void`               | —                                  |
+
+#### Next.js App Router Example
+
+```tsx
+'use client';
+import { useEdgeSignal } from '@edgesignal/react';
+import { usePathname } from 'next/navigation';
+import { useEffect } from 'react';
+
+export function TrackingProvider({ children }: { children: React.ReactNode }) {
+  const { track, on, getTelemetry } = useEdgeSignal({
+    botProtection: true,
+    debug: process.env.NODE_ENV === 'development',
+  });
+  const pathname = usePathname();
+
+  // page-view tracking
+  useEffect(() => {
+    track(pathname);
+  }, [pathname, track]);
+
+  // subscribe to anomaly events
+  useEffect(() => {
+    const off = on('high_entropy', () => {
+      console.log('[EdgeSignal] High entropy detected', getTelemetry());
+    });
+    return off;
+  }, [on, getTelemetry]);
+
+  return <>{children}</>;
+}
+```
+
+#### React Router v6 Example
+
+```tsx
+import { useEdgeSignal } from '@edgesignal/react';
+import { useLocation } from 'react-router-dom';
+import { useEffect } from 'react';
+
+function RouterTracker() {
+  const { track } = useEdgeSignal({ botProtection: true });
+  const { pathname } = useLocation();
+
+  useEffect(() => {
+    track(pathname);
+  }, [pathname, track]);
+
+  return null;
+}
+```
+
+#### Design Notes
+
+- **Strict Mode safe** — `IntentManager` is stored in a `useRef`; the empty-dep `useEffect` runs create/destroy once per _actual_ mount, not on React's double-invoke probe.
+- **SSR safe** — `typeof window !== 'undefined'` guard prevents `IntentManager` from instantiating in Node.js / Deno edge runtimes (Next.js, Remix, Astro SSR, etc.).
+- **Stable callbacks** — All returned methods are wrapped in `useCallback(…, [])` and read from `instanceRef.current` at call time, so they never become stale and never trigger downstream `useEffect` re-runs.
+- **Config stability** — `configRef` captures the initial `config` argument; later re-renders with a new config object do not re-initialize the instance.
+
+### Sister Packages (planned)
+
+| Package                   | Status    | Notes                                                   |
+| ------------------------- | --------- | ------------------------------------------------------- |
+| `@edgesignal/react`       | ✅ v1.1.0 | `useEdgeSignal` hook — React 18+, Next.js, React Router |
+| `@edgesignal/vue`         | 🗓 v1.2   | `useEdgeSignal` composable — Vue 3 + Vue Router         |
+| `@edgesignal/security`    | 🗓 v1.2   | Hardened consent layer, GDPR helpers, CSP integration   |
+| `@edgesignal/adaptive-ui` | 🗓 v1.3   | Headless UI primitives driven by predicted intent state |
+
+---
+
 ## Technical Deep Dive
 
 ### Architecture Overview
@@ -1179,7 +1309,7 @@ flowchart TD
     style Q fill:#2d6a4f,color:#fff
 ```
 
-**Key behavior:** if the stored binary blob is absent, corrupt, or has an unrecognized version byte, the error is swallowed and a brand-new graph is used. First-run and corrupted-storage are indistinguishable to the caller — the SDK never surfaces a startup error.
+**Key behavior:** if the stored binary blob is absent, corrupt, or has an unrecognized version byte, the engine cold-starts with a fresh graph. A `RESTORE_PARSE` error is forwarded to the `onError` callback (if set) with `originalError: { cause, payload }` containing the raw stored string for diagnostics. A `STORAGE_READ` error is forwarded when `localStorage.getItem` itself throws (e.g., `SecurityError` in private browsing). In both cases the engine continues operating normally on a fresh graph — it never throws to the host application.
 
 ---
 
@@ -1270,8 +1400,10 @@ flowchart TD
     H --> I[storage.setItem\nstorageKey → payload]
     I --> J{write succeeded?}
     J -- yes --> K[isDirty = false]
-    J -- no QuotaExceeded / SecurityError --> L{onError\ncallback set?}
-    L -- yes --> M[onError err]
+    J -- QuotaExceededError --> K2[engineHealth =\nquota_exceeded]
+    J -- other write error --> L
+    K2 --> L{onError\ncallback set?}
+    L -- yes --> M["onError({ code: 'QUOTA_EXCEEDED'\nor 'STORAGE_WRITE', ... })"]
     L -- no --> N[silently swallow\nnever throw]
     K --> O([done])
     M --> O
@@ -1281,6 +1413,7 @@ flowchart TD
     style C fill:#888,color:#fff
     style E fill:#e76f51,color:#fff
     style K fill:#2d6a4f,color:#fff
+    style K2 fill:#d62828,color:#fff
     style L fill:#d62828,color:#fff
     style O fill:#2d6a4f,color:#fff
 ```
@@ -1324,6 +1457,8 @@ m = \left\lceil \frac{-n \ln p}{(\ln 2)^2} \right\rceil \qquad\qquad k = \left\l
 $$
 
 `BloomFilter.computeOptimal(n, p)` implements these formulas exactly. `estimateCurrentFPR(n)` computes the live FPR approximation.
+
+The standalone `computeBloomConfig(n, p)` utility exports the same sizing math as a tree-shakeable function that also returns an `estimatedFpRate` reflecting the actual FPR after rounding `m` and `k` to integers — useful for surfacing filter accuracy in development tooling.
 
 **Storage:** The default 2048-bit filter occupies **256 bytes**. It is serialized to base64 (344 ASCII characters) for `localStorage`.
 
@@ -1496,27 +1631,27 @@ const intent = new IntentManager({
 
 `IntentManager` is the single orchestration class consumers interact with.
 
-| Concern                | Implementation                                                                                               |
-| ---------------------- | ------------------------------------------------------------------------------------------------------------ | ------------------------------------------------------------------- |
-| State machine          | `previousState: string \| null` field; `recentTrajectory: string[]` sliding window                           |
-| Bloom                  | `BloomFilter` instance, hydrated from `localStorage` on construction                                         |
-| Graph                  | `MarkovGraph` instance, hydrated from binary `localStorage` blob on construction                             |
-| Baseline               | Second `MarkovGraph` deserialized from `config.baseline` JSON at construction                                |
-| Events                 | Internal `EventEmitter<IntentEventMap>` — 20 lines, zero external deps                                       |
-| Persistence            | Debounced write (2 s default), dirty-flag guards every write                                                 |
-| Bot detection          | `EntropyGuard` circular buffer, synchronized to `timer.now()`                                                |
-| Dwell-time             | Welford’s online accumulator per state; z-score anomaly detection                                            |
-| Tab-visibility         | `visibilitychange` listener offsets `previousStateEnteredAt` by hidden duration; SSR-safe                    |
-| Drift killswitch       | Rolling-window `trajectory_anomaly`/`track()` ratio; sets `isBaselineDrifted` flag when threshold exceeded   |
-| Route normalization    | `normalizeRouteState()` called at the top of every `track()` call                                            |
-| Bigrams                | Selective second-order Markov transitions, frequency-gated                                                   |
-| Event cooldown         | Per-channel cooldown gating via `eventCooldownMs`                                                            |
-| Deterministic counters | `incrementCounter` / `getCounter` / `resetCounter` — exact integer map, session-scoped                       |
-| A/B holdout            | `assignmentGroup: 'treatment'                                                                                | 'control'` set at construction; control group skips event emissions |
-| Benchmarking           | `BenchmarkRecorder` with per-operation ring-buffer sample accumulators                                       |
-| Error handling         | All `try/catch` blocks route to `onError?: (err: Error) => void`; never throws                               |
-| Telemetry              | `getTelemetry()` returns `EdgeSignalTelemetry` — aggregate counters only, no raw states or PII               |
-| Conversion tracking    | `trackConversion(payload)` emits a `conversion` event through the local event bus; nothing leaves the device |
+| Concern                | Implementation                                                                                                                                                                                   |
+| ---------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | ------------------------------------------------------------------- |
+| State machine          | `previousState: string \| null` field; `recentTrajectory: string[]` sliding window                                                                                                               |
+| Bloom                  | `BloomFilter` instance, hydrated from `localStorage` on construction                                                                                                                             |
+| Graph                  | `MarkovGraph` instance, hydrated from binary `localStorage` blob on construction                                                                                                                 |
+| Baseline               | Second `MarkovGraph` deserialized from `config.baseline` JSON at construction                                                                                                                    |
+| Events                 | Internal `EventEmitter<IntentEventMap>` — 20 lines, zero external deps                                                                                                                           |
+| Persistence            | Debounced write (2 s default), dirty-flag guards every write                                                                                                                                     |
+| Bot detection          | `EntropyGuard` circular buffer, synchronized to `timer.now()`                                                                                                                                    |
+| Dwell-time             | Welford’s online accumulator per state; z-score anomaly detection                                                                                                                                |
+| Tab-visibility         | `visibilitychange` listener offsets `previousStateEnteredAt` by hidden duration; SSR-safe                                                                                                        |
+| Drift killswitch       | Rolling-window `trajectory_anomaly`/`track()` ratio; sets `isBaselineDrifted` flag when threshold exceeded                                                                                       |
+| Route normalization    | `normalizeRouteState()` called at the top of every `track()` call                                                                                                                                |
+| Bigrams                | Selective second-order Markov transitions, frequency-gated                                                                                                                                       |
+| Event cooldown         | Per-channel cooldown gating via `eventCooldownMs`                                                                                                                                                |
+| Deterministic counters | `incrementCounter` / `getCounter` / `resetCounter` — exact integer map, session-scoped                                                                                                           |
+| A/B holdout            | `assignmentGroup: 'treatment'                                                                                                                                                                    | 'control'` set at construction; control group skips event emissions |
+| Benchmarking           | `BenchmarkRecorder` with per-operation ring-buffer sample accumulators                                                                                                                           |
+| Error handling         | All `try/catch` blocks route to `onError?: (error: EdgeSignalError) => void`; never throws. Codes: `STORAGE_READ`, `STORAGE_WRITE`, `QUOTA_EXCEEDED`, `RESTORE_PARSE`, `SERIALIZE`, `VALIDATION` |
+| Telemetry              | `getTelemetry()` returns `EdgeSignalTelemetry` — aggregate counters only, no raw states or PII                                                                                                   |
+| Conversion tracking    | `trackConversion(payload)` emits a `conversion` event through the local event bus; nothing leaves the device                                                                                     |
 
 **Session reset:**
 
@@ -1739,7 +1874,7 @@ intent.getCounter('articles_read'); // → 0
 
 - **Deterministic.** No false positives. `getCounter('key')` always returns the exact accumulated value.
 - **Session-scoped.** Counters are never persisted to `localStorage`. They reset on every page reload / new `IntentManager` instance, keeping the privacy surface minimal.
-- **Error safe.** Passing an empty string `''` to `incrementCounter` triggers `onError` and returns `0` without throwing.
+- **Error safe.** Passing an empty string `''` to `incrementCounter` triggers `onError` with `{ code: 'VALIDATION', message: '...' }` and returns `0` without throwing.
 
 **Recipe — paywall after 3 articles (exact count):**
 
@@ -1750,6 +1885,70 @@ intent.on('state_change', ({ to }) => {
     if (read >= 3) showPaywall();
   }
 });
+```
+
+---
+
+### `onError` — Structured Error Handling
+
+All failure paths in the engine are caught internally and forwarded to an optional `onError` callback. The engine **never throws** to the host application.
+
+```ts
+const intent = new IntentManager({
+  onError({ code, message, originalError }) {
+    // Forward to your error-monitoring platform:
+    Sentry.captureException(originalError ?? new Error(message), {
+      tags: { edgesignal_error: code },
+    });
+  },
+});
+```
+
+**Error codes:**
+
+| Code             | Trigger                                                                              | Graceful fallback                                                                         |
+| ---------------- | ------------------------------------------------------------------------------------ | ----------------------------------------------------------------------------------------- |
+| `STORAGE_READ`   | `localStorage.getItem` threw (e.g., `SecurityError` in private browsing)             | Cold-start with fresh graph                                                               |
+| `RESTORE_PARSE`  | JSON or binary decode failed on the stored graph                                     | Cold-start with fresh graph; `originalError` contains `{ cause, payload: string }`        |
+| `QUOTA_EXCEEDED` | `localStorage.setItem` threw `QuotaExceededError`                                    | Skip this persist cycle; `isDirty` stays `true`; `engineHealth` set to `'quota_exceeded'` |
+| `STORAGE_WRITE`  | `localStorage.setItem` threw for a non-quota reason                                  | Skip this persist cycle; `isDirty` stays `true`                                           |
+| `SERIALIZE`      | `graph.toBinary()` or base64 encode threw                                            | Skip this persist cycle                                                                   |
+| `VALIDATION`     | Invalid argument passed to a public API method (`track('')`, `incrementCounter('')`) | No-op; return value is safe (e.g., `0`)                                                   |
+
+**`originalError` for `RESTORE_PARSE`:**
+
+```ts
+onError({ code, originalError }) {
+  if (code === 'RESTORE_PARSE') {
+    const { cause, payload } = originalError as { cause: unknown; payload: string };
+    // `payload` is the raw base64 string that failed to parse—paste into a debugger to inspect.
+    console.warn('Corrupt EdgeSignal storage. Raw payload:', payload.slice(0, 80));
+  }
+}
+```
+
+**Quota pressure response:**
+
+```ts
+onError({ code }) {
+  if (code === 'QUOTA_EXCEEDED') {
+    // Option A: reduce the graph
+    // intent.graph.prune() manually, then re-tune maxStates in config
+    console.warn('EdgeSignal: storage quota exhausted — switching to session-only mode.');
+    // Option B: switch adapter on next init:
+    // asyncStorage: IndexedDBAdapter  (see §10 roadmap for IndexedDB adapter)
+  }
+}
+```
+
+**`QUOTA_EXCEEDED` and `getTelemetry()`:**
+When `QUOTA_EXCEEDED` fires, `getTelemetry().engineHealth` is set to `'quota_exceeded'` regardless of whether `onError` is registered. This lets monitoring code inspect health without requiring a callback:
+
+```ts
+setInterval(() => {
+  const { engineHealth } = intent.getTelemetry();
+  if (engineHealth === 'quota_exceeded') alertOps('EdgeSignal quota pressure');
+}, 60_000);
 ```
 
 ---

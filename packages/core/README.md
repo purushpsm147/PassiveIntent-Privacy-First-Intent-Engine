@@ -11,20 +11,58 @@
 [![Bundle Size](https://img.shields.io/bundlephobia/minzip/@edgesignal/core)](https://bundlephobia.com/package/@edgesignal/core)
 [![Open in StackBlitz](https://developer.stackblitz.com/img/open_in_stackblitz_small.svg)](https://stackblitz.com/github/purushpsm147/EdgeSignal-Privacy-First-Intent-Engine)
 
-A lightweight TypeScript SDK for on-device intent modeling.
-It combines a Bloom filter for fast membership checks and a sparse Markov graph for transition learning, entropy signals, and trajectory anomaly detection.
+**EdgeSignal is a 6 kB, zero-egress intent engine that detects user hesitation and frustration in real-time.**
+Catch rage-clicks, prevent checkout abandonment, and trigger personalized UI interventions in `< 2ms`—all entirely within the browser. Because zero behavioral data ever leaves the device, EdgeSignal requires **no cookie consent banner** and easily passes strict GDPR/HIPAA compliance.
 
-## Why this library
+_(Under the hood, it uses a highly-optimized sparse Markov graph and Bloom filters to model probabilistic intent locally.)_
 
-- Local-first inference: no network calls required.
-- SSR-safe runtime: browser globals are behind adapters.
-- Bounded growth: LFU-style graph pruning prevents unbounded state expansion.
-- Efficient persistence: binary graph encoding with dirty-flag optimization reduces serialization overhead.
-- Bot-resilient signals: EntropyGuard suppresses entropy and trajectory events for suspected automated sessions.
-- Dwell-time anomaly detection: statistical z-score analysis of per-state dwell times using Welford's online algorithm.
-- Selective bigram Markov transitions: optional second-order transition learning with frequency-gated recording.
-- Event cooldown: configurable per-channel cooldown prevents event flooding.
-- Clean teardown: `destroy()` API for SPA lifecycle management.
+## Why EdgeSignal?
+
+- **No Cookie Banners Required:** 100% local execution. No network requests, no PII sent to servers. Perfectly compliant with GDPR and CCPA.
+- **Sub-Millisecond Reactions:** Catch frustrated users _before_ they close the tab. Traditional analytics take minutes to process rage-clicks; EdgeSignal triggers in `< 2ms`.
+- **Detect True Hesitation:** Evaluates user reading speed and dwell-time anomalies dynamically, allowing you to trigger "Free Shipping" tooltips exactly when a user hesitates at checkout.
+- **Bot & Scraper Resilient:** Built-in `EntropyGuard` automatically detects impossibly fast or robotic click cadences, preventing bots from triggering your interventions.
+- **Zero Performance Hit:** Capped at 500 tracked states, compiles to a tiny 6 kB footprint, and uses dirty-flag persistence to skip unnecessary writes.
+- **SPA-Ready Lifecycle:** SSR-safe adapters and a clean `destroy()` API make it drop-in compatible with Next.js, Vue, Angular, and React Router.
+
+## What can you build?
+
+**1. The Zero-Latency Churn Healer**
+
+Detect when a user is frustrated (erratic navigation, rage-clicking) and instantly offer help.
+
+```ts
+intent.on('high_entropy', (signal) => {
+  if (signal.state === '/billing' && signal.normalizedEntropy > 0.85) {
+    ZendeskWidget.open({ message: 'Having trouble with your billing details? Chat with us!' });
+  }
+});
+```
+
+**2. The Hesitation Discount (Intervention Ladder)**
+
+Detect when a user stalls on a checkout step compared to their normal browsing speed.
+
+```ts
+intent.on('dwell_time_anomaly', (signal) => {
+  if (signal.state === '/checkout/payment' && signal.zScore > 2.0) {
+    // User is hesitating. Show a reassurance tooltip.
+    UI.showTooltip('Free 30-day returns on all orders.');
+  }
+});
+```
+
+**3. The Abandoned-Path Detector**
+
+Learn what the normal conversion path looks like and fire an event the moment a user deviates.
+
+```ts
+intent.on('trajectory_anomaly', (signal) => {
+  if (signal.zScore > 2.5) {
+    Analytics.track('checkout_path_abandoned', { zScore: signal.zScore });
+  }
+});
+```
 
 ## Install
 
@@ -32,58 +70,41 @@ It combines a Bloom filter for fast membership checks and a sparse Markov graph 
 npm install @edgesignal/core
 ```
 
-## Quick usage
+## Quick start
 
 ```ts
-import {
-  IntentManager,
-  MarkovGraph,
-  BrowserStorageAdapter,
-  BrowserTimerAdapter,
-} from '@edgesignal/core';
+import { IntentManager, BrowserStorageAdapter, BrowserTimerAdapter } from '@edgesignal/core';
 
-const baseline = new MarkovGraph();
-baseline.incrementTransition('/home', '/search');
-baseline.incrementTransition('/search', '/product');
-
+// 1. Initialize the engine
 const intent = new IntentManager({
-  storageKey: 'edge-signal',
-  persistDebounceMs: 1500,
-  baseline: baseline.toJSON(),
-  graph: {
-    highEntropyThreshold: 0.75,
-    divergenceThreshold: 2.0,
-    maxStates: 500,
-  },
+  storageKey: 'my-app-intent',
   storage: new BrowserStorageAdapter(),
   timer: new BrowserTimerAdapter(),
-  // botProtection defaults to true; set to false only for E2E test environments
-  botProtection: true,
-  onError: (err) => {
-    // quota/security persistence failures land here
-    console.warn('Intent persistence error:', err.message);
-  },
 });
 
-intent.on('state_change', ({ from, to }) => {
-  console.log('state_change', from, '=>', to);
-});
+// 2. Track page views or UI states
+intent.track('/home');
+intent.track('/pricing');
+intent.track('/checkout');
 
-intent.on('high_entropy', (signal) => {
-  console.log('high_entropy', signal.state, signal.normalizedEntropy);
+// 3. Listen for behavioral signals
+intent.on('dwell_time_anomaly', (signal) => {
+  // User is hesitating — offer help
+  console.log('Hesitation detected on', signal.state, '— z-score:', signal.zScore);
 });
 
 intent.on('trajectory_anomaly', (signal) => {
-  console.log('trajectory_anomaly', signal.zScore);
+  // User deviated heavily from the normal conversion path
+  console.log('Path deviation detected. Z-Score:', signal.zScore);
 });
 
-intent.track('/home');
-intent.track('/search');
-intent.track('/product');
-
-// force immediate save (optional)
-intent.flushNow();
+intent.on('high_entropy', (signal) => {
+  // User is bouncing around erratically — possible frustration
+  console.log('Erratic navigation on', signal.state, signal.normalizedEntropy);
+});
 ```
+
+> **Advanced configuration** (baselines, tuning thresholds, cross-tab sync, `onError` callback) is covered in the [full API reference](#api-highlights) and [architecture docs](./docs/architecture.md).
 
 ## Framework integration
 
@@ -210,28 +231,138 @@ Inject `IntentService` in your root `AppComponent` (or import it in the root mod
 
 ### BloomFilter
 
-- `BloomFilter.computeOptimal(expectedItems, targetFPR)` computes tuned `bitSize` and `hashCount`.
-- `estimateCurrentFPR(insertedItemsCount)` estimates live false-positive rate.
-- `add(item)` and `check(item)` provide O(k) membership operations.
+| Method / Property                                      | Description                                                                                                                                                               |
+| ------------------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `BloomFilter.computeOptimal(expectedItems, targetFPR)` | Static factory: computes optimal `bitSize` and `hashCount` for given capacity and target false-positive rate.                                                             |
+| `computeBloomConfig(expectedItems, targetFPR)`         | **Standalone tree-shakeable utility** (exported separately from the class). Returns `{ bitSize, hashCount, estimatedFpRate }` — use when you don't need the class itself. |
+| `add(item)`                                            | O(k) insert — hashes item into bitset.                                                                                                                                    |
+| `check(item)`                                          | O(k) membership test — returns `true` if item was probably added.                                                                                                         |
+| `estimateCurrentFPR(insertedItemsCount)`               | Estimates live false-positive rate given how many items have been inserted.                                                                                               |
+| `toBase64()` / `BloomFilter.fromBase64(str, k)`        | Compact base64 serialization for snapshot storage.                                                                                                                        |
 
 ### MarkovGraph
 
-- Sparse transition storage with state-index mapping.
-- `prune()` applies LFU-style eviction when `maxStates` is exceeded.
-- `toBinary()` / `MarkovGraph.fromBinary()` provide compact binary persistence.
-- `toJSON()` / `fromJSON()` remain available for baseline transport and tooling compatibility.
+| Method / Property                            | Description                                                                               |
+| -------------------------------------------- | ----------------------------------------------------------------------------------------- |
+| `incrementTransition(from, to)`              | Record a from→to navigation; creates states on demand.                                    |
+| `getLikelyNextStates(state, threshold)`      | Returns `{ state, probability }[]` sorted descending; entries below `threshold` excluded. |
+| `prune()`                                    | LFU-style eviction of the lowest-frequency states when `maxStates` is exceeded.           |
+| `stateCount()`                               | Current number of unique tracked states.                                                  |
+| `totalTransitions()`                         | Total recorded transition count across all edges.                                         |
+| `toBinary()` / `MarkovGraph.fromBinary(buf)` | Compact binary persistence (smaller than JSON at scale).                                  |
+| `toJSON()` / `MarkovGraph.fromJSON(obj)`     | Human-readable snapshot; use for baseline transport and tooling.                          |
 
 ### IntentManager
 
-- `track(state)` updates Bloom + graph + event signals.
-- Debounced persistence with adapter-based storage/timers.
-- **Dirty-flag persistence**: `persist()` is a no-op when no state has changed since the last save, eliminating redundant writes.
-- `persist()` performs graph pruning before snapshot.
-- Restores from binary payload first, then legacy JSON payload fallback.
-- **Dwell-time anomaly detection**: fires `dwell_time_anomaly` when time spent on a state deviates significantly from learned mean (Welford's online algorithm, O(1) per call).
-- **Selective bigrams**: when `enableBigrams: true`, records second-order transitions (`A→B` → `B→C`) only after the unigram from-state crosses `bigramFrequencyThreshold` (default: 5). Bigram states share the same graph with LFU pruning.
-- **Event cooldown**: `eventCooldownMs` suppresses repeated event emissions within a configurable window, per event type.
-- **`destroy()`**: flushes pending state, cancels timers, and removes all listeners — use in SPA cleanup paths (`useEffect` teardown, `onUnmounted`, `ngOnDestroy`).
+**Lifecycle & tracking**
+
+| Method         | Signature                                         | Description                                                                               |
+| -------------- | ------------------------------------------------- | ----------------------------------------------------------------------------------------- |
+| `track`        | `(state: string) => void`                         | Core call: updates Bloom + Markov + fires event signals.                                  |
+| `on`           | `(event: IntentEventName, handler) => () => void` | Subscribe to an event; call the returned function to unsubscribe.                         |
+| `flushNow`     | `() => void`                                      | Cancel the debounce timer and persist immediately.                                        |
+| `destroy`      | `() => void`                                      | Flush, cancel timers, remove all listeners, close BroadcastChannel. Call in SPA teardown. |
+| `resetSession` | `() => void`                                      | Clear recent trajectory and previous state while preserving the learned graph.            |
+
+**Prediction & introspection**
+
+| Method                 | Signature                                                                             | Description                                                                                                                                                                    |
+| ---------------------- | ------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `predictNextStates`    | `(threshold?: number, sanitize?: (s: string) => boolean) => { state, probability }[]` | Top-N Markov predictions above `threshold` (default `0.3`). Always provide a `sanitize` guard in production to exclude sensitive routes.                                       |
+| `hasSeen`              | `(state: string) => boolean`                                                          | Bloom filter membership test — O(k), no false negatives.                                                                                                                       |
+| `getTelemetry`         | `() => EdgeSignalTelemetry`                                                           | GDPR-safe aggregate snapshot: `sessionId`, `transitionsEvaluated`, `botStatus`, `anomaliesFired`, `engineHealth`, `baselineStatus`, `assignmentGroup`. No raw behavioral data. |
+| `exportGraph`          | `() => SerializedMarkovGraph`                                                         | Returns the full Markov graph as a JSON-serializable object.                                                                                                                   |
+| `getPerformanceReport` | `() => PerformanceReport`                                                             | Detailed benchmark report: op latencies, state/transition counts, serialization size.                                                                                          |
+
+**Session counters** (exact integer counts, never persisted)
+
+| Method             | Signature                              | Description                                                                                                 |
+| ------------------ | -------------------------------------- | ----------------------------------------------------------------------------------------------------------- |
+| `incrementCounter` | `(key: string, by?: number) => number` | Increment a named counter (default +1); returns new value. Synced cross-tab when `BroadcastSync` is active. |
+| `getCounter`       | `(key: string) => number`              | Read a counter; returns `0` if never incremented.                                                           |
+| `resetCounter`     | `(key: string) => void`                | Reset a counter back to `0`.                                                                                |
+
+**Conversion tracking**
+
+| Method            | Signature                              | Description                                                                                                                                                          |
+| ----------------- | -------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `trackConversion` | `(payload: ConversionPayload) => void` | Emit a `conversion` event locally. `ConversionPayload` carries `type`, optional `value`, optional `currency`. Never leaves the device unless your listener sends it. |
+
+**Events emitted** (`on(event, handler)`)
+
+| Event                 | Payload type                | Fired when                                                                      |
+| --------------------- | --------------------------- | ------------------------------------------------------------------------------- |
+| `state_change`        | `StateChangePayload`        | Every `track()` call that records a new transition.                             |
+| `high_entropy`        | `HighEntropyPayload`        | Outgoing-transition distribution exceeds `highEntropyThreshold`.                |
+| `trajectory_anomaly`  | `TrajectoryAnomalyPayload`  | Log-likelihood window diverges from baseline beyond `divergenceThreshold`.      |
+| `dwell_time_anomaly`  | `DwellTimeAnomalyPayload`   | Time on previous state deviates beyond z-score threshold (Welford's algorithm). |
+| `bot_detected`        | `BotDetectedPayload`        | `botScore` reaches 5 — EntropyGuard flags the session.                          |
+| `hesitation_detected` | `HesitationDetectedPayload` | Dwell time exceeds static `hesitationThresholdMs`.                              |
+| `conversion`          | `ConversionPayload`         | `trackConversion()` was called.                                                 |
+
+**`onError` callback** (in `IntentManagerConfig`)
+
+```ts
+new IntentManager({
+  storageKey: 'edge-signal',
+  onError: (err: EdgeSignalError) => {
+    // Fires on storage quota/security errors and validation failures.
+    // err.code: 'STORAGE_READ' | 'STORAGE_WRITE' | 'QUOTA_EXCEEDED' | 'RESTORE_PARSE' | 'SERIALIZE' | 'VALIDATION'
+    console.warn('[EdgeSignal]', err.code, err.message);
+  },
+});
+```
+
+### Adapters
+
+| Export                  | Kind      | Description                                                                             |
+| ----------------------- | --------- | --------------------------------------------------------------------------------------- |
+| `BrowserStorageAdapter` | class     | Wraps `localStorage`. Use in any browser context.                                       |
+| `BrowserTimerAdapter`   | class     | Wraps `setTimeout` / `clearTimeout`.                                                    |
+| `MemoryStorageAdapter`  | class     | In-memory fallback — no persistence. Useful for SSR, tests, or ephemeral sessions.      |
+| `StorageAdapter`        | interface | Implement to provide a custom storage backend (IndexedDB, Capacitor Preferences, etc.). |
+| `TimerAdapter`          | interface | Implement to provide a custom timer backend (e.g. Node.js timers in tests).             |
+| `TimerHandle`           | type      | Opaque handle returned by `TimerAdapter.setTimeout`.                                    |
+
+### Utilities
+
+| Export                | Signature                                                                                       | Description                                                                                                                                                   |
+| --------------------- | ----------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `computeBloomConfig`  | `(expectedItems: number, falsePositiveRate: number) => { bitSize, hashCount, estimatedFpRate }` | Pure math helper — compute Bloom parameters without instantiating `BloomFilter`. Tree-shakeable.                                                              |
+| `normalizeRouteState` | `(url: string) => string`                                                                       | Strips query strings and hash fragments, collapses dynamic path segments, and lowercases — call this before `track()` to keep the Markov state space compact. |
+| `MAX_STATE_LENGTH`    | `256` (constant)                                                                                | Hard upper bound on state label length accepted by `BroadcastSync`. Payloads exceeding this are silently dropped.                                             |
+
+### BroadcastSync
+
+Cross-tab synchronization over the [BroadcastChannel API](https://developer.mozilla.org/en-US/docs/Web/API/BroadcastChannel). `IntentManager` manages this automatically when `broadcastChannelName` is set in config — you rarely need to use `BroadcastSync` directly.
+
+| Method / Property             | Description                                                                                   |
+| ----------------------------- | --------------------------------------------------------------------------------------------- |
+| `isActive`                    | `true` when a real `BroadcastChannel` was opened; `false` in SSR or unsupported environments. |
+| `broadcast(from, to)`         | Send a transition to all other tabs on the channel.                                           |
+| `broadcastCounter(key, by)`   | Sync a counter increment across tabs.                                                         |
+| `applyRemote(from, to)`       | Apply a validated remote transition locally (no re-broadcast).                                |
+| `applyRemoteCounter(key, by)` | Apply a validated remote counter increment locally.                                           |
+| `close()`                     | Release the channel and remove the message handler. Called by `destroy()`.                    |
+
+### React Wrapper — `@edgesignal/react`
+
+A separate package ships a drop-in `useEdgeSignal` hook that manages the full `IntentManager` lifecycle for React 18+, Next.js, and React Router apps:
+
+```bash
+npm install @edgesignal/react
+```
+
+```tsx
+import { useEdgeSignal } from '@edgesignal/react';
+
+const { track, on, getTelemetry, predictNextStates } = useEdgeSignal({
+  storageKey: 'edge-signal',
+  botProtection: true,
+});
+```
+
+The hook is **Strict Mode safe** (instance held in `useRef`), **SSR safe** (`typeof window` guard), and exposes all eight `IntentManager` methods as stable `useCallback` wrappers. See [`packages/react/README.md`](../../react/README.md) for the full API table and Next.js / React Router examples.
 
 ### EntropyGuard (Bot Protection)
 

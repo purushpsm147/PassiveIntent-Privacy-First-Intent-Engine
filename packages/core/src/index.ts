@@ -16,9 +16,11 @@
 /* ---- Core SDK ---- */
 export {
   BloomFilter,
+  computeBloomConfig,
   MarkovGraph,
   IntentManager,
   BroadcastSync,
+  MAX_STATE_LENGTH,
   normalizeRouteState,
 } from './intent-sdk.js';
 
@@ -36,6 +38,7 @@ export type {
   BloomFilterConfig,
   MarkovGraphConfig,
   IntentManagerConfig,
+  EdgeSignalError,
   DwellTimeConfig,
   SerializedMarkovGraph,
 } from './intent-sdk.js';

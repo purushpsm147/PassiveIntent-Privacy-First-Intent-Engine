@@ -131,6 +131,39 @@ export interface MarkovGraphConfig {
   maxStates?: number;
 }
 
+/**
+ * Structured error object passed to the `onError` callback.
+ * The engine never throws these errors to the host application — they are
+ * always swallowed and forwarded here so the host can log, alert, or recover.
+ */
+export interface EdgeSignalError {
+  /**
+   * Machine-readable error category.
+   * - `STORAGE_READ`    — `localStorage.getItem` threw (e.g., SecurityError in private browsing).
+   * - `STORAGE_WRITE`   — `localStorage.setItem` threw for a non-quota reason.
+   * - `QUOTA_EXCEEDED`  — `localStorage.setItem` threw `QuotaExceededError`; graph was not persisted.
+   * - `RESTORE_PARSE`   — Binary/JSON parse failed when restoring a saved graph; cold-start applied.
+   * - `SERIALIZE`       — Binary serialization failed when saving the graph.
+   * - `VALIDATION`      — An invalid argument was passed to a public API method (e.g., empty `track('')`).
+   */
+  code:
+    | 'STORAGE_READ'
+    | 'STORAGE_WRITE'
+    | 'QUOTA_EXCEEDED'
+    | 'RESTORE_PARSE'
+    | 'SERIALIZE'
+    | 'VALIDATION';
+  /** Human-readable description of the failure. */
+  message: string;
+  /**
+   * The underlying caught value, if available.
+   * For `RESTORE_PARSE`, this is `{ cause: unknown; payload: string }` where
+   * `payload` is the raw string that failed to parse.
+   * For all other codes, this is the raw caught exception.
+   */
+  originalError?: unknown;
+}
+
 export interface IntentManagerConfig {
   bloom?: BloomFilterConfig;
   graph?: MarkovGraphConfig;
@@ -186,8 +219,22 @@ export interface IntentManagerConfig {
   asyncStorage?: AsyncStorageAdapter;
   /** Override the timer backend (useful for deterministic tests). */
   timer?: TimerAdapter;
-  /** Non-fatal error callback — surfaces storage errors and invalid `track('')` calls. */
-  onError?: (err: Error) => void;
+  /**
+   * Non-fatal error callback — surfaces storage errors, quota exhaustion, parse
+   * failures, and invalid API calls without ever throwing to the host application.
+   *
+   * @example
+   * ```ts
+   * new IntentManager({
+   *   onError({ code, message, originalError }) {
+   *     Sentry.captureException(originalError ?? new Error(message), {
+   *       tags: { edgesignal_error: code },
+   *     });
+   *   },
+   * });
+   * ```
+   */
+  onError?: (error: EdgeSignalError) => void;
   /** Enable heuristic bot detection via timing analysis. Default: `true`. */
   botProtection?: boolean;
   /**

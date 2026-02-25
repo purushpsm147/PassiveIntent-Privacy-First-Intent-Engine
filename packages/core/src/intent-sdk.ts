@@ -25,7 +25,7 @@
  * - persistence/codec
  */
 
-export { BloomFilter } from './core/bloom.js';
+export { BloomFilter, computeBloomConfig } from './core/bloom.js';
 export { MarkovGraph } from './core/markov.js';
 export { IntentManager } from './engine/intent-manager.js';
 export { BroadcastSync, MAX_STATE_LENGTH } from './sync/broadcast-sync.js';
@@ -46,6 +46,7 @@ export type {
   MarkovGraphConfig,
   IntentManagerConfig,
   DwellTimeConfig,
+  EdgeSignalError,
 } from './types/events.js';
 
 export type { SerializedMarkovGraph } from './core/markov.js';
