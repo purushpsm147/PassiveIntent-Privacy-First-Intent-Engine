@@ -1,7 +1,11 @@
-name: performance-matrix
+name: perf-matrix / core
 
 on:
   pull_request:
+    paths:
+      - 'packages/core/src/**'
+      - 'packages/core/scripts/**'
+      - 'packages/core/benchmarks/**'
   workflow_dispatch:
 
 jobs:
