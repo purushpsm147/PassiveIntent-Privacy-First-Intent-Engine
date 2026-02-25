@@ -70,8 +70,8 @@ Full documentation for each package lives inside the package directory:
 Run workspaces individually to target a single package:
 
 ```bash
-npm run build --workspace=packages/core
-npm run test  --workspace=packages/core
+npm run build --workspace=@edgesignal/core
+npm run test  --workspace=@edgesignal/core
 ```
 
 ---
