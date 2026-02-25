@@ -17,13 +17,15 @@ This repository is structured as an **npm workspaces monorepo** containing all E
 
 ## Packages
 
-| Package                               | Version                                                                                                                                    | Description                                       |
-| ------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------ | ------------------------------------------------- |
-| [`@edgesignal/core`](./packages/core) | [![npm](https://img.shields.io/badge/npm-coming%20soon-lightgrey)](https://github.com/purushpsm147/EdgeSignal-Privacy-First-Intent-Engine) | Privacy-first, on-device behavioral intent engine |
+| Package                                 | Version                                                                                                                                    | Description                                       |
+| --------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------ | ------------------------------------------------- |
+| [`@edgesignal/core`](./packages/core)   | [![npm](https://img.shields.io/badge/npm-coming%20soon-lightgrey)](https://github.com/purushpsm147/EdgeSignal-Privacy-First-Intent-Engine) | Privacy-first, on-device behavioral intent engine |
+| [`@edgesignal/react`](./packages/react) | [![npm](https://img.shields.io/badge/npm-coming%20soon-lightgrey)](https://github.com/purushpsm147/EdgeSignal-Privacy-First-Intent-Engine) | React 18+ hook wrapper for `@edgesignal/core`     |
 
 Full documentation for each package lives inside the package directory:
 
 - **Core library** — [packages/core/README.md](./packages/core/README.md)
+- **React hook** — [packages/react/README.md](./packages/react/README.md)
 - **Architecture & API deep-dive** — [packages/core/docs/architecture.md](./packages/core/docs/architecture.md)
 
 ---
@@ -52,7 +54,8 @@ Full documentation for each package lives inside the package directory:
 │       ├── ci.core.yml        # build / test / perf for @edgesignal/core
 │       └── perf-matrix.core.yml
 └── packages/
-    └── core/                  # published as @edgesignal/core
+    ├── core/                  # published as @edgesignal/core
+    └── react/                 # published as @edgesignal/react
 ```
 
 ---

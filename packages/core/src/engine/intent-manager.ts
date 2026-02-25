@@ -474,7 +474,7 @@ export class IntentManager {
 
     // Use timer.now() for bot detection to ensure it works even when benchmark is disabled
     const now = this.timer.now();
-    const trackStart = this.benchmark.enabled ? now : 0;
+    const trackStart = this.benchmark.now();
 
     // Drift protection: advance the rolling window and count this call.
     // O(1) — only two scalar comparisons and integer increments; no allocations.
@@ -747,6 +747,15 @@ export class IntentManager {
         });
       }
       return 0;
+    }
+    if (!Number.isFinite(by)) {
+      if (this.onError) {
+        this.onError({
+          code: 'VALIDATION',
+          message: `IntentManager.incrementCounter(): 'by' must be a finite number, got ${by}`,
+        });
+      }
+      return this.counters.get(key) ?? 0;
     }
     const next = (this.counters.get(key) ?? 0) + by;
     this.counters.set(key, next);

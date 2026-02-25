@@ -89,10 +89,10 @@ Competing intent platforms rely on opaque neural models trained on aggregated po
 
 EdgeSignal uses only **transparent, auditable algorithms**:
 
-| Algorithm                         | What it does                                             | How a compliance officer can audit it                                   |
-| --------------------------------- | -------------------------------------------------------- | ----------------------------------------------------------------------- |
-| **Markov chain transition graph** | Counts how often the user moved from state A to state B  | Inspect `intent.getGraph()` — every transition count is a plain integer |
-| **Bloom filter**                  | Tracks which states have ever been visited               | Examine the raw `Uint8Array` bitset — no hidden data                    |
+| Algorithm                         | What it does                                             | How a compliance officer can audit it                                             |
+| --------------------------------- | -------------------------------------------------------- | --------------------------------------------------------------------------------- |
+| **Markov chain transition graph** | Counts how often the user moved from state A to state B  | Call `graph.toJSON()` on a `MarkovGraph` instance — every transition count is a plain integer |
+| **Bloom filter**                  | Tracks which states have ever been visited               | Examine the raw `Uint8Array` bitset — no hidden data                              |
 | **Welford online z-score**        | Measures whether dwell time is anomalously long or short | Formula is O(1) and published in every statistics textbook              |
 | **Shannon entropy**               | Quantifies navigation randomness                         | A one-line formula: $H = -\sum p_i \log p_i$                            |
 
@@ -328,6 +328,18 @@ interface StateChangePayload {
   to: string;
 }
 
+// Fires when EntropyGuard transitions from 'human' to 'suspected_bot'
+interface BotDetectedPayload {
+  state: string; // the state that triggered the bot classification
+}
+
+// Fires when trajectory_anomaly and dwell_time_anomaly both fire within hesitationCorrelationWindowMs
+interface HesitationDetectedPayload {
+  state: string; // the state where hesitation was detected
+  trajectoryZScore: number; // z-score from the trajectory_anomaly signal
+  dwellZScore: number; // z-score from the dwell_time_anomaly signal
+}
+
 // Fired by intent.trackConversion() — application-controlled
 interface ConversionPayload {
   type: string; // e.g. 'purchase', 'signup', 'trial_start'
@@ -342,6 +354,8 @@ interface EdgeSignalTelemetry {
   botStatus: 'human' | 'suspected_bot'; // current EntropyGuard classification
   anomaliesFired: number; // sum of high_entropy + trajectory_anomaly + dwell_time_anomaly
   engineHealth: 'healthy' | 'pruning_active' | 'quota_exceeded'; // storage health
+  baselineStatus: 'active' | 'drifted'; // 'drifted' when drift-protection killswitch has engaged
+  assignmentGroup: 'treatment' | 'control'; // A/B holdout group for this session
 }
 ```
 
@@ -798,13 +812,14 @@ const intent = new IntentManager({
 
 intent.on('state_change', ({ to }) => {
   // Predict the most probable next states with probability >= 40 %
+  // Returns { state: string; probability: number }[] sorted descending by probability
   const likelyNextStates = intent.predictNextStates(0.4);
 
   likelyNextStates
     // ─── COMPLIANCE GUARDRAIL: see warning below ───────────────────────────────
-    .filter((state) => !isSensitiveRoute(state))
+    .filter(({ state }) => !isSensitiveRoute(state))
     // ───────────────────────────────────────────────────────────────────────────
-    .forEach((state) => {
+    .forEach(({ state }) => {
       // router.prefetch() fetches the page bundle without navigating to it.
       // The page appears to load instantly when the user clicks.
       router.prefetch(state);
@@ -817,7 +832,7 @@ router.events.on('routeChangeComplete', (url) => intent.track(url));
 
 **Why this works:**
 
-`intent.predictNextStates(threshold)` returns all outgoing states from the current node whose transition probability exceeds `threshold`. After 5–10 navigations, the Markov graph has enough signal to predict the next page with high accuracy on well-worn paths (e.g., `/dashboard` → `/billing` → `/upgrade`). Combining this with a framework router's prefetch API means those bundles are already in the browser's memory before the user clicks.
+`intent.predictNextStates(threshold)` returns `{ state: string; probability: number }[]` — the outgoing states from the current node whose transition probability exceeds `threshold`, sorted descending by probability. After 5–10 navigations, the Markov graph has enough signal to predict the next page with high accuracy on well-worn paths (e.g., `/dashboard` → `/billing` → `/upgrade`). Combining this with a framework router's prefetch API means those bundles are already in the browser's memory before the user clicks.
 
 The result is not just a performance gain — it is a **retention signal**. A fast, responsive app has measurably lower bounce rates. EdgeSignal turns behavioral data that was already being collected for churn detection into a free performance dividend.
 
@@ -882,7 +897,18 @@ interface IntentManagerConfig {
 
   // Isomorphic adapters — swap out for SSR / testing
   storage?: StorageAdapter; // default: BrowserStorageAdapter
+  // Async storage backend (React Native AsyncStorage, IndexedDB wrappers, etc.)
+  // Use IntentManager.createAsync(config) when providing this adapter so the
+  // initial getItem() is awaited before construction. Cannot be combined with
+  // `storage` — asyncStorage takes precedence for writes.
+  asyncStorage?: AsyncStorageAdapter;
   timer?: TimerAdapter; // default: BrowserTimerAdapter
+
+  // Convenience top-level aliases for graph.baselineMeanLL / graph.baselineStdLL.
+  // When both the top-level alias and the nested graph.* field are set, the
+  // top-level alias takes precedence.
+  baselineMeanLL?: number;
+  baselineStdLL?: number;
 
   // Non-fatal structured error callback.
   // Receives an EdgeSignalError object — never an Error instance.
@@ -1003,6 +1029,14 @@ const intent = new IntentManager({
   botProtection: false,
 });
 
+// Async storage backend (React Native, IndexedDB, Capacitor Preferences, etc.)
+// Use the createAsync() factory so the initial read is awaited before construction.
+// The synchronous track() hot-path is never blocked.
+const asyncIntent = await IntentManager.createAsync({
+  asyncStorage: myAsyncStorageAdapter, // implements { getItem, setItem } returning Promises
+  botProtection: false,
+});
+
 // Controllable clock for deterministic timing tests
 class FakeTimerAdapter {
   private _now = 1000;
@@ -1038,15 +1072,13 @@ npm run build:tsc    # compile TypeScript to dist/
 npm test             # runs Node.js built-in test runner (no extra deps)
 ```
 
-The suite in `tests/intent-sdk.test.mjs` covers:
+The test suite in `tests/` covers:
 
-- Bloom filter add / check / false-positive properties
-- `computeOptimal` and `estimateCurrentFPR` math
-- Markov graph transitions, `getProbability`, entropy, log-likelihood
-- Binary serialization round-trips (version `0x02`)
-- Tombstone / LFU pruning correctness
-- `IntentManager` event firing, dirty-flag persistence, session reset
-- EntropyGuard suppression with injectable `FakeTimerAdapter`
+- `unit-fast.test.mjs` — Bloom filter add / check / false-positive properties; `computeOptimal` and `estimateCurrentFPR` math; Markov graph transitions, `getProbability`, entropy, log-likelihood; binary serialization round-trips (version `0x02`); tombstone / LFU pruning correctness; `IntentManager` event firing, dirty-flag persistence, session reset; EntropyGuard suppression with injectable `FakeTimerAdapter`; deterministic counters; `predictNextStates`; `createAsync`
+- `probabilistic.test.mjs` — statistical property verification (AUC, false-positive rates)
+- `property-based.test.mjs` — generative property-based tests
+- `integration-contract.test.mjs` — public API integration contracts
+- `compatibility-matrix.test.mjs` — adapter and cross-runtime compatibility
 
 ### Performance Regression Tests
 
@@ -1117,16 +1149,16 @@ import { useEdgeSignal } from '@edgesignal/react';
 import type { IntentManagerConfig, UseEdgeSignalReturn } from '@edgesignal/react';
 ```
 
-| Returned method     | Signature                             | Notes                              |
-| ------------------- | ------------------------------------- | ---------------------------------- |
-| `track`             | `(event: string) => void`             | no-op before mount / after unmount |
-| `on`                | `(event, handler) => () => void`      | returns a NOOP unsubscribe on SSR  |
-| `getTelemetry`      | `() => EdgeSignalTelemetry`           | empty object cast before mount     |
-| `predictNextStates` | `(threshold?, sanitize?) => string[]` | `[]` before first mount            |
-| `hasSeen`           | `(route: string) => boolean`          | `false` before first mount         |
-| `incrementCounter`  | `(key: string, by?: number) => void`  | —                                  |
-| `getCounter`        | `(key: string) => number`             | `0` before first mount             |
-| `resetCounter`      | `(key: string) => void`               | —                                  |
+| Returned method     | Signature                                                               | Notes                              |
+| ------------------- | ----------------------------------------------------------------------- | ---------------------------------- |
+| `track`             | `(event: string) => void`                                               | no-op before mount / after unmount |
+| `on`                | `(event, handler) => () => void`                                        | returns a NOOP unsubscribe on SSR  |
+| `getTelemetry`      | `() => EdgeSignalTelemetry`                                             | empty object cast before mount     |
+| `predictNextStates` | `(threshold?, sanitize?) => { state: string; probability: number }[]`   | `[]` before first mount            |
+| `hasSeen`           | `(route: string) => boolean`                                            | `false` before first mount         |
+| `incrementCounter`  | `(key: string, by?: number) => void`                                    | —                                  |
+| `getCounter`        | `(key: string) => number`                                               | `0` before first mount             |
+| `resetCounter`      | `(key: string) => void`                                                 | —                                  |
 
 #### Next.js App Router Example
 
@@ -1268,7 +1300,7 @@ flowchart LR
 | **EntropyGuard**                  | Bot / automation detector based on inter-call timing                                             | Fixed-size circular buffer; zero heap allocations in hot path                                                                                                                                                         |
 | **DwellTimeDetector**             | Per-state dwell-time anomaly detection via Welford's online algorithm                            | O(1) per call; Map of `[count, mean, m2]` tuples                                                                                                                                                                      |
 | **Bigram Recorder**               | Selective second-order Markov transitions (`A→B` → `B→C`)                                        | Frequency-gated; shares graph with LFU pruning under `maxStates`                                                                                                                                                      |
-| **EventEmitter**                  | Typed mini event bus: `high_entropy`, `trajectory_anomaly`, `dwell_time_anomaly`, `state_change` | ~20 lines; no `EventTarget` dependency for SSR safety; per-channel cooldown applies to anomaly events only (`high_entropy`, `trajectory_anomaly`, `dwell_time_anomaly`); `state_change` is always emitted immediately |
+| **EventEmitter**                  | Typed mini event bus: `high_entropy`, `trajectory_anomaly`, `dwell_time_anomaly`, `state_change`, `bot_detected`, `hesitation_detected`, `conversion` | ~20 lines; no `EventTarget` dependency for SSR safety; per-channel cooldown applies to anomaly events only (`high_entropy`, `trajectory_anomaly`, `dwell_time_anomaly`); `state_change` is always emitted immediately |
 | **BenchmarkRecorder**             | Optional per-operation p95/p99 latency sampler                                                   | Disabled by default; ring-buffer avoids unbounded growth                                                                                                                                                              |
 | **Persistence Layer**             | Debounced, dirty-flag-gated `localStorage` write                                                 | Writes only on actual state change; binary format, not JSON                                                                                                                                                           |
 | **StorageAdapter / TimerAdapter** | Isomorphic interfaces wrapping `localStorage` and `setTimeout`                                   | Swap for `MemoryStorageAdapter` in SSR / tests                                                                                                                                                                        |

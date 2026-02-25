@@ -46,7 +46,7 @@ export type {
 /* ---- Adapters ---- */
 export { BrowserStorageAdapter, BrowserTimerAdapter, MemoryStorageAdapter } from './adapters.js';
 
-export type { StorageAdapter, TimerAdapter, TimerHandle } from './adapters.js';
+export type { StorageAdapter, AsyncStorageAdapter, TimerAdapter, TimerHandle } from './adapters.js';
 
 /* ---- Performance Instrumentation ---- */
 export type {

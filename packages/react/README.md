@@ -26,7 +26,7 @@ import { useEffect } from 'react';
 export function TrackingProvider({ children }: { children: React.ReactNode }) {
   const { track, on, getTelemetry } = useEdgeSignal({
     botProtection: true,
-    debug: process.env.NODE_ENV === 'development',
+    eventCooldownMs: 60_000,
   });
 
   const pathname = usePathname();
@@ -59,7 +59,7 @@ before the first mount (SSR, Suspense, concurrent transitions) and after unmount
 | `track`             | `(event: string) => void`             | Records a page-view or custom event                  |
 | `on`                | `(event, handler) => () => void`      | Subscribe; call the returned function to unsubscribe |
 | `getTelemetry`      | `() => EdgeSignalTelemetry`           | Full engine snapshot                                 |
-| `predictNextStates` | `(threshold?, sanitize?) => string[]` | Top-N Markov predictions                             |
+| `predictNextStates` | `(threshold?, sanitize?) => { state: string; probability: number }[]` | Top-N Markov predictions                             |
 | `hasSeen`           | `(route: string) => boolean`          | Bloom filter membership test                         |
 | `incrementCounter`  | `(key: string, by?: number) => void`  | Persistent session counter                           |
 | `getCounter`        | `(key: string) => number`             | Read a session counter                               |
