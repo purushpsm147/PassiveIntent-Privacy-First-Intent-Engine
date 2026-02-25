@@ -54,16 +54,16 @@ export function TrackingProvider({ children }: { children: React.ReactNode }) {
 All returned methods are stable across re-renders (`useCallback(…, [])`). Methods are no-ops
 before the first mount (SSR, Suspense, concurrent transitions) and after unmount.
 
-| Method              | Signature                             | Notes                                                |
-| ------------------- | ------------------------------------- | ---------------------------------------------------- |
-| `track`             | `(event: string) => void`             | Records a page-view or custom event                  |
-| `on`                | `(event, handler) => () => void`      | Subscribe; call the returned function to unsubscribe |
-| `getTelemetry`      | `() => EdgeSignalTelemetry`           | Full engine snapshot                                 |
+| Method              | Signature                                                             | Notes                                                |
+| ------------------- | --------------------------------------------------------------------- | ---------------------------------------------------- |
+| `track`             | `(event: string) => void`                                             | Records a page-view or custom event                  |
+| `on`                | `(event, handler) => () => void`                                      | Subscribe; call the returned function to unsubscribe |
+| `getTelemetry`      | `() => EdgeSignalTelemetry`                                           | Full engine snapshot                                 |
 | `predictNextStates` | `(threshold?, sanitize?) => { state: string; probability: number }[]` | Top-N Markov predictions                             |
-| `hasSeen`           | `(route: string) => boolean`          | Bloom filter membership test                         |
-| `incrementCounter`  | `(key: string, by?: number) => void`  | Persistent session counter                           |
-| `getCounter`        | `(key: string) => number`             | Read a session counter                               |
-| `resetCounter`      | `(key: string) => void`               | Reset a session counter                              |
+| `hasSeen`           | `(route: string) => boolean`                                          | Bloom filter membership test                         |
+| `incrementCounter`  | `(key: string, by?: number) => void`                                  | Persistent session counter                           |
+| `getCounter`        | `(key: string) => number`                                             | Read a session counter                               |
+| `resetCounter`      | `(key: string) => void`                                               | Reset a session counter                              |
 
 ---
 

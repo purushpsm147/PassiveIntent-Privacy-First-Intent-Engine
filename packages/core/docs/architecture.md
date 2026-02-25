@@ -89,12 +89,12 @@ Competing intent platforms rely on opaque neural models trained on aggregated po
 
 EdgeSignal uses only **transparent, auditable algorithms**:
 
-| Algorithm                         | What it does                                             | How a compliance officer can audit it                                             |
-| --------------------------------- | -------------------------------------------------------- | --------------------------------------------------------------------------------- |
+| Algorithm                         | What it does                                             | How a compliance officer can audit it                                                         |
+| --------------------------------- | -------------------------------------------------------- | --------------------------------------------------------------------------------------------- |
 | **Markov chain transition graph** | Counts how often the user moved from state A to state B  | Call `graph.toJSON()` on a `MarkovGraph` instance — every transition count is a plain integer |
-| **Bloom filter**                  | Tracks which states have ever been visited               | Examine the raw `Uint8Array` bitset — no hidden data                              |
-| **Welford online z-score**        | Measures whether dwell time is anomalously long or short | Formula is O(1) and published in every statistics textbook              |
-| **Shannon entropy**               | Quantifies navigation randomness                         | A one-line formula: $H = -\sum p_i \log p_i$                            |
+| **Bloom filter**                  | Tracks which states have ever been visited               | Examine the raw `Uint8Array` bitset — no hidden data                                          |
+| **Welford online z-score**        | Measures whether dwell time is anomalously long or short | Formula is O(1) and published in every statistics textbook                                    |
+| **Shannon entropy**               | Quantifies navigation randomness                         | A one-line formula: $H = -\sum p_i \log p_i$                                                  |
 
 Because every inference step is deterministic math with integer inputs, a compliance officer can reproduce any EdgeSignal decision on paper, given the stored graph. No black box. No population model. No proprietary weights.
 
@@ -1149,16 +1149,16 @@ import { useEdgeSignal } from '@edgesignal/react';
 import type { IntentManagerConfig, UseEdgeSignalReturn } from '@edgesignal/react';
 ```
 
-| Returned method     | Signature                                                               | Notes                              |
-| ------------------- | ----------------------------------------------------------------------- | ---------------------------------- |
-| `track`             | `(event: string) => void`                                               | no-op before mount / after unmount |
-| `on`                | `(event, handler) => () => void`                                        | returns a NOOP unsubscribe on SSR  |
-| `getTelemetry`      | `() => EdgeSignalTelemetry`                                             | empty object cast before mount     |
-| `predictNextStates` | `(threshold?, sanitize?) => { state: string; probability: number }[]`   | `[]` before first mount            |
-| `hasSeen`           | `(route: string) => boolean`                                            | `false` before first mount         |
-| `incrementCounter`  | `(key: string, by?: number) => void`                                    | —                                  |
-| `getCounter`        | `(key: string) => number`                                               | `0` before first mount             |
-| `resetCounter`      | `(key: string) => void`                                                 | —                                  |
+| Returned method     | Signature                                                             | Notes                              |
+| ------------------- | --------------------------------------------------------------------- | ---------------------------------- |
+| `track`             | `(event: string) => void`                                             | no-op before mount / after unmount |
+| `on`                | `(event, handler) => () => void`                                      | returns a NOOP unsubscribe on SSR  |
+| `getTelemetry`      | `() => EdgeSignalTelemetry`                                           | empty object cast before mount     |
+| `predictNextStates` | `(threshold?, sanitize?) => { state: string; probability: number }[]` | `[]` before first mount            |
+| `hasSeen`           | `(route: string) => boolean`                                          | `false` before first mount         |
+| `incrementCounter`  | `(key: string, by?: number) => void`                                  | —                                  |
+| `getCounter`        | `(key: string) => number`                                             | `0` before first mount             |
+| `resetCounter`      | `(key: string) => void`                                               | —                                  |
 
 #### Next.js App Router Example
 
@@ -1292,18 +1292,18 @@ flowchart LR
     style STORE fill:#3d405b,color:#fff,stroke:#81b29a
 ```
 
-| Component                         | Role                                                                                             | Key constraint                                                                                                                                                                                                        |
-| --------------------------------- | ------------------------------------------------------------------------------------------------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| **IntentManager**                 | Single public orchestrator — routes every `track()` call through all subsystems                  | `readonly` fields prevent accidental mutation; never throws                                                                                                                                                           |
-| **BloomFilter**                   | Probabilistic set membership for `hasSeen()`                                                     | Fixed-size `Uint8Array`; O(k) per operation regardless of state count                                                                                                                                                 |
-| **MarkovGraph**                   | Sparse first-order Markov chain; learns transition counts in real time                           | State labels interned to `uint16` indices; max 65 535 states                                                                                                                                                          |
-| **EntropyGuard**                  | Bot / automation detector based on inter-call timing                                             | Fixed-size circular buffer; zero heap allocations in hot path                                                                                                                                                         |
-| **DwellTimeDetector**             | Per-state dwell-time anomaly detection via Welford's online algorithm                            | O(1) per call; Map of `[count, mean, m2]` tuples                                                                                                                                                                      |
-| **Bigram Recorder**               | Selective second-order Markov transitions (`A→B` → `B→C`)                                        | Frequency-gated; shares graph with LFU pruning under `maxStates`                                                                                                                                                      |
+| Component                         | Role                                                                                                                                                  | Key constraint                                                                                                                                                                                                        |
+| --------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **IntentManager**                 | Single public orchestrator — routes every `track()` call through all subsystems                                                                       | `readonly` fields prevent accidental mutation; never throws                                                                                                                                                           |
+| **BloomFilter**                   | Probabilistic set membership for `hasSeen()`                                                                                                          | Fixed-size `Uint8Array`; O(k) per operation regardless of state count                                                                                                                                                 |
+| **MarkovGraph**                   | Sparse first-order Markov chain; learns transition counts in real time                                                                                | State labels interned to `uint16` indices; max 65 535 states                                                                                                                                                          |
+| **EntropyGuard**                  | Bot / automation detector based on inter-call timing                                                                                                  | Fixed-size circular buffer; zero heap allocations in hot path                                                                                                                                                         |
+| **DwellTimeDetector**             | Per-state dwell-time anomaly detection via Welford's online algorithm                                                                                 | O(1) per call; Map of `[count, mean, m2]` tuples                                                                                                                                                                      |
+| **Bigram Recorder**               | Selective second-order Markov transitions (`A→B` → `B→C`)                                                                                             | Frequency-gated; shares graph with LFU pruning under `maxStates`                                                                                                                                                      |
 | **EventEmitter**                  | Typed mini event bus: `high_entropy`, `trajectory_anomaly`, `dwell_time_anomaly`, `state_change`, `bot_detected`, `hesitation_detected`, `conversion` | ~20 lines; no `EventTarget` dependency for SSR safety; per-channel cooldown applies to anomaly events only (`high_entropy`, `trajectory_anomaly`, `dwell_time_anomaly`); `state_change` is always emitted immediately |
-| **BenchmarkRecorder**             | Optional per-operation p95/p99 latency sampler                                                   | Disabled by default; ring-buffer avoids unbounded growth                                                                                                                                                              |
-| **Persistence Layer**             | Debounced, dirty-flag-gated `localStorage` write                                                 | Writes only on actual state change; binary format, not JSON                                                                                                                                                           |
-| **StorageAdapter / TimerAdapter** | Isomorphic interfaces wrapping `localStorage` and `setTimeout`                                   | Swap for `MemoryStorageAdapter` in SSR / tests                                                                                                                                                                        |
+| **BenchmarkRecorder**             | Optional per-operation p95/p99 latency sampler                                                                                                        | Disabled by default; ring-buffer avoids unbounded growth                                                                                                                                                              |
+| **Persistence Layer**             | Debounced, dirty-flag-gated `localStorage` write                                                                                                      | Writes only on actual state change; binary format, not JSON                                                                                                                                                           |
+| **StorageAdapter / TimerAdapter** | Isomorphic interfaces wrapping `localStorage` and `setTimeout`                                                                                        | Swap for `MemoryStorageAdapter` in SSR / tests                                                                                                                                                                        |
 
 ---
 
