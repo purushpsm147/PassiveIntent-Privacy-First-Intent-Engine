@@ -1121,7 +1121,7 @@ import type { IntentManagerConfig, UseEdgeSignalReturn } from '@edgesignal/react
 | ------------------- | ------------------------------------- | ---------------------------------- |
 | `track`             | `(event: string) => void`             | no-op before mount / after unmount |
 | `on`                | `(event, handler) => () => void`      | returns a NOOP unsubscribe on SSR  |
-| `getTelemetry`      | `() => EdgeSignalTelemetry \| null`   | `null` before first mount          |
+| `getTelemetry`      | `() => EdgeSignalTelemetry`           | empty object cast before mount     |
 | `predictNextStates` | `(threshold?, sanitize?) => string[]` | `[]` before first mount            |
 | `hasSeen`           | `(route: string) => boolean`          | `false` before first mount         |
 | `incrementCounter`  | `(key: string, by?: number) => void`  | —                                  |

@@ -169,11 +169,10 @@ export function computeBloomConfig(
   if (falsePositiveRate >= 1) falsePositiveRate = 0.99;
 
   // Standard optimal Bloom filter formulas:
-  //   m = ceil( (n * ln(p)) / ln(1 / 2^ln2) )
-  //     = ceil( -(n * ln(p)) / ln(2)^2 )
+  //   m = ceil( -(n * ln(p)) / ln(2)^2 )
   //   k = round( (m / n) * ln(2) )
   const m = Math.ceil(
-    (expectedItems * Math.log(falsePositiveRate)) / Math.log(1 / Math.pow(2, Math.log(2))),
+    -(expectedItems * Math.log(falsePositiveRate)) / (Math.LN2 * Math.LN2),
   );
   const k = Math.max(1, Math.round((m / expectedItems) * Math.log(2)));
 

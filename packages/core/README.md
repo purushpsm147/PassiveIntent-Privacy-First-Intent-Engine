@@ -307,7 +307,7 @@ new IntentManager({
   storageKey: 'edge-signal',
   onError: (err: EdgeSignalError) => {
     // Fires on storage quota/security errors and validation failures.
-    // err.code: 'STORAGE' | 'VALIDATION' | 'DECODE'
+    // err.code: 'STORAGE_READ' | 'STORAGE_WRITE' | 'QUOTA_EXCEEDED' | 'RESTORE_PARSE' | 'SERIALIZE' | 'VALIDATION'
     console.warn('[EdgeSignal]', err.code, err.message);
   },
 });

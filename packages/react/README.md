@@ -58,7 +58,7 @@ before the first mount (SSR, Suspense, concurrent transitions) and after unmount
 | ------------------- | ------------------------------------- | ---------------------------------------------------- |
 | `track`             | `(event: string) => void`             | Records a page-view or custom event                  |
 | `on`                | `(event, handler) => () => void`      | Subscribe; call the returned function to unsubscribe |
-| `getTelemetry`      | `() => EdgeSignalTelemetry \| null`   | Full engine snapshot                                 |
+| `getTelemetry`      | `() => EdgeSignalTelemetry`           | Full engine snapshot                                 |
 | `predictNextStates` | `(threshold?, sanitize?) => string[]` | Top-N Markov predictions                             |
 | `hasSeen`           | `(route: string) => boolean`          | Bloom filter membership test                         |
 | `incrementCounter`  | `(key: string, by?: number) => void`  | Persistent session counter                           |

@@ -143,7 +143,7 @@ export interface EdgeSignalError {
    * - `STORAGE_WRITE`   — `localStorage.setItem` threw for a non-quota reason.
    * - `QUOTA_EXCEEDED`  — `localStorage.setItem` threw `QuotaExceededError`; graph was not persisted.
    * - `RESTORE_PARSE`   — Binary/JSON parse failed when restoring a saved graph; cold-start applied.
-   * - `SERIALIZE`       — Binary serialisation failed when saving the graph.
+   * - `SERIALIZE`       — Binary serialization failed when saving the graph.
    * - `VALIDATION`      — An invalid argument was passed to a public API method (e.g., empty `track('')`).
    */
   code:
