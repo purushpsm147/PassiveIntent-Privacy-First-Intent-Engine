@@ -4,13 +4,10 @@
     "jsx": "react",
     "outDir": "dist",
     "rootDir": "src",
-    "baseUrl": ".",
-    "paths": {
-      "@edgesignal/core": ["../core/src/index.ts"]
-    },
     "declaration": true,
     "declarationMap": true,
-    "sourceMap": true
+    "sourceMap": true,
+    "tsBuildInfoFile": "dist/tsconfig.tsbuildinfo"
   },
   "include": ["src"],
   "references": [{ "path": "../core" }]
