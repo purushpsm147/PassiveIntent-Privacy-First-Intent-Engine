@@ -8,11 +8,7 @@
 import { IntentManager, MarkovGraph } from './intent-sdk.js';
 import { MemoryStorageAdapter } from './adapters.js';
 import type { PerformanceReport } from './performance-instrumentation.js';
-import {
-  SMOOTHING_EPSILON,
-  MIN_WINDOW_LENGTH,
-  MAX_WINDOW_LENGTH,
-} from './engine/constants.js';
+import { SMOOTHING_EPSILON, MIN_WINDOW_LENGTH, MAX_WINDOW_LENGTH } from './engine/constants.js';
 
 interface BaselineCalibration {
   mean: number;
