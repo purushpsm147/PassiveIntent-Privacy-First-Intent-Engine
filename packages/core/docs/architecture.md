@@ -10,7 +10,7 @@
 > **EdgeSignal** — the privacy-first, on-device behavioral intent engine built for B2B SaaS retention. Detect frustrated navigation in **< 2 milliseconds** — locally, with zero data egress, no server round-trips, and no GDPR exposure.
 
 [![npm version](https://img.shields.io/badge/npm-coming%20soon-lightgrey)](https://github.com/purushpsm147/EdgeSignal-Privacy-First-Intent-Engine)
-[![License: AGPL-3.0-only](https://img.shields.io/badge/license-AGPL--3.0--only-blue.svg)](./LICENSE)
+[![License: AGPL-3.0-only](https://img.shields.io/badge/license-AGPL--3.0--only-blue.svg)](../LICENSE)
 [![TypeScript](https://img.shields.io/badge/TypeScript-5.6-3178c6.svg)](https://www.typescriptlang.org/)
 [![Privacy: Zero Egress](https://img.shields.io/badge/privacy-zero--egress-brightgreen)](https://github.com/purushpsm147/EdgeSignal-Privacy-First-Intent-Engine#privacy--gdpr-compliance)
 [![GDPR: No Personal Data](https://img.shields.io/badge/GDPR-no%20personal%20data-brightgreen)](https://github.com/purushpsm147/EdgeSignal-Privacy-First-Intent-Engine#privacy--gdpr-compliance)
@@ -183,7 +183,7 @@ When the difference between a "normal" and "anomalous" trajectory is very small 
 This is a **fundamental signal constraint**, not a tuning problem. A single-window 32-step average log-likelihood cannot fully separate distributions that close. There are two paths to improvement:
 
 - **Longer observation windows** (> 32 steps), or
-- **Richer feature space** — dwell-time anomaly detection is now built in (see [Dwell-Time Anomaly Detection](#dwell-time-anomaly-detection)). Click velocity and inter-event interval entropy remain as future enhancements (see [FUTURE_FEATURES.md](./FUTURE_FEATURES.md)).
+- **Richer feature space** — dwell-time anomaly detection is now built in (see [Dwell-Time Anomaly Detection](#dwell-time-anomaly-detection)). Click velocity and inter-event interval entropy remain as future enhancements (see [FUTURE_FEATURES.md](../../../FUTURE_FEATURES.md)).
 
 For most product use cases (discount triggers, paywall decisions, support-chat prompts) the 0.74 AUC is sufficient. Do not use this library as the sole input in high-stakes security decisions.
 
@@ -244,15 +244,15 @@ The net effect is that the sync layer provides the behavioral unification benefi
 ## Installation
 
 ```bash
-npm install edge-signal
+npm install @edgesignal/core
 ```
 
 ```bash
-pnpm add edge-signal
+pnpm add @edgesignal/core
 ```
 
 ```bash
-yarn add edge-signal
+yarn add @edgesignal/core
 ```
 
 The package ships **zero runtime dependencies**.
@@ -262,7 +262,7 @@ The package ships **zero runtime dependencies**.
 ## Quick Start
 
 ```ts
-import { IntentManager } from 'edge-signal';
+import { IntentManager } from '@edgesignal/core';
 
 const intent = new IntentManager({
   storageKey: 'my-app-intent', // localStorage key
@@ -355,7 +355,7 @@ In B2B SaaS, the highest-risk churn moments happen silently — a customer wande
 EdgeSignal detects this frustrated, high-entropy navigation **locally in under 2 milliseconds**, using the on-device Markov graph. No data leaves the browser. No server round-trip. When `normalizedEntropy` crosses `0.90` on a retention-critical page, you can open a Zendesk or Intercom support chat widget **before the user closes the tab**.
 
 ```ts
-import { IntentManager } from 'edge-signal';
+import { IntentManager } from '@edgesignal/core';
 
 const intent = new IntentManager({
   storageKey: 'b2b-retention-intent',
@@ -404,7 +404,7 @@ EdgeSignal lets you measure **genuine engagement intent** before asking for an e
 > **Note on Incognito mode:** If users bypass engagement tracking with a private browsing session, that is perfectly fine. Lead capture is a **marketing funnel optimization**, not a security gate. A user who bypasses localStorage is simply treated as a first-time visitor. You lose the progressive profiling benefit for that session, but you never harm the user experience or create a false gate.
 
 ```ts
-import { IntentManager } from 'edge-signal';
+import { IntentManager } from '@edgesignal/core';
 
 const intent = new IntentManager({
   storageKey: 'editorial-intent',
@@ -450,7 +450,7 @@ Immediately discounting a purchase the moment a user hesitates is a losing strat
 > **TL;DR for simple integrations:** Listen to `hesitation_detected` — the SDK correlates `trajectory_anomaly` and `dwell_time_anomaly` internally. The full recipe below adds a severity check and a cart-value gate for a three-tier response.
 
 ```ts
-import { IntentManager, SerializedMarkovGraph } from 'edge-signal';
+import { IntentManager, SerializedMarkovGraph } from '@edgesignal/core';
 
 // Calibrated baseline: what a converting session looks like.
 // Gather this from historical analytics, then embed it here.
@@ -555,7 +555,7 @@ Dwell-time statistics are held in memory only and are never persisted to `localS
 Detect frantic, high-entropy navigation and surface a help prompt before the user bounces.
 
 ```ts
-import { IntentManager } from 'edge-signal';
+import { IntentManager } from '@edgesignal/core';
 
 const intent = new IntentManager({
   storageKey: 'support-intent',
@@ -598,7 +598,7 @@ This recipe shows how to connect EdgeSignal's local event bus to Google Analytic
 > | Conversion completed     | `trackConversion()` / `conversion` | same                                                    |
 
 ```ts
-import { IntentManager } from 'edge-signal';
+import { IntentManager } from '@edgesignal/core';
 
 const intent = new IntentManager({
   storageKey: 'shop-intent',
@@ -692,7 +692,7 @@ Prove that your behavioral interventions (hesitation discounts, dynamic paywalls
 Set `holdoutConfig.percentage` to the percentage of sessions you want in the **control** group (i.e. sessions that do NOT receive the intervention). ~90 % of sessions will receive the intervention (`'treatment'`); ~10 % will not (`'control'`). Both groups perform identical behavioral inference — only the intervention UI code is gated behind `assignmentGroup`.
 
 ```ts
-import { IntentManager } from 'edge-signal';
+import { IntentManager } from '@edgesignal/core';
 
 const intent = new IntentManager({
   storageKey: 'my-ab-test',
@@ -783,7 +783,7 @@ intent.on('conversion', () => {
 EdgeSignal doesn't just catch churn — it can make your app feel **instantly responsive**. Because the on-device Markov graph knows which routes a user is statistically likely to visit next, you can use that prediction to prefetch those routes before the user clicks, eliminating perceived load time entirely.
 
 ```ts
-import { IntentManager } from 'edge-signal';
+import { IntentManager } from '@edgesignal/core';
 import router from 'next/router'; // or your framework's router
 
 const intent = new IntentManager({
@@ -945,7 +945,7 @@ interface IntentManagerConfig {
 Use the static helper to compute optimal parameters for your known state-space:
 
 ```ts
-import { BloomFilter } from 'edge-signal';
+import { BloomFilter } from '@edgesignal/core';
 
 const { bitSize, hashCount } = BloomFilter.computeOptimal(
   200, // expected distinct states
@@ -963,7 +963,7 @@ filter.estimateCurrentFPR(150); // → ~0.004 (0.4 %)
 ### Custom Adapters (SSR / Testing)
 
 ```ts
-import { IntentManager, MemoryStorageAdapter } from 'edge-signal';
+import { IntentManager, MemoryStorageAdapter } from '@edgesignal/core';
 
 // Server-side rendering — no localStorage access, no persistence
 const intent = new IntentManager({
@@ -1771,7 +1771,7 @@ intent.on('state_change', ({ to }) => {
 `normalizeRouteState` is also exported from the package barrel for standalone use outside of `IntentManager`:
 
 ```ts
-import { normalizeRouteState } from 'edge-signal';
+import { normalizeRouteState } from '@edgesignal/core';
 
 // Use in router middleware, analytics pipelines, etc.
 const canonical = normalizeRouteState(window.location.href);
@@ -1800,7 +1800,7 @@ When `holdoutConfig: { percentage: N }` is provided, the `IntentManager` constru
 **The `assignmentGroup` field is included in `getTelemetry()`.** Attach it to your conversion event so your analytics backend can separate treatment from control.
 
 ```ts
-import { IntentManager } from 'edge-signal';
+import { IntentManager } from '@edgesignal/core';
 
 const intent = new IntentManager({
   holdoutConfig: { percentage: 10 }, // ~10 % of sessions → control
@@ -2221,8 +2221,8 @@ The AGPL-3.0 requires that if you distribute software incorporating this library
 
 To obtain a commercial license that removes the copyleft requirement, contact the author at **purushpsm147@yahoo.co.in**.
 
-For the authoritative license text, see [LICENSE](./LICENSE).
+For the authoritative license text, see [LICENSE](../LICENSE).
 
 ---
 
-_Built by [Purushottam](https://github.com/purushpsm147). Contributions welcome — see [CONTRIBUTING.md](./CONTRIBUTING.md). Security disclosures — see [SECURITY.md](./SECURITY.md)._
+_Built by [Purushottam](https://github.com/purushpsm147). Contributions welcome — see [CONTRIBUTING.md](../../../CONTRIBUTING.md). Security disclosures — see [SECURITY.md](../../../SECURITY.md)._

@@ -10,7 +10,7 @@
  * --------------------------------------------------------
  * Import everything you need from one clean entry-point:
  *
- *   import { IntentManager, BloomFilter, MarkovGraph } from 'edge-signal';
+ *   import { IntentManager, BloomFilter, MarkovGraph } from '@edgesignal/core';
  */
 
 /* ---- Core SDK ---- */

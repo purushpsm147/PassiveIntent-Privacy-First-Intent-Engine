@@ -11,7 +11,7 @@ body:
     id: sdk-version
     attributes:
       label: SDK Version
-      description: Run `npm list edge-signal` or check your `package.json` to find the version.
+      description: Run `npm list @edgesignal/core` or check your `package.json` to find the version.
       placeholder: 'e.g. 1.2.3'
     validations:
       required: true
@@ -87,7 +87,7 @@ body:
         A minimal code snippet or repository link that reproduces the issue. Reports without a reproduction are significantly harder to diagnose and may be deprioritized.
       placeholder: |
         ```ts
-        import { IntentManager } from 'edge-signal';
+        import { IntentManager } from '@edgesignal/core';
         // ...
         ```
     validations:

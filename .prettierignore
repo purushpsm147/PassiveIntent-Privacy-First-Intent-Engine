@@ -10,3 +10,6 @@ package-lock.json
 *.png
 *.ico
 *.svg
+
+# Files with no Prettier parser
+.github/CODEOWNERS

@@ -18,7 +18,7 @@
 **Complexity:** High
 **Status:** ✅ Implemented — `BroadcastSync` shipped in v1.0.0
 
-`BroadcastSync` uses the `BroadcastChannel` API to propagate `track()` deltas and deterministic counter increments across open tabs. Input-length validation (`MAX_STATE_LENGTH = 256`) guards against heap-amplification attacks from compromised tabs. See [`src/sync/broadcast-sync.ts`](src/sync/broadcast-sync.ts) and the architecture document for integration details.
+`BroadcastSync` uses the `BroadcastChannel` API to propagate `track()` deltas and deterministic counter increments across open tabs. Input-length validation (`MAX_STATE_LENGTH = 256`) guards against heap-amplification attacks from compromised tabs. See [`packages/core/src/sync/broadcast-sync.ts`](packages/core/src/sync/broadcast-sync.ts) and the architecture document for integration details.
 
 ---
 
