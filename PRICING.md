@@ -13,13 +13,13 @@ EdgeSignal is **free and open-source** under AGPLv3 for open-source projects, ho
 
 ## Tiers
 
-| Tier       | Annual Fee | Target Audience                          | What You Get (Support & Features)                                                                                                        |
-| ---------- | ---------- | ---------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------- |
-| Free       | $0         | Open-source projects, students           | AGPLv3 copyleft license. Full SDK. **Support:** Community Forum / GitHub Issues only.                                                    |
-| Indie      | $149/yr    | Solo devs, pre-seed founders             | 1 Commercial Project, AGPL exemption. **Support:** Basic Email Support — best effort, no SLA.                                            |
-| Startup    | $599/yr    | Small teams (5–50 employees)             | Up to 3 Commercial Projects, AGPL exemption. **Support:** Priority Email Support — async, business days only.                            |
-| Growth     | $1,999/yr  | Scaling companies (50–200 employees)     | Unlimited Internal Projects (1 org). **Support:** Direct Founder Access — async email/chat, business days only.                          |
-| Enterprise | Custom     | Conglomerates, CDPs, AdTech, OEM vendors | Custom legal review, architecture consultation. **Support:** Custom scoped hours — no 24/7 or weekend coverage available.                |
+| Tier       | Annual Fee | Target Audience                          | What You Get (Support & Features)                                                                                         |
+| ---------- | ---------- | ---------------------------------------- | ------------------------------------------------------------------------------------------------------------------------- |
+| Free       | $0         | Open-source projects, students           | AGPLv3 copyleft license. Full SDK. **Support:** Community Forum / GitHub Issues only.                                     |
+| Indie      | $149/yr    | Solo devs, pre-seed founders             | 1 Commercial Project, AGPL exemption. **Support:** Basic Email Support — best effort, no SLA.                             |
+| Startup    | $599/yr    | Small teams (5–50 employees)             | Up to 3 Commercial Projects, AGPL exemption. **Support:** Priority Email Support — async, business days only.             |
+| Growth     | $1,999/yr  | Scaling companies (50–200 employees)     | Unlimited Internal Projects (1 org). **Support:** Direct Founder Access — async email/chat, business days only.           |
+| Enterprise | Custom     | Conglomerates, CDPs, AdTech, OEM vendors | Custom legal review, architecture consultation. **Support:** Custom scoped hours — no 24/7 or weekend coverage available. |
 
 ## What "commercial use" means
 
