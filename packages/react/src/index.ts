@@ -76,9 +76,11 @@ export interface UsePassiveIntentReturn {
 
   /**
    * Increment a named deterministic counter by `by` (default `1`).
-   * Exact integer arithmetic — zero false positives. No-op during SSR.
+   * Exact integer arithmetic — zero false positives.
+   *
+   * Returns the new counter value, or `0` during SSR / when unmounted.
    */
-  incrementCounter: (key: string, by?: number) => void;
+  incrementCounter: (key: string, by?: number) => number;
 
   /**
    * Read the current value of a named deterministic counter.
@@ -227,8 +229,8 @@ export function usePassiveIntent(config: IntentManagerConfig): UsePassiveIntentR
     return instanceRef.current?.hasSeen(state) ?? false;
   }, []);
 
-  const incrementCounter = useCallback((key: string, by?: number): void => {
-    instanceRef.current?.incrementCounter(key, by);
+  const incrementCounter = useCallback((key: string, by?: number): number => {
+    return instanceRef.current?.incrementCounter(key, by) ?? 0;
   }, []);
 
   const getCounter = useCallback((key: string): number => {

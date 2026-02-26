@@ -140,13 +140,15 @@ export interface MarkovGraphConfig {
    * This prevents cold-start 100 % probability spikes that otherwise
    * trigger false `trajectory_anomaly` events in early sessions.
    *
-   * - `alpha = 0` (default) — disables smoothing; falls back to exact
-   *                  frequentist math (`count / total`) with no performance
-   *                  cost.  All existing behavior is preserved.
-   * - `alpha = 0.1` — mild regularization; effective for typical navigation
-   *                  graphs with 5–50 states.  Recommended for production
-   *                  deployments where cold-start false positives are a concern.
-   * - `alpha = 1`  — full Laplace (add-one) smoothing.
+   * **Default: `0.1`** (mild regularization, enabled by default).
+   *
+   * - `alpha = 0.1` — default; effective for typical navigation graphs with
+   *                  5–50 states.  Prevents false positives during cold-start.
+   * - `alpha = 0`   — disables smoothing; falls back to exact frequentist
+   *                  math (`count / total`) with no performance cost.
+   * - `alpha = 1`   — full Laplace (add-one) smoothing.
+   *
+   * Non-finite or negative values are silently clamped to `0`.
    */
   smoothingAlpha?: number;
 }
@@ -212,7 +214,9 @@ export interface IntentManagerConfig {
    * Convenience alias for `graph.smoothingAlpha`.
    *
    * Dirichlet pseudo-count that regularizes transition probabilities during
-   * the cold-start phase.  `0` disables smoothing (default).
+   * the cold-start phase.  Default: `0.1` (mild regularization, enabled by
+   * default).  Pass `0` explicitly to disable smoothing and use pure
+   * frequentist math.  Non-finite or negative values are clamped to `0`.
    *
    * **Precedence:** when both this field and `graph.smoothingAlpha` are set,
    * _this field wins_.

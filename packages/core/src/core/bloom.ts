@@ -148,10 +148,14 @@ export class BloomFilter {
  *
  * @param expectedItems     The number of unique routes or states the
  *                          application is expected to track (e.g. 200 if your
- *                          SPA has ~200 distinct URL patterns).  Must be > 0.
+ *                          SPA has ~200 distinct URL patterns).  If this value
+ *                          is less than or equal to 0, it is clamped to 1.
  * @param falsePositiveRate Target false-positive probability expressed as a
- *                          float in the range (0, 1).  For example, pass
- *                          `0.01` for a 1 % false-positive rate.
+ *                          float ideally in the range (0, 1).  For example,
+ *                          pass `0.01` for a 1 % false-positive rate. Values
+ *                          less than or equal to 0 are clamped to `1e-10`, and
+ *                          values greater than or equal to 1 are clamped to
+ *                          `0.99`.
  * @returns `{ bitSize, hashCount, estimatedFpRate }` where `estimatedFpRate`
  *          is the actual FPR achieved after rounding `m` and `k` to integers.
  *

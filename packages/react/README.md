@@ -52,16 +52,16 @@ export function TrackingProvider({ children }: { children: React.ReactNode }) {
 All returned methods are stable across re-renders (`useCallback(…, [])`). Methods are no-ops
 before the first mount (SSR, Suspense, concurrent transitions) and after unmount.
 
-| Method              | Signature                                                             | Notes                                                |
-| ------------------- | --------------------------------------------------------------------- | ---------------------------------------------------- |
-| `track`             | `(event: string) => void`                                             | Records a page-view or custom event                  |
-| `on`                | `(event, handler) => () => void`                                      | Subscribe; call the returned function to unsubscribe |
-| `getTelemetry`      | `() => PassiveIntentTelemetry`                                        | Full engine snapshot                                 |
-| `predictNextStates` | `(threshold?, sanitize?) => { state: string; probability: number }[]` | Top-N Markov predictions                             |
-| `hasSeen`           | `(route: string) => boolean`                                          | Bloom filter membership test                         |
-| `incrementCounter`  | `(key: string, by?: number) => void`                                  | Exact session-scoped counter                         |
-| `getCounter`        | `(key: string) => number`                                             | Read a session-scoped counter                        |
-| `resetCounter`      | `(key: string) => void`                                               | Reset a session-scoped counter                       |
+| Method              | Signature                                                             | Notes                                                           |
+| ------------------- | --------------------------------------------------------------------- | --------------------------------------------------------------- |
+| `track`             | `(event: string) => void`                                             | Records a page-view or custom event                             |
+| `on`                | `(event, handler) => () => void`                                      | Subscribe; call the returned function to unsubscribe            |
+| `getTelemetry`      | `() => PassiveIntentTelemetry`                                        | Full engine snapshot                                            |
+| `predictNextStates` | `(threshold?, sanitize?) => { state: string; probability: number }[]` | Top-N Markov predictions                                        |
+| `hasSeen`           | `(route: string) => boolean`                                          | Bloom filter membership test                                    |
+| `incrementCounter`  | `(key: string, by?: number) => number`                                | Exact session-scoped counter; returns new value, `0` during SSR |
+| `getCounter`        | `(key: string) => number`                                             | Read a session-scoped counter                                   |
+| `resetCounter`      | `(key: string) => void`                                               | Reset a session-scoped counter                                  |
 
 ---
 

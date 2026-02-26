@@ -126,6 +126,30 @@ describe('usePassiveIntent', () => {
       expect(unsubscribe).toBe((instance.on as ReturnType<typeof vi.fn>).mock.results[0].value);
       unmount();
     });
+
+    it('incrementCounter() returns the value from the live instance', () => {
+      const { result, unmount } = renderHook(() => usePassiveIntent(BASE_CONFIG));
+      const instance = MockIM.mock.results[0].value as unknown as FakeInstance;
+
+      // makeFakeInstance() mocks incrementCounter to return 2
+      const returned = result.current.incrementCounter('articles_read', 1);
+
+      expect(instance.incrementCounter).toHaveBeenCalledWith('articles_read', 1);
+      expect(returned).toBe(2);
+      unmount();
+    });
+
+    it('incrementCounter() with custom increment returns the value from the live instance', () => {
+      const { result, unmount } = renderHook(() => usePassiveIntent(BASE_CONFIG));
+      const instance = MockIM.mock.results[0].value as unknown as FakeInstance;
+      (instance.incrementCounter as ReturnType<typeof vi.fn>).mockReturnValueOnce(7);
+
+      const returned = result.current.incrementCounter('clicks', 5);
+
+      expect(instance.incrementCounter).toHaveBeenCalledWith('clicks', 5);
+      expect(returned).toBe(7);
+      unmount();
+    });
   });
 
   // ── 2. SSR safety ──────────────────────────────────────────────────────────
@@ -182,11 +206,18 @@ describe('usePassiveIntent', () => {
       expect(result.current.getCounter('clicks')).toBe(0);
     });
 
-    it('incrementCounter() and resetCounter() are no-ops that do not throw', () => {
+    it('incrementCounter() returns 0 and does not throw after unmount (SSR-equivalent null state)', () => {
+      const { result, unmount } = renderHook(() => usePassiveIntent(BASE_CONFIG));
+      unmount(); // instanceRef.current is now null
+
+      const value = result.current.incrementCounter('x', 3);
+      expect(value).toBe(0);
+    });
+
+    it('resetCounter() is a no-op that does not throw after unmount', () => {
       const { result, unmount } = renderHook(() => usePassiveIntent(BASE_CONFIG));
       unmount();
 
-      expect(() => result.current.incrementCounter('x', 3)).not.toThrow();
       expect(() => result.current.resetCounter('x')).not.toThrow();
     });
   });
