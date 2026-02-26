@@ -71,5 +71,8 @@
     "clean": "node -e \"require('fs').rmSync('dist',{recursive:true,force:true})\"",
     "test:ci": "npm run lint && npm run build && npm run test:unit && npm run test:perf:assert",
     "verify:package": "npm run build && node scripts/verify-package.mjs"
+  },
+  "devDependencies": {
+    "c8": "^10.1.3"
   }
 }

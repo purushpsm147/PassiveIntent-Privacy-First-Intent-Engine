@@ -7,7 +7,7 @@
 
 # @passiveintent/core — PassiveIntent: A Privacy-First Intent Engine
 
-[![Coverage: 97%](https://img.shields.io/badge/coverage-97%25-brightgreen)](#run-tests)
+[![Coverage: 98%](https://img.shields.io/badge/coverage-98%25-brightgreen)](#run-tests)
 [![Bundle Size](https://img.shields.io/bundlephobia/minzip/@passiveintent/core)](https://bundlephobia.com/package/@passiveintent/core)
 [![Open in StackBlitz](https://developer.stackblitz.com/img/open_in_stackblitz_small.svg)](https://stackblitz.com/github/purushpsm147/PassiveIntent-Privacy-First-Intent-Engine)
 
