@@ -38,7 +38,9 @@ test('BloomFilter supports add/check and base64 round-trip', () => {
 });
 
 test('MarkovGraph calculates probabilities, entropy, and serialization', () => {
-  const graph = new MarkovGraph();
+  // smoothingAlpha: 0 — this test asserts exact frequentist probability values
+  // (count/total).  The Bayesian (alpha > 0) path is tested separately.
+  const graph = new MarkovGraph({ smoothingAlpha: 0 });
   graph.incrementTransition('A', 'B');
   graph.incrementTransition('A', 'C');
   graph.incrementTransition('A', 'B');
@@ -56,12 +58,16 @@ test('MarkovGraph calculates probabilities, entropy, and serialization', () => {
   const quantized = graph.getQuantizedProbability('A', 'B');
   assert.ok(Math.abs(quantized - 2 / 3) < 0.01);
 
-  const roundTripped = MarkovGraph.fromJSON(graph.toJSON());
+  // Pass smoothingAlpha: 0 explicitly so the round-tripped graph stays frequentist.
+  const roundTripped = MarkovGraph.fromJSON(graph.toJSON(), { smoothingAlpha: 0 });
   assert.equal(roundTripped.getProbability('A', 'B'), 2 / 3);
 });
 
 test('MarkovGraph computes trajectory likelihood with smoothing for unknown transitions', () => {
-  const baseline = new MarkovGraph();
+  // smoothingAlpha: 0 so P(B|A) = 1.0 and the epsilon fallback for unseen
+  // transitions (A→C) is exercised.  The Bayesian smoothing path is tested
+  // in the 'normalized entropy remains bounded' and benchmark tests.
+  const baseline = new MarkovGraph({ smoothingAlpha: 0 });
   baseline.incrementTransition('A', 'B');
 
   const knownOnly = MarkovGraph.logLikelihoodTrajectory(baseline, ['A', 'B']);
@@ -69,6 +75,22 @@ test('MarkovGraph computes trajectory likelihood with smoothing for unknown tran
 
   const unknownEdge = MarkovGraph.logLikelihoodTrajectory(baseline, ['A', 'C']);
   assert.equal(unknownEdge, Math.log(0.01));
+});
+
+test('MarkovGraph normalized entropy remains bounded in Bayesian smoothing mode', () => {
+  const graph = new MarkovGraph({ smoothingAlpha: 0.1 });
+
+  // Build a state vocabulary larger than the observed fan-out of A.
+  graph.incrementTransition('A', 'B');
+  graph.incrementTransition('A', 'B');
+  graph.incrementTransition('A', 'C');
+  graph.incrementTransition('X', 'Y');
+
+  const normalized = graph.normalizedEntropyForState('A');
+  assert.ok(
+    normalized >= 0 && normalized <= 1,
+    `normalizedEntropyForState must stay in [0, 1], got ${normalized}`,
+  );
 });
 
 test('trajectory likelihood scores structured paths higher than noisy paths under baseline model', () => {
@@ -2653,7 +2675,9 @@ test('track() auto-normalizes: plain semantic states are unchanged', () => {
 });
 
 test('MarkovGraph.getLikelyNextStates returns edges above the probability threshold', () => {
-  const graph = new MarkovGraph();
+  // smoothingAlpha: 0 to assert the exact frequentist probability (2/3).
+  // The threshold-filter behaviour is the same regardless of smoothing.
+  const graph = new MarkovGraph({ smoothingAlpha: 0 });
   graph.incrementTransition('/home', '/products');
   graph.incrementTransition('/home', '/products');
   graph.incrementTransition('/home', '/about');
@@ -2777,7 +2801,10 @@ test('BroadcastSync: MAX_STATE_LENGTH is 256', () => {
 });
 
 test('BroadcastSync.applyRemote updates graph and bloom without broadcasting', () => {
-  const graph = new MarkovGraph();
+  // smoothingAlpha: 0 — asserts that exactly one transition yields P = 1.0
+  // under frequentist math.  BroadcastSync receives a caller-owned graph;
+  // callers can pass any smoothingAlpha they need.
+  const graph = new MarkovGraph({ smoothingAlpha: 0 });
   const bloom = new BloomFilter({ bitSize: 256, hashCount: 3 });
   const sync = new BroadcastSync('passiveintent-test-applyremote', graph, bloom);
 
@@ -2821,7 +2848,9 @@ test('BroadcastSync: isValidSyncMessage rejects oversized state via applyRemote 
 test('BroadcastSync: valid remote transition is applied to graph and bloom', () => {
   const channelName = 'passiveintent-test-valid-transition';
 
-  const graph = new MarkovGraph();
+  // smoothingAlpha: 0 — with one transition the only valid frequentist
+  // assertion is P = 1.0; Bayesian smoothing would lower that to < 1.
+  const graph = new MarkovGraph({ smoothingAlpha: 0 });
   const bloom = new BloomFilter({ bitSize: 256, hashCount: 3 });
   const receiver = new BroadcastSync(channelName, graph, bloom);
 

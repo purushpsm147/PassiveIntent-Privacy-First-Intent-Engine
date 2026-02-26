@@ -21,6 +21,7 @@ _(Under the hood, it uses a highly-optimized sparse Markov graph and Bloom filte
 - **No Cookie Banners Required:** 100% local execution. No network requests, no PII sent to servers. Perfectly compliant with GDPR and CCPA.
 - **Sub-Millisecond Reactions:** Catch frustrated users _before_ they close the tab. Traditional analytics take minutes to process rage-clicks; PassiveIntent triggers in `< 2ms`.
 - **Detect True Hesitation:** Evaluates user reading speed and dwell-time anomalies dynamically, allowing you to trigger "Free Shipping" tooltips exactly when a user hesitates at checkout.
+- **Cold-Start Friendly Math:** Unlike brittle rule engines that overreact to brand-new users, PassiveIntent can apply Bayesian Laplace smoothing (`smoothingAlpha`) so Day-1 organic traffic is handled gracefully instead of being penalized by sparse-history spikes.
 - **Bot & Scraper Resilient:** Built-in `EntropyGuard` automatically detects impossibly fast or robotic click cadences, preventing bots from triggering your interventions.
 - **Zero Performance Hit:** Capped at 500 tracked states, compiles to a tiny 6 kB footprint, and uses dirty-flag persistence to skip unnecessary writes.
 - **SPA-Ready Lifecycle:** SSR-safe adapters and a clean `destroy()` API make it drop-in compatible with Next.js, Vue, Angular, and React Router.

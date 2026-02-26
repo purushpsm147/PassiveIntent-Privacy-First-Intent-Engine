@@ -129,6 +129,26 @@ export interface MarkovGraphConfig {
    * serialized payloads.  Default: 500.
    */
   maxStates?: number;
+  /**
+   * Dirichlet / Laplace smoothing pseudo-count added to every observed
+   * transition count when computing `P(to|from)`.
+   *
+   * Applies Bayesian smoothing:
+   *   `P = (count + alpha) / (total + alpha * k)`
+   * where `k` is the number of live states in the graph.
+   *
+   * This prevents cold-start 100 % probability spikes that otherwise
+   * trigger false `trajectory_anomaly` events in early sessions.
+   *
+   * - `alpha = 0` (default) — disables smoothing; falls back to exact
+   *                  frequentist math (`count / total`) with no performance
+   *                  cost.  All existing behavior is preserved.
+   * - `alpha = 0.1` — mild regularization; effective for typical navigation
+   *                  graphs with 5–50 states.  Recommended for production
+   *                  deployments where cold-start false positives are a concern.
+   * - `alpha = 1`  — full Laplace (add-one) smoothing.
+   */
+  smoothingAlpha?: number;
 }
 
 /**
@@ -188,6 +208,16 @@ export interface IntentManagerConfig {
    * both set, _this field wins_ (same merge rule as `baselineMeanLL` above).
    */
   baselineStdLL?: number;
+  /**
+   * Convenience alias for `graph.smoothingAlpha`.
+   *
+   * Dirichlet pseudo-count that regularizes transition probabilities during
+   * the cold-start phase.  `0` disables smoothing (default).
+   *
+   * **Precedence:** when both this field and `graph.smoothingAlpha` are set,
+   * _this field wins_.
+   */
+  smoothingAlpha?: number;
   /** localStorage key used to persist the Bloom filter and Markov graph. Default: `'passive-intent'`. */
   storageKey?: string;
   /** Debounce delay in ms before writing to storage after a `track()` call. Default: 2000. */

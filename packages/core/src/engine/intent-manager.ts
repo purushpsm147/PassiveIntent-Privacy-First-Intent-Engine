@@ -268,14 +268,15 @@ export class IntentManager {
     this.assignmentGroup = Math.random() * 100 < holdoutPct ? 'control' : 'treatment';
 
     // Merge baseline statistics: the top-level convenience aliases
-    // (config.baselineMeanLL / config.baselineStdLL) take precedence over the
-    // nested graph config equivalents.  Both paths are supported for backward
-    // compatibility — see IntentManagerConfig in types/events.ts for the full
-    // rationale and precedence documentation.
+    // (config.baselineMeanLL / config.baselineStdLL / config.smoothingAlpha) take
+    // precedence over the nested graph config equivalents.  Both paths are supported
+    // for backward compatibility — see IntentManagerConfig in types/events.ts for the
+    // full rationale and precedence documentation.
     const graphConfig: MarkovGraphConfig = {
       ...config.graph,
       baselineMeanLL: config.baselineMeanLL ?? config.graph?.baselineMeanLL,
       baselineStdLL: config.baselineStdLL ?? config.graph?.baselineStdLL,
+      smoothingAlpha: config.smoothingAlpha ?? config.graph?.smoothingAlpha,
     };
     const configuredSmoothing = graphConfig.smoothingEpsilon;
     this.trajectorySmoothingEpsilon =

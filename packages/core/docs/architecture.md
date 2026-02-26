@@ -157,6 +157,7 @@ All of this happens inside the user’s browser. No analytics endpoint. No finge
 | **Isomorphic adapters**       | Ship your own storage and timer implementations for testing, Redis, or any other backing store.                                                                                                                                                                                                                                |
 | **Dirty-flag persistence**    | `localStorage` writes only happen when state actually changed, eliminating jank on high-frequency routes.                                                                                                                                                                                                                      |
 | **Bounded memory growth**     | LFU pruning evicts the least-used 20 % of states when the graph exceeds `maxStates` (default: 500).                                                                                                                                                                                                                            |
+| **Cold-start smoothing**      | Unlike brittle rule engines that overreact to brand-new users, you can enable Bayesian Laplace smoothing (`smoothingAlpha`) so sparse Day-1 traffic is handled gracefully instead of being over-penalized by sparse-history spikes.                                                                                            |
 | **Bot-resilient**             | EntropyGuard detects impossibly-fast timing patterns and silently suppresses entropy/trajectory events for suspected bots, preventing discount abuse.                                                                                                                                                                          |
 | **Dwell-time anomaly**        | O(1) Welford’s online z-score per state — fires `dwell_time_anomaly` when a user lingers or rushes through a page anomalously.                                                                                                                                                                                                 |
 | **Selective bigrams**         | Optional second-order Markov transitions, frequency-gated and LFU-pruned. Only 18 bytes additional graph overhead at 50 states.                                                                                                                                                                                                |
@@ -889,6 +890,7 @@ interface IntentManagerConfig {
     baselineMeanLL?: number; // calibrated mean avg log-likelihood
     baselineStdLL?: number; // calibrated std dev of avg log-likelihood
     smoothingEpsilon?: number; // Laplace epsilon, default: 0.01
+    smoothingAlpha?: number; // Dirichlet pseudo-count, default: 0 (off)
     maxStates?: number; // LFU prune cap, default: 500
   };
 
@@ -909,6 +911,7 @@ interface IntentManagerConfig {
   // top-level alias takes precedence.
   baselineMeanLL?: number;
   baselineStdLL?: number;
+  smoothingAlpha?: number; // alias for graph.smoothingAlpha (same precedence)
 
   // Non-fatal structured error callback.
   // Receives a PassiveIntentError object — never an Error instance.
@@ -1505,6 +1508,14 @@ P(s_{t+1} = j \mid s_t = i) = \frac{c(i \to j)}{\displaystyle\sum_k c(i \to k)}
 $$
 
 where $c(i \to j)$ is the count of observed transitions from state $i$ to state $j$.
+
+When `smoothingAlpha > 0`, the graph uses Bayesian (Dirichlet/Laplace) smoothing:
+
+$$
+P(s_{t+1} = j \mid s_t = i) = \frac{c(i \to j) + \alpha}{\displaystyle\sum_k c(i \to k) + \alpha K}
+$$
+
+where $K$ is the number of live states and $\alpha$ is the pseudo-count. This avoids cold-start zero-probability cliffs that can otherwise over-penalize normal first-session traffic.
 
 **Sparse storage:**
 

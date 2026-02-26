@@ -77,6 +77,16 @@ export class MarkovGraph {
   readonly baselineMeanLL?: number;
   readonly baselineStdLL?: number;
   readonly maxStates: number;
+  /**
+   * Dirichlet / Laplace smoothing pseudo-count.
+   * When > 0, `getProbability` uses:
+   *   P = (count + alpha) / (total + alpha * k)
+   * where k = number of live states.  When 0 (default), falls back to
+   * exact frequentist math (count / total) with zero extra cost.
+   *
+   * Set to a value such as `0.1` to enable cold-start regularization.
+   */
+  readonly smoothingAlpha: number;
 
   constructor(config: MarkovGraphConfig = {}) {
     this.highEntropyThreshold = config.highEntropyThreshold ?? 0.75;
@@ -85,6 +95,7 @@ export class MarkovGraph {
     this.baselineMeanLL = config.baselineMeanLL;
     this.baselineStdLL = config.baselineStdLL;
     this.maxStates = config.maxStates ?? 500;
+    this.smoothingAlpha = config.smoothingAlpha ?? 0.1;
   }
 
   /**
@@ -123,7 +134,14 @@ export class MarkovGraph {
   }
 
   /**
-   * P(to|from) from live counts.
+   * P(to|from) from live counts, with optional Bayesian Laplace smoothing.
+   *
+   * When `smoothingAlpha > 0`:
+   *   P = (count + α) / (total + α × k)
+   * where k = live-state count (`stateToIndex.size`).
+   * α = 0 falls back to exact frequentist math with no overhead.
+   *
+   * No allocations are made during this call.
    */
   getProbability(fromState: string, toState: string): number {
     const from = this.stateToIndex.get(fromState);
@@ -133,12 +151,23 @@ export class MarkovGraph {
     const row = this.rows.get(from);
     if (!row || row.total === 0) return 0;
 
-    return (row.toCounts.get(to) ?? 0) / row.total;
+    const count = row.toCounts.get(to) ?? 0;
+    if (this.smoothingAlpha === 0) {
+      return count / row.total;
+    }
+    return (
+      (count + this.smoothingAlpha) / (row.total + this.smoothingAlpha * this.stateToIndex.size)
+    );
   }
 
   /**
    * Entropy H(i) = -Σ P(i->j) log P(i->j)
    * Returned entropy is in nats (natural log).
+   *
+   * When `smoothingAlpha > 0`, smoothed probabilities are used for ALL k
+   * states (observed + unobserved).  The contribution from the
+   * `(k - observed)` unobserved transitions is computed analytically —
+   * no temporary arrays are allocated.
    */
   entropyForState(state: string): number {
     const from = this.stateToIndex.get(state);
@@ -148,27 +177,58 @@ export class MarkovGraph {
     if (!row || row.total === 0) return 0;
 
     let entropy = 0;
-    row.toCounts.forEach((count) => {
-      const p = count / row.total;
-      if (p > 0) entropy -= p * Math.log(p);
-    });
+    if (this.smoothingAlpha === 0) {
+      row.toCounts.forEach((count) => {
+        const p = count / row.total;
+        if (p > 0) entropy -= p * Math.log(p);
+      });
+    } else {
+      const k = this.stateToIndex.size;
+      const denominator = row.total + this.smoothingAlpha * k;
+
+      // Observed transitions
+      row.toCounts.forEach((count) => {
+        const p = (count + this.smoothingAlpha) / denominator;
+        entropy -= p * Math.log(p);
+      });
+
+      // Unobserved transitions — computed analytically to avoid allocation
+      const numUnobserved = k - row.toCounts.size;
+      if (numUnobserved > 0) {
+        const pUnobserved = this.smoothingAlpha / denominator;
+        if (pUnobserved > 0) {
+          entropy -= numUnobserved * pUnobserved * Math.log(pUnobserved);
+        }
+      }
+    }
     return entropy;
   }
 
   /**
    * Normalized entropy in [0..1], dividing by max entropy ln(k)
-   * where k is number of outgoing edges.
+   * where k is the support size of the probability distribution.
+   *
+   * - Frequentist mode (`smoothingAlpha = 0`): k = observed outgoing edges.
+   * - Bayesian mode (`smoothingAlpha > 0`): k = live-state count, because
+   *   unobserved transitions receive non-zero mass.
    */
   normalizedEntropyForState(state: string): number {
     const from = this.stateToIndex.get(state);
     if (from === undefined) return 0;
 
     const row = this.rows.get(from);
-    if (!row || row.total === 0 || row.toCounts.size <= 1) return 0;
+    if (!row || row.total === 0) return 0;
+
+    const supportSize = this.smoothingAlpha > 0 ? this.stateToIndex.size : row.toCounts.size;
+    if (supportSize <= 1) return 0;
 
     const entropy = this.entropyForState(state);
-    const maxEntropy = Math.log(row.toCounts.size);
-    return maxEntropy > 0 ? entropy / maxEntropy : 0;
+    const maxEntropy = Math.log(supportSize);
+    if (maxEntropy <= 0) return 0;
+
+    // Bound to [0, 1] to preserve the documented normalized-entropy contract.
+    const normalized = entropy / maxEntropy;
+    return Math.min(1, Math.max(0, normalized));
   }
 
   /**
@@ -272,8 +332,17 @@ export class MarkovGraph {
     if (!row || row.total === 0) return [];
 
     const results: { state: string; probability: number }[] = [];
+    // Pre-compute smoothing denominator once — O(1), no allocation.
+    const denominator =
+      this.smoothingAlpha === 0
+        ? row.total
+        : row.total + this.smoothingAlpha * this.stateToIndex.size;
+
     row.toCounts.forEach((count, toIndex) => {
-      const probability = count / row.total;
+      const probability =
+        this.smoothingAlpha === 0
+          ? count / denominator
+          : (count + this.smoothingAlpha) / denominator;
       if (probability >= minProbability) {
         const label = this.indexToState[toIndex];
         if (label && label !== '') {

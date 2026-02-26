@@ -37,9 +37,14 @@ test('property: BloomFilter has no false negatives for inserted items across ran
 });
 
 test('property: outgoing Markov probabilities sum to ~1 for random transition counts', () => {
+  // smoothingAlpha: 0 (frequentist) — with Bayesian smoothing the sum over
+  // only the *observed* targets is < 1 because the remaining α/(denom) mass is
+  // distributed over all k live states, including unobserved ones.  The
+  // property holds: Σ_all_k P(j|from) = 1, but we only sum over the 5 targets
+  // here, so this test must stay in the zero-smoothing regime.
   for (let seed = 11; seed <= 20; seed += 1) {
     const rand = makeRng(seed);
-    const graph = new MarkovGraph();
+    const graph = new MarkovGraph({ smoothingAlpha: 0 });
 
     const from = 'FROM';
     const targets = ['A', 'B', 'C', 'D', 'E'];
