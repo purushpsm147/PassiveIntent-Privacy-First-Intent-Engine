@@ -29,6 +29,11 @@ You need a commercial license if **any** of the following apply:
 - You run PassiveIntent as part of a **network service** (SaaS, API, CDN edge) and you are **not** releasing your complete application source under AGPLv3.
 - You re-sell or white-label PassiveIntent as part of an analytics or AdTech platform.
 
+## Early Adopter Program
+
+First 200 companies receive a free Startup-tier license for Year 1.  
+Claim your spot by contacting us via email.
+
 ## What AGPLv3 permits for free
 
 - Open-source projects (any OSI-approved license) that publish their full source code.
