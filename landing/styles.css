@@ -217,7 +217,9 @@ nav a:hover {
 }
 
 .metric-grid,
-.integration-grid {
+.integration-grid,
+.story-grid,
+.step-grid {
   margin-top: 20px;
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
@@ -234,6 +236,45 @@ nav a:hover {
   border: 1px solid var(--border);
   background: linear-gradient(160deg, rgba(255, 255, 255, 0.05), rgba(255, 255, 255, 0.02));
   border-radius: var(--radius);
+}
+
+.story-card,
+.step-card {
+  padding: 18px;
+  border: 1px solid var(--border);
+  background: linear-gradient(160deg, rgba(255, 255, 255, 0.05), rgba(255, 255, 255, 0.02));
+  border-radius: var(--radius);
+}
+
+.story-card h3,
+.step-card h3 {
+  margin-top: 0;
+  margin-bottom: 8px;
+}
+
+.story-card p,
+.step-card p {
+  margin: 0;
+  color: var(--muted);
+}
+
+.story-card.highlighted {
+  border-color: rgba(86, 226, 240, 0.65);
+  box-shadow: 0 14px 40px rgba(0, 0, 0, 0.3);
+}
+
+.step-number {
+  width: 26px;
+  height: 26px;
+  border-radius: 999px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-family: 'IBM Plex Mono', monospace;
+  font-size: 0.82rem;
+  color: #041221;
+  background: linear-gradient(135deg, #56e2f0, #7eb3ff);
+  margin-bottom: 12px;
 }
 
 .metric-card h3,
@@ -284,6 +325,30 @@ nav a:hover {
   margin-top: 10px;
   color: var(--secondary);
   font-size: 0.9rem;
+}
+
+.cta-band {
+  border: 1px solid rgba(86, 226, 240, 0.45);
+  background:
+    radial-gradient(circle at 82% 20%, rgba(86, 226, 240, 0.18), transparent 30%),
+    linear-gradient(165deg, rgba(14, 29, 63, 0.95), rgba(13, 25, 54, 0.95));
+  border-radius: var(--radius);
+  padding: clamp(20px, 4vw, 30px);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+}
+
+.cta-band h2 {
+  margin: 0;
+  font-size: clamp(1.35rem, 2.8vw, 2rem);
+}
+
+.cta-actions {
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
 }
 
 .card h3 {
@@ -432,10 +497,17 @@ details p {
   .hero-grid,
   .metric-grid,
   .integration-grid,
+  .story-grid,
+  .step-grid,
   .pricing-grid,
   .cards,
   .code-section {
     grid-template-columns: 1fr;
+  }
+
+  .cta-band {
+    flex-direction: column;
+    align-items: flex-start;
   }
 
   .site-footer {
