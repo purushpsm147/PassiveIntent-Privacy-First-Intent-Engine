@@ -32,7 +32,7 @@ You need a commercial license if **any** of the following apply:
 ## Early Adopter Program
 
 First 200 companies receive a free Startup-tier license for Year 1.  
-[Claim your spot here](https://forms.google.com/...) ← link to a Google Form (I'll update it later)
+Claim your spot by contacting us via email.
 
 ## What AGPLv3 permits for free
 
