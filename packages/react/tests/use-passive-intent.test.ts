@@ -6,7 +6,7 @@
  */
 
 /**
- * @fileoverview Unit tests for the useEdgeSignal hook.
+ * @fileoverview Unit tests for the usePassiveIntent hook.
  *
  * Five critical lifecycle contracts tested here:
  *   1. Instance creation and cleanup in useEffect
@@ -17,17 +17,17 @@
  */
 
 // vi.mock is hoisted before any imports by Vite/Vitest's transform, so
-// `@edgesignal/core` will be mocked before `useEdgeSignal` is evaluated.
+// `@passiveintent/core` will be mocked before `usePassiveIntent` is evaluated.
 import { vi, describe, it, expect, beforeEach } from 'vitest';
 import { renderHook } from '@testing-library/react';
 import React from 'react';
 
-vi.mock('@edgesignal/core', () => ({
+vi.mock('@passiveintent/core', () => ({
   IntentManager: vi.fn(),
 }));
 
-import { useEdgeSignal } from '../src/index';
-import { IntentManager } from '@edgesignal/core';
+import { usePassiveIntent } from '../src/index';
+import { IntentManager } from '@passiveintent/core';
 
 const MockIM = vi.mocked(IntentManager);
 
@@ -70,7 +70,7 @@ const BASE_CONFIG = { storageKey: 'test-key' };
 
 // ── Test suite ────────────────────────────────────────────────────────────────
 
-describe('useEdgeSignal', () => {
+describe('usePassiveIntent', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     MockIM.mockImplementation(
@@ -82,14 +82,14 @@ describe('useEdgeSignal', () => {
 
   describe('1 — lifecycle: instance creation and cleanup', () => {
     it('constructs exactly one IntentManager on mount', () => {
-      const { unmount } = renderHook(() => useEdgeSignal(BASE_CONFIG));
+      const { unmount } = renderHook(() => usePassiveIntent(BASE_CONFIG));
       expect(MockIM).toHaveBeenCalledTimes(1);
       expect(MockIM).toHaveBeenCalledWith(BASE_CONFIG);
       unmount();
     });
 
     it('calls destroy() exactly once on unmount', () => {
-      const { unmount } = renderHook(() => useEdgeSignal(BASE_CONFIG));
+      const { unmount } = renderHook(() => usePassiveIntent(BASE_CONFIG));
       // mock.results[N].value is the object returned by mockImplementation(),
       // i.e. the FakeInstance. mock.instances[N] is the `this` context of the
       // constructor call, which is a different (empty) object.
@@ -102,7 +102,7 @@ describe('useEdgeSignal', () => {
     });
 
     it('delegates track() calls to the live instance', () => {
-      const { result, unmount } = renderHook(() => useEdgeSignal(BASE_CONFIG));
+      const { result, unmount } = renderHook(() => usePassiveIntent(BASE_CONFIG));
       const instance = MockIM.mock.results[0].value as unknown as FakeInstance;
 
       result.current.track('/home');
@@ -115,7 +115,7 @@ describe('useEdgeSignal', () => {
     });
 
     it('delegates on() to the instance and returns the unsubscribe fn from it', () => {
-      const { result, unmount } = renderHook(() => useEdgeSignal(BASE_CONFIG));
+      const { result, unmount } = renderHook(() => usePassiveIntent(BASE_CONFIG));
       const instance = MockIM.mock.results[0].value as unknown as FakeInstance;
 
       const listener = vi.fn();
@@ -139,14 +139,14 @@ describe('useEdgeSignal', () => {
      * (`instanceRef.current?.method()`) so the contracts are identical.
      */
     it('track() is a no-op and does not throw after unmount (SSR-equivalent null state)', () => {
-      const { result, unmount } = renderHook(() => useEdgeSignal(BASE_CONFIG));
+      const { result, unmount } = renderHook(() => usePassiveIntent(BASE_CONFIG));
       unmount(); // instanceRef.current is now null
 
       expect(() => result.current.track('/page')).not.toThrow();
     });
 
     it('on() returns a callable NOOP_UNSUBSCRIBE and does not throw', () => {
-      const { result, unmount } = renderHook(() => useEdgeSignal(BASE_CONFIG));
+      const { result, unmount } = renderHook(() => usePassiveIntent(BASE_CONFIG));
       unmount();
 
       const unsub = result.current.on('high_entropy', vi.fn());
@@ -155,35 +155,35 @@ describe('useEdgeSignal', () => {
     });
 
     it('getTelemetry() returns an empty object', () => {
-      const { result, unmount } = renderHook(() => useEdgeSignal(BASE_CONFIG));
+      const { result, unmount } = renderHook(() => usePassiveIntent(BASE_CONFIG));
       unmount();
 
       expect(result.current.getTelemetry()).toEqual({});
     });
 
     it('predictNextStates() returns an empty array', () => {
-      const { result, unmount } = renderHook(() => useEdgeSignal(BASE_CONFIG));
+      const { result, unmount } = renderHook(() => usePassiveIntent(BASE_CONFIG));
       unmount();
 
       expect(result.current.predictNextStates()).toEqual([]);
     });
 
     it('hasSeen() returns false', () => {
-      const { result, unmount } = renderHook(() => useEdgeSignal(BASE_CONFIG));
+      const { result, unmount } = renderHook(() => usePassiveIntent(BASE_CONFIG));
       unmount();
 
       expect(result.current.hasSeen('/any')).toBe(false);
     });
 
     it('getCounter() returns 0', () => {
-      const { result, unmount } = renderHook(() => useEdgeSignal(BASE_CONFIG));
+      const { result, unmount } = renderHook(() => usePassiveIntent(BASE_CONFIG));
       unmount();
 
       expect(result.current.getCounter('clicks')).toBe(0);
     });
 
     it('incrementCounter() and resetCounter() are no-ops that do not throw', () => {
-      const { result, unmount } = renderHook(() => useEdgeSignal(BASE_CONFIG));
+      const { result, unmount } = renderHook(() => usePassiveIntent(BASE_CONFIG));
       unmount();
 
       expect(() => result.current.incrementCounter('x', 3)).not.toThrow();
@@ -204,7 +204,7 @@ describe('useEdgeSignal', () => {
      *   - The live instance is destroyed exactly once when the hook unmounts.
      */
     it('every non-live instance is destroyed; live instance destroyed on unmount', () => {
-      const { unmount } = renderHook(() => useEdgeSignal(BASE_CONFIG), {
+      const { unmount } = renderHook(() => usePassiveIntent(BASE_CONFIG), {
         wrapper: ({ children }) => React.createElement(React.StrictMode, null, children),
       });
 
@@ -228,7 +228,7 @@ describe('useEdgeSignal', () => {
     });
 
     it('the live instance correctly handles track() after rendering in StrictMode', () => {
-      const { result, unmount } = renderHook(() => useEdgeSignal(BASE_CONFIG), {
+      const { result, unmount } = renderHook(() => usePassiveIntent(BASE_CONFIG), {
         wrapper: ({ children }) => React.createElement(React.StrictMode, null, children),
       });
 
@@ -254,7 +254,7 @@ describe('useEdgeSignal', () => {
      */
     it('returns the same function references across re-renders', () => {
       const { result, rerender, unmount } = renderHook(
-        ({ key }) => useEdgeSignal({ storageKey: key }),
+        ({ key }) => usePassiveIntent({ storageKey: key }),
         { initialProps: { key: 'alpha' } },
       );
 
@@ -287,7 +287,7 @@ describe('useEdgeSignal', () => {
 
     it('stable callbacks still call through to the live instance after re-render', () => {
       const { result, rerender, unmount } = renderHook(
-        ({ key }) => useEdgeSignal({ storageKey: key }),
+        ({ key }) => usePassiveIntent({ storageKey: key }),
         { initialProps: { key: 'alpha' } },
       );
 
@@ -315,7 +315,7 @@ describe('useEdgeSignal', () => {
      * (e.g. change its `key` prop).
      */
     it('does not recreate the instance when the config object reference changes', () => {
-      const { rerender, unmount } = renderHook(({ cfg }) => useEdgeSignal(cfg), {
+      const { rerender, unmount } = renderHook(({ cfg }) => usePassiveIntent(cfg), {
         initialProps: { cfg: { storageKey: 'test' } },
       });
 
@@ -330,7 +330,7 @@ describe('useEdgeSignal', () => {
     });
 
     it('does not recreate the instance when config values change', () => {
-      const { rerender, unmount } = renderHook(({ cfg }) => useEdgeSignal(cfg), {
+      const { rerender, unmount } = renderHook(({ cfg }) => usePassiveIntent(cfg), {
         initialProps: { cfg: { storageKey: 'test' } },
       });
 
@@ -344,7 +344,7 @@ describe('useEdgeSignal', () => {
     });
 
     it('never calls destroy() between re-renders (no remount occurred)', () => {
-      const { rerender, unmount } = renderHook(({ cfg }) => useEdgeSignal(cfg), {
+      const { rerender, unmount } = renderHook(({ cfg }) => usePassiveIntent(cfg), {
         initialProps: { cfg: { storageKey: 'test' } },
       });
 
@@ -362,7 +362,7 @@ describe('useEdgeSignal', () => {
 
     it('uses the initial config (not the latest) when creating the instance', () => {
       const initialConfig = { storageKey: 'initial' };
-      const { unmount } = renderHook(() => useEdgeSignal(initialConfig));
+      const { unmount } = renderHook(() => usePassiveIntent(initialConfig));
 
       // Only called once, with the initial config
       expect(MockIM).toHaveBeenCalledTimes(1);

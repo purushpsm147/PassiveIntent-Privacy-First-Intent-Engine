@@ -26,7 +26,7 @@ const baseline: SerializedMarkovGraph = {
 };
 
 const intentManager = new IntentManager({
-  storageKey: 'edge-signal',
+  storageKey: 'passive-intent',
   persistDebounceMs: 500,
   graph: {
     highEntropyThreshold: 0.8,
@@ -87,7 +87,7 @@ routes.addEventListener('click', (event: Event) => {
 (
   window as typeof window & {
     __intentManager?: IntentManager;
-    __EdgeSignalSDK?: {
+    __PassiveIntentSDK?: {
       IntentManager: typeof IntentManager;
       BloomFilter: typeof BloomFilter;
       MarkovGraph: typeof MarkovGraph;
@@ -97,7 +97,7 @@ routes.addEventListener('click', (event: Event) => {
   }
 ).__intentManager = intentManager;
 
-(window as any).__EdgeSignalSDK = {
+(window as any).__PassiveIntentSDK = {
   IntentManager,
   BloomFilter,
   MarkovGraph,

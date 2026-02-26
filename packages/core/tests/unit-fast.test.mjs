@@ -246,7 +246,7 @@ test("IntentManager.track('') is a no-op and surfaces a non-fatal error via onEr
   // track('') must not throw — host app must not crash
   assert.doesNotThrow(() => manager.track(''));
 
-  // onError must be called with the structured EdgeSignalError contract
+  // onError must be called with the structured PassiveIntentError contract
   assert.equal(errors.length, 1);
   assert.equal(
     errors[0].code,
@@ -2779,7 +2779,7 @@ test('BroadcastSync: MAX_STATE_LENGTH is 256', () => {
 test('BroadcastSync.applyRemote updates graph and bloom without broadcasting', () => {
   const graph = new MarkovGraph();
   const bloom = new BloomFilter({ bitSize: 256, hashCount: 3 });
-  const sync = new BroadcastSync('edgesignal-test-applyremote', graph, bloom);
+  const sync = new BroadcastSync('passiveintent-test-applyremote', graph, bloom);
 
   sync.applyRemote('/home', '/products');
 
@@ -2793,7 +2793,7 @@ test('BroadcastSync.applyRemote updates graph and bloom without broadcasting', (
 test('BroadcastSync: isValidSyncMessage rejects oversized state via applyRemote bypass', () => {
   // We test the validation indirectly through handleMessage by posting an oversized payload.
   // Create two channels on the same name so one can receive from the other.
-  const channelName = 'edgesignal-test-validation';
+  const channelName = 'passiveintent-test-validation';
 
   const graph = new MarkovGraph();
   const bloom = new BloomFilter({ bitSize: 256, hashCount: 3 });
@@ -2819,7 +2819,7 @@ test('BroadcastSync: isValidSyncMessage rejects oversized state via applyRemote 
 });
 
 test('BroadcastSync: valid remote transition is applied to graph and bloom', () => {
-  const channelName = 'edgesignal-test-valid-transition';
+  const channelName = 'passiveintent-test-valid-transition';
 
   const graph = new MarkovGraph();
   const bloom = new BloomFilter({ bitSize: 256, hashCount: 3 });
@@ -2841,7 +2841,7 @@ test('BroadcastSync: valid remote transition is applied to graph and bloom', () 
 });
 
 test('BroadcastSync: malformed payload (missing type) is silently dropped', () => {
-  const channelName = 'edgesignal-test-malformed';
+  const channelName = 'passiveintent-test-malformed';
 
   const graph = new MarkovGraph();
   const bloom = new BloomFilter({ bitSize: 256, hashCount: 3 });
@@ -2861,7 +2861,7 @@ test('BroadcastSync: malformed payload (missing type) is silently dropped', () =
 });
 
 test('BroadcastSync: empty from/to is rejected', () => {
-  const channelName = 'edgesignal-test-empty-states';
+  const channelName = 'passiveintent-test-empty-states';
 
   const graph = new MarkovGraph();
   const bloom = new BloomFilter({ bitSize: 256, hashCount: 3 });
@@ -2882,7 +2882,7 @@ test('BroadcastSync: empty from/to is rejected', () => {
 });
 
 test('BroadcastSync: non-object payload is silently dropped', () => {
-  const channelName = 'edgesignal-test-nonobject';
+  const channelName = 'passiveintent-test-nonobject';
 
   const graph = new MarkovGraph();
   const bloom = new BloomFilter({ bitSize: 256, hashCount: 3 });
@@ -2921,7 +2921,7 @@ test('IntentManager: crossTabSync:true creates active BroadcastSync channel', ()
 test('IntentManager: crossTabSync:false (default) does not broadcast', () => {
   storage.clear();
   // Create a receiver watching the channel that would be used if crossTabSync were enabled
-  const channelName = 'edgesignal-sync:cross-tab-off';
+  const channelName = 'passiveintent-sync:cross-tab-off';
   const received = [];
   const listener = new BroadcastChannel(channelName);
   listener.onmessage = (e) => received.push(e.data);
@@ -2952,7 +2952,7 @@ test('IntentManager: crossTabSync:false (default) does not broadcast', () => {
 
 test('IntentManager: crossTabSync broadcasts transitions from non-bot sessions', () => {
   storage.clear();
-  const channelName = 'edgesignal-sync:cross-tab-broadcast';
+  const channelName = 'passiveintent-sync:cross-tab-broadcast';
   const received = [];
   const listener = new BroadcastChannel(channelName);
   listener.onmessage = (e) => received.push(e.data);
@@ -2985,7 +2985,7 @@ test('BroadcastSync.applyRemoteCounter increments the shared counters Map', () =
   const graph = new MarkovGraph();
   const bloom = new BloomFilter({ bitSize: 256, hashCount: 3 });
   const counters = new Map();
-  const sync = new BroadcastSync('edgesignal-test-counter-apply', graph, bloom, counters);
+  const sync = new BroadcastSync('passiveintent-test-counter-apply', graph, bloom, counters);
 
   sync.applyRemoteCounter('articles_read', 3);
   assert.equal(counters.get('articles_read'), 3, 'first applyRemoteCounter sets the value');
@@ -3000,7 +3000,7 @@ test('BroadcastSync.applyRemoteCounter increments the shared counters Map', () =
 });
 
 test('BroadcastSync counter message is delivered and applied via BroadcastChannel', () => {
-  const channelName = 'edgesignal-test-counter-channel';
+  const channelName = 'passiveintent-test-counter-channel';
 
   const graph = new MarkovGraph();
   const bloom = new BloomFilter({ bitSize: 256, hashCount: 3 });
@@ -3021,7 +3021,7 @@ test('BroadcastSync counter message is delivered and applied via BroadcastChanne
 });
 
 test('BroadcastSync: counter message with oversized key is silently dropped', () => {
-  const channelName = 'edgesignal-test-counter-oversize';
+  const channelName = 'passiveintent-test-counter-oversize';
 
   const graph = new MarkovGraph();
   const bloom = new BloomFilter({ bitSize: 256, hashCount: 3 });
@@ -3043,7 +3043,7 @@ test('BroadcastSync: counter message with oversized key is silently dropped', ()
 });
 
 test('BroadcastSync: counter message with empty key is silently dropped', () => {
-  const channelName = 'edgesignal-test-counter-emptykey';
+  const channelName = 'passiveintent-test-counter-emptykey';
 
   const graph = new MarkovGraph();
   const bloom = new BloomFilter({ bitSize: 256, hashCount: 3 });
@@ -3064,7 +3064,7 @@ test('BroadcastSync: counter message with empty key is silently dropped', () => 
 });
 
 test('BroadcastSync: counter message with non-finite by is silently dropped', () => {
-  const channelName = 'edgesignal-test-counter-nonfinite';
+  const channelName = 'passiveintent-test-counter-nonfinite';
 
   const graph = new MarkovGraph();
   const bloom = new BloomFilter({ bitSize: 256, hashCount: 3 });
@@ -3086,7 +3086,7 @@ test('BroadcastSync: counter message with non-finite by is silently dropped', ()
 
 test('IntentManager: incrementCounter broadcasts counter message when crossTabSync:true', () => {
   storage.clear();
-  const channelName = 'edgesignal-sync:cross-tab-counter-broadcast';
+  const channelName = 'passiveintent-sync:cross-tab-counter-broadcast';
   const received = [];
   const listener = new BroadcastChannel(channelName);
   listener.onmessage = (e) => received.push(e.data);
@@ -3120,7 +3120,7 @@ test('IntentManager: incrementCounter broadcasts counter message when crossTabSy
 
 test('IntentManager: incrementCounter does not broadcast when crossTabSync:false', () => {
   storage.clear();
-  const channelName = 'edgesignal-sync:cross-tab-counter-off';
+  const channelName = 'passiveintent-sync:cross-tab-counter-off';
   const received = [];
   const listener = new BroadcastChannel(channelName);
   listener.onmessage = (e) => received.push(e.data);
@@ -3161,7 +3161,7 @@ test('IntentManager: remote counter increment from another tab is reflected in g
   });
 
   // Simulate "Tab B" by directly broadcasting a counter message on the same channel
-  const channelName = 'edgesignal-sync:cross-tab-counter-receive';
+  const channelName = 'passiveintent-sync:cross-tab-counter-receive';
   const sender = new BroadcastChannel(channelName);
   sender.postMessage({ type: 'counter', key: 'articles_read', by: 7 });
 
@@ -3414,7 +3414,7 @@ test('IntentManager async persist: isDirty restored on error, onError is called'
 
   manager.destroy();
 });
-// ─── onError — EdgeSignalError structured contract ───────────────────────────
+// ─── onError — PassiveIntentError structured contract ───────────────────────────
 
 test('onError: sync persist emits QUOTA_EXCEEDED code on QuotaExceededError', () => {
   const quotaError = new DOMException('QuotaExceededError mock', 'QuotaExceededError');

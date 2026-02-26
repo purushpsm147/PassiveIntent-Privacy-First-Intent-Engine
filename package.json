@@ -1,5 +1,5 @@
 {
-  "name": "edgesignal-monorepo",
+  "name": "passiveintent-monorepo",
   "private": true,
   "workspaces": [
     "packages/*"

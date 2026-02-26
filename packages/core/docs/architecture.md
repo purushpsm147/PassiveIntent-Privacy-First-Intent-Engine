@@ -5,27 +5,27 @@
   LICENSE file in the root directory of this source tree.
 -->
 
-# EdgeSignal — Documentation
+# PassiveIntent — Documentation
 
-> **EdgeSignal** — the privacy-first, on-device behavioral intent engine built for B2B SaaS retention. Detect frustrated navigation in **< 2 milliseconds** — locally, with zero data egress, no server round-trips, and no GDPR exposure.
+> **PassiveIntent** — the privacy-first, on-device behavioral intent engine built for B2B SaaS retention. Detect frustrated navigation in **< 2 milliseconds** — locally, with zero data egress, no server round-trips, and no GDPR exposure.
 
-[![npm version](https://img.shields.io/badge/npm-coming%20soon-lightgrey)](https://github.com/purushpsm147/EdgeSignal-Privacy-First-Intent-Engine)
+[![npm version](https://img.shields.io/badge/npm-coming%20soon-lightgrey)](https://github.com/purushpsm147/PassiveIntent-Privacy-First-Intent-Engine)
 [![License: AGPL-3.0-only](https://img.shields.io/badge/license-AGPL--3.0--only-blue.svg)](../LICENSE)
 [![TypeScript](https://img.shields.io/badge/TypeScript-5.6-3178c6.svg)](https://www.typescriptlang.org/)
-[![Privacy: Zero Egress](https://img.shields.io/badge/privacy-zero--egress-brightgreen)](https://github.com/purushpsm147/EdgeSignal-Privacy-First-Intent-Engine#privacy--gdpr-compliance)
-[![GDPR: No Personal Data](https://img.shields.io/badge/GDPR-no%20personal%20data-brightgreen)](https://github.com/purushpsm147/EdgeSignal-Privacy-First-Intent-Engine#privacy--gdpr-compliance)
+[![Privacy: Zero Egress](https://img.shields.io/badge/privacy-zero--egress-brightgreen)](https://github.com/purushpsm147/PassiveIntent-Privacy-First-Intent-Engine#privacy--gdpr-compliance)
+[![GDPR: No Personal Data](https://img.shields.io/badge/GDPR-no%20personal%20data-brightgreen)](https://github.com/purushpsm147/PassiveIntent-Privacy-First-Intent-Engine#privacy--gdpr-compliance)
 
 Traditional behavioral analytics platforms funnel every click, scroll, and rage-click to a remote server — introducing latency, compliance overhead, and a permanently growing data liability. By the time a heatmap vendor has processed a user's frustrated navigation on your `/billing` page, that user has already churned.
 
-EdgeSignal takes the opposite approach. It is a tiny, tree-shakeable TypeScript SDK that runs the entire intent model **inside the user's browser**. It detects anomalous navigation — high-entropy wandering, trajectory divergence, dwell-time spikes — in under 2 milliseconds per `track()` call, with zero network overhead. When a B2B user starts exhibiting churn signals on your `/settings` or `/billing` pages, EdgeSignal can fire a Zendesk or Intercom support widget **before they close the tab** — not minutes later in a dashboard. It works in browsers, Node.js, Deno, Bun, Edge Workers, and SSR frameworks.
+PassiveIntent takes the opposite approach. It is a tiny, tree-shakeable TypeScript SDK that runs the entire intent model **inside the user's browser**. It detects anomalous navigation — high-entropy wandering, trajectory divergence, dwell-time spikes — in under 2 milliseconds per `track()` call, with zero network overhead. When a B2B user starts exhibiting churn signals on your `/settings` or `/billing` pages, PassiveIntent can fire a Zendesk or Intercom support widget **before they close the tab** — not minutes later in a dashboard. It works in browsers, Node.js, Deno, Bun, Edge Workers, and SSR frameworks.
 
-**The core privacy guarantee:** EdgeSignal processes no personal data. It never observes who the user is — only the anonymous sequence of state labels your application explicitly provides. Because no personal data ever leaves the device, EdgeSignal falls outside the primary scope of GDPR data processing obligations and requires no consent banner, no cookie notice, no Data Processing Agreement, and no server-side data deletion workflow.
+**The core privacy guarantee:** PassiveIntent processes no personal data. It never observes who the user is — only the anonymous sequence of state labels your application explicitly provides. Because no personal data ever leaves the device, PassiveIntent falls outside the primary scope of GDPR data processing obligations and requires no consent banner, no cookie notice, no Data Processing Agreement, and no server-side data deletion workflow.
 
 ---
 
 ## Table of Contents
 
-1. [EdgeSignal vs. Native Edge AI (The Anti-Creepy Intent Engine)](#edgesignal-vs-native-edge-ai-the-anti-creepy-intent-engine)
+1. [PassiveIntent vs. Native Edge AI (The Anti-Creepy Intent Engine)](#passiveintent-vs-native-edge-ai-the-anti-creepy-intent-engine)
 2. [What It Is](#what-it-is)
 3. [Strengths](#strengths)
 4. [Known Limitations](#known-limitations)
@@ -72,22 +72,22 @@ EdgeSignal takes the opposite approach. It is a tiny, tree-shakeable TypeScript 
 - [GDPR Article Mapping](#gdpr-article-mapping)
 - [No Consent Required](#no-consent-required)
 - [CCPA / ePrivacy](#ccpa--eprivacy)
-- [EdgeSignal vs. Traditional Analytics](#edgesignal-vs-traditional-analytics)
+- [PassiveIntent vs. Traditional Analytics](#passiveintent-vs-traditional-analytics)
 - [Privacy-Preserving Intent Decay](#privacy-preserving-intent-decay)
 
 15. [License](#license)
 
 ---
 
-## EdgeSignal vs. Native Edge AI (The Anti-Creepy Intent Engine)
+## PassiveIntent vs. Native Edge AI (The Anti-Creepy Intent Engine)
 
-> **Product positioning:** EdgeSignal is not a lighter version of a black-box behavioral AI platform. It is an architecturally different category of tool — built from first principles around auditability, explicit consent avoidance, and a minimal device footprint.
+> **Product positioning:** PassiveIntent is not a lighter version of a black-box behavioral AI platform. It is an architecturally different category of tool — built from first principles around auditability, explicit consent avoidance, and a minimal device footprint.
 
 ### Explainable Math vs. Black-Box AI
 
 Competing intent platforms rely on opaque neural models trained on aggregated population data. Their output is a score or segment label with no human-readable explanation of how it was produced. This creates compliance risk: if a user asks "why did you show me this offer?", the platform cannot answer in plain language.
 
-EdgeSignal uses only **transparent, auditable algorithms**:
+PassiveIntent uses only **transparent, auditable algorithms**:
 
 | Algorithm                         | What it does                                             | How a compliance officer can audit it                                                         |
 | --------------------------------- | -------------------------------------------------------- | --------------------------------------------------------------------------------------------- |
@@ -96,18 +96,18 @@ EdgeSignal uses only **transparent, auditable algorithms**:
 | **Welford online z-score**        | Measures whether dwell time is anomalously long or short | Formula is O(1) and published in every statistics textbook                                    |
 | **Shannon entropy**               | Quantifies navigation randomness                         | A one-line formula: $H = -\sum p_i \log p_i$                                                  |
 
-Because every inference step is deterministic math with integer inputs, a compliance officer can reproduce any EdgeSignal decision on paper, given the stored graph. No black box. No population model. No proprietary weights.
+Because every inference step is deterministic math with integer inputs, a compliance officer can reproduce any PassiveIntent decision on paper, given the stored graph. No black box. No population model. No proprietary weights.
 
 ### Explicit In-App Action Tracking vs. Background Sensor Harvesting
 
 Some native mobile SDK competitors harvest OS-level sensor data — accelerometer readings, background app usage, ambient light levels, or inter-app navigation events — to build a behavioral profile without the user's awareness.
 
-**EdgeSignal does none of this.** Specifically:
+**PassiveIntent does none of this.** Specifically:
 
-- **No OS permissions are requested.** EdgeSignal is a bundled JavaScript library. It never calls `navigator.permissions.request()`, `DeviceMotionEvent`, or any platform permission API.
+- **No OS permissions are requested.** PassiveIntent is a bundled JavaScript library. It never calls `navigator.permissions.request()`, `DeviceMotionEvent`, or any platform permission API.
 - **No accelerometer or sensor data is read.** The SDK has no code path that accesses `DeviceMotionEvent`, `DeviceOrientationEvent`, `Gyroscope`, `Accelerometer`, or any Web Sensors API.
-- **No background app usage is monitored.** EdgeSignal has no service worker, no background sync registration, and no push subscription. It is inert when the tab is not in focus (the dwell timer pauses automatically when `document.hidden === true`).
-- **Intent is inferred solely from the user's explicit journey through your application.** Every data point is a state label your application code explicitly passes to `intent.track()`. If your code doesn't call `track()`, EdgeSignal knows nothing.
+- **No background app usage is monitored.** PassiveIntent has no service worker, no background sync registration, and no push subscription. It is inert when the tab is not in focus (the dwell timer pauses automatically when `document.hidden === true`).
+- **Intent is inferred solely from the user's explicit journey through your application.** Every data point is a state label your application code explicitly passes to `intent.track()`. If your code doesn't call `track()`, PassiveIntent knows nothing.
 
 This is not a limitation — it is the design. Users cannot be profiled without their application explicitly opting in to each tracked state.
 
@@ -115,20 +115,20 @@ This is not a limitation — it is the design. Users cannot be profiled without 
 
 Native edge AI SDKs typically require platform-specific binary dependencies (iOS CocoaPod, Android AAR), background entitlements, and multi-megabyte model files downloaded at runtime.
 
-EdgeSignal ships as a single **≈ 6 kB gzip tree-shakeable ESM module** with zero runtime dependencies. It works identically in:
+PassiveIntent ships as a single **≈ 6 kB gzip tree-shakeable ESM module** with zero runtime dependencies. It works identically in:
 
 - **Web browsers** (Chrome, Firefox, Safari, Edge) — no install prompt, no permission dialog, no app store review
 - **SSR frameworks** (Next.js, Nuxt, Remix, SvelteKit) — via `MemoryStorageAdapter`, no `typeof window` guard required
 - **Edge runtimes** (Cloudflare Workers, Deno Deploy, Vercel Edge) — pure JavaScript, no Node.js built-ins
 - **Node.js and Bun** — works out of the box for server-side behavioral modeling
 
-There is no native SDK to integrate, no background entitlement to justify, and no app store policy to navigate. A developer can add EdgeSignal to a production Next.js application in under five minutes.
+There is no native SDK to integrate, no background entitlement to justify, and no app store policy to navigate. A developer can add PassiveIntent to a production Next.js application in under five minutes.
 
 ---
 
 ## What It Is
 
-The EdgeSignal SDK is a **local behavioral inference library**. As a user navigates your application, it:
+The PassiveIntent SDK is a **local behavioral inference library**. As a user navigates your application, it:
 
 1. Records state transitions (page routes, UI milestones, custom events) into a sparse **Markov graph** stored in `localStorage`.
 2. Maintains a **Bloom filter** for O(1) membership tests ("has this user ever visited `/checkout`?").
@@ -219,7 +219,7 @@ const intent = new IntentManager({
 
 ### Business Value
 
-**Power users open multiple tabs. EdgeSignal unifies their intent model instantly across all open tabs without ever sending a ping to a server.**
+**Power users open multiple tabs. PassiveIntent unifies their intent model instantly across all open tabs without ever sending a ping to a server.**
 
 When a user transitions from `/settings` to `/billing` in one tab and simultaneously opens `/pricing` in another, both tabs share a single up-to-date Markov graph. This means:
 
@@ -245,15 +245,15 @@ The net effect is that the sync layer provides the behavioral unification benefi
 ## Installation
 
 ```bash
-npm install @edgesignal/core
+npm install @passiveintent/core
 ```
 
 ```bash
-pnpm add @edgesignal/core
+pnpm add @passiveintent/core
 ```
 
 ```bash
-yarn add @edgesignal/core
+yarn add @passiveintent/core
 ```
 
 The package ships **zero runtime dependencies**.
@@ -263,7 +263,7 @@ The package ships **zero runtime dependencies**.
 ## Quick Start
 
 ```ts
-import { IntentManager } from '@edgesignal/core';
+import { IntentManager } from '@passiveintent/core';
 
 const intent = new IntentManager({
   storageKey: 'my-app-intent', // localStorage key
@@ -348,7 +348,7 @@ interface ConversionPayload {
 }
 
 // Returned by intent.getTelemetry() — aggregate counters only, no raw data
-interface EdgeSignalTelemetry {
+interface PassiveIntentTelemetry {
   sessionId: string; // local UUID, never transmitted
   transitionsEvaluated: number; // total track() calls with a prior state
   botStatus: 'human' | 'suspected_bot'; // current EntropyGuard classification
@@ -367,10 +367,10 @@ interface EdgeSignalTelemetry {
 
 In B2B SaaS, the highest-risk churn moments happen silently — a customer wandering through `/billing` comparing plan limits, or thrashing back and forth across `/settings` trying to find the cancellation flow. Traditional analytics platforms take minutes (or longer) to surface these "rage click" patterns in a dashboard — by which time the user has already churned.
 
-EdgeSignal detects this frustrated, high-entropy navigation **locally in under 2 milliseconds**, using the on-device Markov graph. No data leaves the browser. No server round-trip. When `normalizedEntropy` crosses `0.90` on a retention-critical page, you can open a Zendesk or Intercom support chat widget **before the user closes the tab**.
+PassiveIntent detects this frustrated, high-entropy navigation **locally in under 2 milliseconds**, using the on-device Markov graph. No data leaves the browser. No server round-trip. When `normalizedEntropy` crosses `0.90` on a retention-critical page, you can open a Zendesk or Intercom support chat widget **before the user closes the tab**.
 
 ```ts
-import { IntentManager } from '@edgesignal/core';
+import { IntentManager } from '@passiveintent/core';
 
 const intent = new IntentManager({
   storageKey: 'b2b-retention-intent',
@@ -385,7 +385,7 @@ intent.on('high_entropy', ({ state, normalizedEntropy }) => {
 
   if (isRetentionPage && normalizedEntropy > 0.9) {
     // Full churn signal: open live support chat immediately.
-    // EdgeSignal detected this in < 2 ms — no server round-trip required.
+    // PassiveIntent detected this in < 2 ms — no server round-trip required.
     openSupportChat({
       context: `User showing churn signal at: ${state}`,
       priority: 'high',
@@ -408,7 +408,7 @@ The `high_entropy` event fires when normalized Shannon entropy $\hat{H} \geq$ `h
 
 **GDPR note:** The only data written to storage is an aggregate transition count under a key of your choosing. No user identity, session token, or PII is involved. The chat widget is triggered entirely by local inference. No raw behavioral data is automatically forwarded to your support platform — the `context` string you pass to `openSupportChat()` is entirely under your control, and you decide what (if anything) it contains.
 
-**Why EdgeSignal Wins:** Traditional tools are built for post-hoc analysis. A user rage-clicks, the tool records the DOM, sends a massive payload to a server, the server processes it, and maybe fires a webhook a minute later. The user has already closed the tab. EdgeSignal processes the Welford variance and Markov entropy locally in **< 2 milliseconds**. You can pop open a Zendesk chat while the user's finger is still on the mouse.
+**Why PassiveIntent Wins:** Traditional tools are built for post-hoc analysis. A user rage-clicks, the tool records the DOM, sends a massive payload to a server, the server processes it, and maybe fires a webhook a minute later. The user has already closed the tab. PassiveIntent processes the Welford variance and Markov entropy locally in **< 2 milliseconds**. You can pop open a Zendesk chat while the user's finger is still on the mouse.
 
 ---
 
@@ -419,7 +419,7 @@ Immediately discounting a purchase the moment a user hesitates is a losing strat
 > **TL;DR for simple integrations:** Listen to `hesitation_detected` — the SDK correlates `trajectory_anomaly` and `dwell_time_anomaly` internally. The full recipe below adds a severity check and a cart-value gate for a three-tier response.
 
 ```ts
-import { IntentManager, SerializedMarkovGraph } from '@edgesignal/core';
+import { IntentManager, SerializedMarkovGraph } from '@passiveintent/core';
 
 // Calibrated baseline: what a converting session looks like.
 // Gather this from historical analytics, then embed it here.
@@ -513,17 +513,17 @@ Run `npm run test:perf:matrix` after pointing `scripts/scenario-matrix.mjs` at r
 
 **Why dwell-time stats are session-scoped — a privacy feature, not a limitation:**
 
-Dwell-time statistics are held in memory only and are never persisted to `localStorage`. This is a deliberate privacy boundary. Permanently storing per-user temporal profiles (how long someone reads each page, across every visit, over months) would enable invasive behavioral fingerprinting — correlating reading speed and attention patterns to build a persistent identity. EdgeSignal intentionally keeps all temporal math strictly session-scoped. The warm-up period (`minSamples`) resets on every page load as a direct consequence of this guarantee. For checkout funnels this trade-off is acceptable, and arguably beneficial: the signal is always grounded in the current session's behaviour, not stale historical data from a different context.
+Dwell-time statistics are held in memory only and are never persisted to `localStorage`. This is a deliberate privacy boundary. Permanently storing per-user temporal profiles (how long someone reads each page, across every visit, over months) would enable invasive behavioral fingerprinting — correlating reading speed and attention patterns to build a persistent identity. PassiveIntent intentionally keeps all temporal math strictly session-scoped. The warm-up period (`minSamples`) resets on every page load as a direct consequence of this guarantee. For checkout funnels this trade-off is acceptable, and arguably beneficial: the signal is always grounded in the current session's behaviour, not stale historical data from a different context.
 
 **GDPR note:** Traditional hesitation-detection solutions — heatmap tools, session replay platforms, A/B testing SDKs — stream interaction data to third-party servers, triggering GDPR Article 6 lawful-basis requirements, consent obligations under ePrivacy, and third-party processor agreements. This recipe achieves the same commercial outcome (intervention trigger) with **zero data egress**. Nothing collected here is personal data under GDPR Article 4(1). No consent banner is required. No cookie notice applies. The entire inference lives and dies inside the user's browser tab.
 
-**Why EdgeSignal Wins:** The GDPR and the ePrivacy Directive. To use Dynamic Yield or Optimizely to track user hesitation, the site must display a cookie consent banner. In the EU, 40–60 % of users click "Reject All." The moment they click reject, the $100,000 personalization engine goes blind. Because EdgeSignal's Welford and Markov math happens entirely in local memory and sends absolutely zero data to a server, it is legally classified as "strictly necessary functional storage." It bypasses the cookie banner entirely.
+**Why PassiveIntent Wins:** The GDPR and the ePrivacy Directive. To use Dynamic Yield or Optimizely to track user hesitation, the site must display a cookie consent banner. In the EU, 40–60 % of users click "Reject All." The moment they click reject, the $100,000 personalization engine goes blind. Because PassiveIntent's Welford and Markov math happens entirely in local memory and sends absolutely zero data to a server, it is legally classified as "strictly necessary functional storage." It bypasses the cookie banner entirely.
 
 ---
 
 ### 3. GA4 Bridge — Proving ROI Without Sending Behavioral Data
 
-This recipe shows how to connect EdgeSignal's local event bus to Google Analytics 4 so you can measure bot mitigation, hesitation interventions, and assisted conversions — all **without sending any behavioral or personally identifiable data to GA4**.
+This recipe shows how to connect PassiveIntent's local event bus to Google Analytics 4 so you can measure bot mitigation, hesitation interventions, and assisted conversions — all **without sending any behavioral or personally identifiable data to GA4**.
 
 > **Event name reference**
 >
@@ -534,7 +534,7 @@ This recipe shows how to connect EdgeSignal's local event bus to Google Analytic
 > | Conversion completed     | `trackConversion()` / `conversion` | same                                                    |
 
 ```ts
-import { IntentManager } from '@edgesignal/core';
+import { IntentManager } from '@passiveintent/core';
 
 const intent = new IntentManager({
   storageKey: 'shop-intent',
@@ -550,7 +550,7 @@ const intent = new IntentManager({
 // classification. No boilerplate guard needed.
 intent.on('bot_detected', ({ state }) => {
   // GA4 receives a dimensionless aggregate count — no PII, no behavioral data.
-  window.gtag('event', 'edgesignal_bot_mitigated', {
+  window.gtag('event', 'passiveintent_bot_mitigated', {
     event_category: 'security',
   });
   // Optionally gate the checkout flow here to prevent fraud.
@@ -566,8 +566,8 @@ intent.on('hesitation_detected', ({ state, dwellZScore }) => {
   // Show the user a discount UI
   showDiscountModal();
 
-  // Tell GA4 that EdgeSignal triggered an intervention.
-  window.gtag('event', 'edgesignal_intervention_triggered', {
+  // Tell GA4 that PassiveIntent triggered an intervention.
+  window.gtag('event', 'passiveintent_intervention_triggered', {
     intervention_type: '10_percent_discount',
   });
 });
@@ -576,17 +576,17 @@ intent.on('hesitation_detected', ({ state, dwellZScore }) => {
 //
 // Call this from your checkout success handler.
 function onCheckoutComplete(orderTotal: number): void {
-  // Record the conversion inside EdgeSignal's local event bus.
+  // Record the conversion inside PassiveIntent's local event bus.
   intent.trackConversion({ type: 'purchase', value: orderTotal, currency: 'USD' });
 
-  // Poll the telemetry snapshot to see whether EdgeSignal contributed.
+  // Poll the telemetry snapshot to see whether PassiveIntent contributed.
   // getTelemetry() returns an in-memory object — no network call, no PII.
   const { anomaliesFired, sessionId } = intent.getTelemetry();
 
   if (anomaliesFired > 0) {
     // At least one hesitation or entropy signal fired this session —
-    // EdgeSignal likely influenced the outcome.
-    window.gtag('event', 'edgesignal_assisted_conversion', {
+    // PassiveIntent likely influenced the outcome.
+    window.gtag('event', 'passiveintent_assisted_conversion', {
       value: orderTotal,
       // sessionId is a page-load-scoped random UUID — safe to log as a
       // correlation key because it is never stored, never transmitted by the
@@ -595,7 +595,7 @@ function onCheckoutComplete(orderTotal: number): void {
     });
   } else {
     // Conversion happened without any anomaly signal — organic buy.
-    window.gtag('event', 'edgesignal_organic_conversion', {
+    window.gtag('event', 'passiveintent_organic_conversion', {
       value: orderTotal,
     });
   }
@@ -604,18 +604,18 @@ function onCheckoutComplete(orderTotal: number): void {
 
 **What GA4 receives — and what it does NOT receive:**
 
-| Data sent to GA4                                          | Contains PII?                 | Contains behavioral data?                                           |
-| --------------------------------------------------------- | ----------------------------- | ------------------------------------------------------------------- |
-| `edgesignal_bot_mitigated` event name + category          | No                            | No — a count signal only                                            |
-| `edgesignal_intervention_triggered` + `intervention_type` | No                            | No — an enum label, not a path sequence                             |
-| `edgesignal_assisted_conversion` + `value`                | No                            | No — a purchase value you already send to GA4 for revenue reporting |
-| `session_correlation_id` (random UUID)                    | No — not linkable to identity | No                                                                  |
+| Data sent to GA4                                             | Contains PII?                 | Contains behavioral data?                                           |
+| ------------------------------------------------------------ | ----------------------------- | ------------------------------------------------------------------- |
+| `passiveintent_bot_mitigated` event name + category          | No                            | No — a count signal only                                            |
+| `passiveintent_intervention_triggered` + `intervention_type` | No                            | No — an enum label, not a path sequence                             |
+| `passiveintent_assisted_conversion` + `value`                | No                            | No — a purchase value you already send to GA4 for revenue reporting |
+| `session_correlation_id` (random UUID)                       | No — not linkable to identity | No                                                                  |
 
-The Markov graph, Bloom filter, transition sequences, dwell-time measurements, entropy scores, and raw event payloads **never leave the device**. GA4 only sees dimensionless count signals that tell you whether EdgeSignal worked — not _how_ it worked or _who_ it worked on.
+The Markov graph, Bloom filter, transition sequences, dwell-time measurements, entropy scores, and raw event payloads **never leave the device**. GA4 only sees dimensionless count signals that tell you whether PassiveIntent worked — not _how_ it worked or _who_ it worked on.
 
 **GDPR standing of this pattern:**
 
-EdgeSignal itself has no GDPR obligations (zero personal data). Sending the events above to GA4 does not create new obligations beyond those you already have for using GA4, because none of the values are personal data. You should still ensure GA4 is configured with IP anonymisation enabled and that your privacy policy references GA4 as a measurement processor, but that obligation exists independently of EdgeSignal.
+PassiveIntent itself has no GDPR obligations (zero personal data). Sending the events above to GA4 does not create new obligations beyond those you already have for using GA4, because none of the values are personal data. You should still ensure GA4 is configured with IP anonymisation enabled and that your privacy policy references GA4 as a measurement processor, but that obligation exists independently of PassiveIntent.
 
 ---
 
@@ -628,7 +628,7 @@ Prove that your behavioral interventions (hesitation discounts, dynamic paywalls
 Set `holdoutConfig.percentage` to the percentage of sessions you want in the **control** group (i.e. sessions that do NOT receive the intervention). ~90 % of sessions will receive the intervention (`'treatment'`); ~10 % will not (`'control'`). Both groups perform identical behavioral inference — only the intervention UI code is gated behind `assignmentGroup`.
 
 ```ts
-import { IntentManager } from '@edgesignal/core';
+import { IntentManager } from '@passiveintent/core';
 
 const intent = new IntentManager({
   storageKey: 'my-ab-test',
@@ -710,7 +710,7 @@ intent.on('conversion', () => {
 });
 ```
 
-**Privacy note:** The holdout is entirely on-device. The `assignmentGroup` value is a single-bit flag (`'treatment'` or `'control'`) that you only transmit if your `conversion` listener explicitly sends it. EdgeSignal never sends it — or anything else — on its own.
+**Privacy note:** The holdout is entirely on-device. The `assignmentGroup` value is a single-bit flag (`'treatment'` or `'control'`) that you only transmit if your `conversion` listener explicitly sends it. PassiveIntent never sends it — or anything else — on its own.
 
 ---
 
@@ -719,7 +719,7 @@ intent.on('conversion', () => {
 Detect frantic, high-entropy navigation and surface a help prompt before the user bounces.
 
 ```ts
-import { IntentManager } from '@edgesignal/core';
+import { IntentManager } from '@passiveintent/core';
 
 const intent = new IntentManager({
   storageKey: 'support-intent',
@@ -753,12 +753,12 @@ useEffect(() => {
 
 Immediately blasting a newsletter pop-up at every first-time visitor is one of the fastest ways to destroy a content marketing funnel. Users who arrived for the first time are not yet invested — they will dismiss the modal and install an ad-blocker.
 
-EdgeSignal lets you measure **genuine engagement intent** before asking for an email. Wait until a user has visited at least 3 distinct articles (tracked via the Bloom filter) **and** has spent meaningful time on a core feature or pricing page — the moment user intent peaks — then trigger the email capture modal.
+PassiveIntent lets you measure **genuine engagement intent** before asking for an email. Wait until a user has visited at least 3 distinct articles (tracked via the Bloom filter) **and** has spent meaningful time on a core feature or pricing page — the moment user intent peaks — then trigger the email capture modal.
 
 > **Note on Incognito mode:** If users bypass engagement tracking with a private browsing session, that is perfectly fine. Lead capture is a **marketing funnel optimization**, not a security gate. A user who bypasses localStorage is simply treated as a first-time visitor. You lose the progressive profiling benefit for that session, but you never harm the user experience or create a false gate.
 
 ```ts
-import { IntentManager } from '@edgesignal/core';
+import { IntentManager } from '@passiveintent/core';
 
 const intent = new IntentManager({
   storageKey: 'editorial-intent',
@@ -799,10 +799,10 @@ function onRouteChange(route: string) {
 
 ### 7. Predictive UI Prefetching (Performance as Intent)
 
-EdgeSignal doesn't just catch churn — it can make your app feel **instantly responsive**. Because the on-device Markov graph knows which routes a user is statistically likely to visit next, you can use that prediction to prefetch those routes before the user clicks, eliminating perceived load time entirely.
+PassiveIntent doesn't just catch churn — it can make your app feel **instantly responsive**. Because the on-device Markov graph knows which routes a user is statistically likely to visit next, you can use that prediction to prefetch those routes before the user clicks, eliminating perceived load time entirely.
 
 ```ts
-import { IntentManager } from '@edgesignal/core';
+import { IntentManager } from '@passiveintent/core';
 import router from 'next/router'; // or your framework's router
 
 const intent = new IntentManager({
@@ -834,7 +834,7 @@ router.events.on('routeChangeComplete', (url) => intent.track(url));
 
 `intent.predictNextStates(threshold)` returns `{ state: string; probability: number }[]` — the outgoing states from the current node whose transition probability exceeds `threshold`, sorted descending by probability. After 5–10 navigations, the Markov graph has enough signal to predict the next page with high accuracy on well-worn paths (e.g., `/dashboard` → `/billing` → `/upgrade`). Combining this with a framework router's prefetch API means those bundles are already in the browser's memory before the user clicks.
 
-The result is not just a performance gain — it is a **retention signal**. A fast, responsive app has measurably lower bounce rates. EdgeSignal turns behavioral data that was already being collected for churn detection into a free performance dividend.
+The result is not just a performance gain — it is a **retention signal**. A fast, responsive app has measurably lower bounce rates. PassiveIntent turns behavioral data that was already being collected for churn detection into a free performance dividend.
 
 > ⚠️ **COMPLIANCE GUARDRAIL — REQUIRED READING FOR ALL DEVELOPERS**
 >
@@ -870,7 +870,7 @@ The result is not just a performance gain — it is a **retention signal**. A fa
 
 ```ts
 interface IntentManagerConfig {
-  // Key written to the StorageAdapter (default: 'edge-signal')
+  // Key written to the StorageAdapter (default: 'passive-intent')
   storageKey?: string;
 
   // Milliseconds between storage writes (default: 2000)
@@ -911,7 +911,7 @@ interface IntentManagerConfig {
   baselineStdLL?: number;
 
   // Non-fatal structured error callback.
-  // Receives an EdgeSignalError object — never an Error instance.
+  // Receives a PassiveIntentError object — never an Error instance.
   // The engine never throws; all failures are forwarded here and then recovered gracefully.
   onError?: (error: {
     code:
@@ -988,7 +988,7 @@ interface IntentManagerConfig {
 Use the standalone `computeBloomConfig` utility (tree-shakeable — no `BloomFilter` class import required) to compute optimal parameters for your known state-space:
 
 ```ts
-import { computeBloomConfig } from '@edgesignal/core';
+import { computeBloomConfig } from '@passiveintent/core';
 
 const { bitSize, hashCount, estimatedFpRate } = computeBloomConfig(
   200, // expected distinct states
@@ -1003,7 +1003,7 @@ console.log(`Actual FPR after sizing: ${(estimatedFpRate * 100).toFixed(2)}%`);
 The equivalent class-method form remains available if you are already importing `BloomFilter`:
 
 ```ts
-import { BloomFilter } from '@edgesignal/core';
+import { BloomFilter } from '@passiveintent/core';
 
 const { bitSize, hashCount } = BloomFilter.computeOptimal(
   200, // expected distinct states
@@ -1021,7 +1021,7 @@ filter.estimateCurrentFPR(150); // → ~0.004 (0.4 %)
 ### Custom Adapters (SSR / Testing)
 
 ```ts
-import { IntentManager, MemoryStorageAdapter } from '@edgesignal/core';
+import { IntentManager, MemoryStorageAdapter } from '@passiveintent/core';
 
 // Server-side rendering — no localStorage access, no persistence
 const intent = new IntentManager({
@@ -1129,31 +1129,31 @@ E2E tests launch the sandbox app (`sandbox/index.html`) and verify that toast no
 
 ## Framework Packages
 
-All framework wrappers are published as separate scoped packages under the `@edgesignal/*` namespace so that `@edgesignal/core` stays zero-dependency. Each package lives at `packages/<name>/src/index.ts` and follows identical conventions: same TypeScript config base, `tsup` build, dual ESM + CJS output, `"@edgesignal/core": "*"` for workspace resolution (change to `"^x.y.z"` before publishing).
+All framework wrappers are published as separate scoped packages under the `@passiveintent/*` namespace so that `@passiveintent/core` stays zero-dependency. Each package lives at `packages/<name>/src/index.ts` and follows identical conventions: same TypeScript config base, `tsup` build, dual ESM + CJS output, `"@passiveintent/core": "*"` for workspace resolution (change to `"^x.y.z"` before publishing).
 
-### `@edgesignal/react`
+### `@passiveintent/react`
 
 A lightweight React 18+ wrapper that manages the full `IntentManager` lifecycle as a single stable hook.
 
 #### Installation
 
 ```bash
-npm install @edgesignal/react
+npm install @passiveintent/react
 # react / react-dom are peer dependencies — install once at the app level
 ```
 
-#### `useEdgeSignal(config)` → `UseEdgeSignalReturn`
+#### `usePassiveIntent(config)` → `UsePassiveIntentReturn`
 
 ```typescript
-import { useEdgeSignal } from '@edgesignal/react';
-import type { IntentManagerConfig, UseEdgeSignalReturn } from '@edgesignal/react';
+import { usePassiveIntent } from '@passiveintent/react';
+import type { IntentManagerConfig, UsePassiveIntentReturn } from '@passiveintent/react';
 ```
 
 | Returned method     | Signature                                                             | Notes                              |
 | ------------------- | --------------------------------------------------------------------- | ---------------------------------- |
 | `track`             | `(event: string) => void`                                             | no-op before mount / after unmount |
 | `on`                | `(event, handler) => () => void`                                      | returns a NOOP unsubscribe on SSR  |
-| `getTelemetry`      | `() => EdgeSignalTelemetry`                                           | empty object cast before mount     |
+| `getTelemetry`      | `() => PassiveIntentTelemetry`                                        | empty object cast before mount     |
 | `predictNextStates` | `(threshold?, sanitize?) => { state: string; probability: number }[]` | `[]` before first mount            |
 | `hasSeen`           | `(route: string) => boolean`                                          | `false` before first mount         |
 | `incrementCounter`  | `(key: string, by?: number) => void`                                  | —                                  |
@@ -1164,12 +1164,12 @@ import type { IntentManagerConfig, UseEdgeSignalReturn } from '@edgesignal/react
 
 ```tsx
 'use client';
-import { useEdgeSignal } from '@edgesignal/react';
+import { usePassiveIntent } from '@passiveintent/react';
 import { usePathname } from 'next/navigation';
 import { useEffect } from 'react';
 
 export function TrackingProvider({ children }: { children: React.ReactNode }) {
-  const { track, on, getTelemetry } = useEdgeSignal({
+  const { track, on, getTelemetry } = usePassiveIntent({
     botProtection: true,
     debug: process.env.NODE_ENV === 'development',
   });
@@ -1183,7 +1183,7 @@ export function TrackingProvider({ children }: { children: React.ReactNode }) {
   // subscribe to anomaly events
   useEffect(() => {
     const off = on('high_entropy', () => {
-      console.log('[EdgeSignal] High entropy detected', getTelemetry());
+      console.log('[PassiveIntent] High entropy detected', getTelemetry());
     });
     return off;
   }, [on, getTelemetry]);
@@ -1195,12 +1195,12 @@ export function TrackingProvider({ children }: { children: React.ReactNode }) {
 #### React Router v6 Example
 
 ```tsx
-import { useEdgeSignal } from '@edgesignal/react';
+import { usePassiveIntent } from '@passiveintent/react';
 import { useLocation } from 'react-router-dom';
 import { useEffect } from 'react';
 
 function RouterTracker() {
-  const { track } = useEdgeSignal({ botProtection: true });
+  const { track } = usePassiveIntent({ botProtection: true });
   const { pathname } = useLocation();
 
   useEffect(() => {
@@ -1220,12 +1220,12 @@ function RouterTracker() {
 
 ### Sister Packages (planned)
 
-| Package                   | Status    | Notes                                                   |
-| ------------------------- | --------- | ------------------------------------------------------- |
-| `@edgesignal/react`       | ✅ v1.1.0 | `useEdgeSignal` hook — React 18+, Next.js, React Router |
-| `@edgesignal/vue`         | 🗓 v1.2   | `useEdgeSignal` composable — Vue 3 + Vue Router         |
-| `@edgesignal/security`    | 🗓 v1.2   | Hardened consent layer, GDPR helpers, CSP integration   |
-| `@edgesignal/adaptive-ui` | 🗓 v1.3   | Headless UI primitives driven by predicted intent state |
+| Package                      | Status    | Notes                                                      |
+| ---------------------------- | --------- | ---------------------------------------------------------- |
+| `@passiveintent/react`       | ✅ v1.1.0 | `usePassiveIntent` hook — React 18+, Next.js, React Router |
+| `@passiveintent/vue`         | 🗓 v1.2   | `usePassiveIntent` composable — Vue 3 + Vue Router         |
+| `@passiveintent/security`    | 🗓 v1.2   | Hardened consent layer, GDPR helpers, CSP integration      |
+| `@passiveintent/adaptive-ui` | 🗓 v1.3   | Headless UI primitives driven by predicted intent state    |
 
 ---
 
@@ -1241,7 +1241,7 @@ flowchart LR
         APP["app code\nrouter.afterEach / useEffect"]
     end
 
-    subgraph SDK["EdgeSignal SDK"]
+    subgraph SDK["PassiveIntent SDK"]
         direction TB
         IM["IntentManager\n(Orchestrator)"]
 
@@ -1663,27 +1663,27 @@ const intent = new IntentManager({
 
 `IntentManager` is the single orchestration class consumers interact with.
 
-| Concern                | Implementation                                                                                                                                                                                   |
-| ---------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | ------------------------------------------------------------------- |
-| State machine          | `previousState: string \| null` field; `recentTrajectory: string[]` sliding window                                                                                                               |
-| Bloom                  | `BloomFilter` instance, hydrated from `localStorage` on construction                                                                                                                             |
-| Graph                  | `MarkovGraph` instance, hydrated from binary `localStorage` blob on construction                                                                                                                 |
-| Baseline               | Second `MarkovGraph` deserialized from `config.baseline` JSON at construction                                                                                                                    |
-| Events                 | Internal `EventEmitter<IntentEventMap>` — 20 lines, zero external deps                                                                                                                           |
-| Persistence            | Debounced write (2 s default), dirty-flag guards every write                                                                                                                                     |
-| Bot detection          | `EntropyGuard` circular buffer, synchronized to `timer.now()`                                                                                                                                    |
-| Dwell-time             | Welford’s online accumulator per state; z-score anomaly detection                                                                                                                                |
-| Tab-visibility         | `visibilitychange` listener offsets `previousStateEnteredAt` by hidden duration; SSR-safe                                                                                                        |
-| Drift killswitch       | Rolling-window `trajectory_anomaly`/`track()` ratio; sets `isBaselineDrifted` flag when threshold exceeded                                                                                       |
-| Route normalization    | `normalizeRouteState()` called at the top of every `track()` call                                                                                                                                |
-| Bigrams                | Selective second-order Markov transitions, frequency-gated                                                                                                                                       |
-| Event cooldown         | Per-channel cooldown gating via `eventCooldownMs`                                                                                                                                                |
-| Deterministic counters | `incrementCounter` / `getCounter` / `resetCounter` — exact integer map, session-scoped                                                                                                           |
-| A/B holdout            | `assignmentGroup: 'treatment'                                                                                                                                                                    | 'control'` set at construction; control group skips event emissions |
-| Benchmarking           | `BenchmarkRecorder` with per-operation ring-buffer sample accumulators                                                                                                                           |
-| Error handling         | All `try/catch` blocks route to `onError?: (error: EdgeSignalError) => void`; never throws. Codes: `STORAGE_READ`, `STORAGE_WRITE`, `QUOTA_EXCEEDED`, `RESTORE_PARSE`, `SERIALIZE`, `VALIDATION` |
-| Telemetry              | `getTelemetry()` returns `EdgeSignalTelemetry` — aggregate counters only, no raw states or PII                                                                                                   |
-| Conversion tracking    | `trackConversion(payload)` emits a `conversion` event through the local event bus; nothing leaves the device                                                                                     |
+| Concern                | Implementation                                                                                                                                                                                      |
+| ---------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------- |
+| State machine          | `previousState: string \| null` field; `recentTrajectory: string[]` sliding window                                                                                                                  |
+| Bloom                  | `BloomFilter` instance, hydrated from `localStorage` on construction                                                                                                                                |
+| Graph                  | `MarkovGraph` instance, hydrated from binary `localStorage` blob on construction                                                                                                                    |
+| Baseline               | Second `MarkovGraph` deserialized from `config.baseline` JSON at construction                                                                                                                       |
+| Events                 | Internal `EventEmitter<IntentEventMap>` — 20 lines, zero external deps                                                                                                                              |
+| Persistence            | Debounced write (2 s default), dirty-flag guards every write                                                                                                                                        |
+| Bot detection          | `EntropyGuard` circular buffer, synchronized to `timer.now()`                                                                                                                                       |
+| Dwell-time             | Welford’s online accumulator per state; z-score anomaly detection                                                                                                                                   |
+| Tab-visibility         | `visibilitychange` listener offsets `previousStateEnteredAt` by hidden duration; SSR-safe                                                                                                           |
+| Drift killswitch       | Rolling-window `trajectory_anomaly`/`track()` ratio; sets `isBaselineDrifted` flag when threshold exceeded                                                                                          |
+| Route normalization    | `normalizeRouteState()` called at the top of every `track()` call                                                                                                                                   |
+| Bigrams                | Selective second-order Markov transitions, frequency-gated                                                                                                                                          |
+| Event cooldown         | Per-channel cooldown gating via `eventCooldownMs`                                                                                                                                                   |
+| Deterministic counters | `incrementCounter` / `getCounter` / `resetCounter` — exact integer map, session-scoped                                                                                                              |
+| A/B holdout            | `assignmentGroup: 'treatment'                                                                                                                                                                       | 'control'` set at construction; control group skips event emissions |
+| Benchmarking           | `BenchmarkRecorder` with per-operation ring-buffer sample accumulators                                                                                                                              |
+| Error handling         | All `try/catch` blocks route to `onError?: (error: PassiveIntentError) => void`; never throws. Codes: `STORAGE_READ`, `STORAGE_WRITE`, `QUOTA_EXCEEDED`, `RESTORE_PARSE`, `SERIALIZE`, `VALIDATION` |
+| Telemetry              | `getTelemetry()` returns `PassiveIntentTelemetry` — aggregate counters only, no raw states or PII                                                                                                   |
+| Conversion tracking    | `trackConversion(payload)` emits a `conversion` event through the local event bus; nothing leaves the device                                                                                        |
 
 **Session reset:**
 
@@ -1843,7 +1843,7 @@ The trajectory anomaly detector compares the live navigation sequence against a 
 
 **The killswitch prevents this automatically:**
 
-EdgeSignal maintains a rolling time window (`driftProtection.evaluationWindowMs`, default: 5 minutes) and counts two things inside that window:
+PassiveIntent maintains a rolling time window (`driftProtection.evaluationWindowMs`, default: 5 minutes) and counts two things inside that window:
 
 - `driftWindowTrackCount` — number of `track()` calls
 - `driftWindowAnomalyCount` — number of `trajectory_anomaly` emissions
@@ -1930,7 +1930,7 @@ const intent = new IntentManager({
   onError({ code, message, originalError }) {
     // Forward to your error-monitoring platform:
     Sentry.captureException(originalError ?? new Error(message), {
-      tags: { edgesignal_error: code },
+      tags: { passiveintent_error: code },
     });
   },
 });
@@ -1954,7 +1954,7 @@ onError({ code, originalError }) {
   if (code === 'RESTORE_PARSE') {
     const { cause, payload } = originalError as { cause: unknown; payload: string };
     // `payload` is the raw base64 string that failed to parse—paste into a debugger to inspect.
-    console.warn('Corrupt EdgeSignal storage. Raw payload:', payload.slice(0, 80));
+    console.warn('Corrupt PassiveIntent storage. Raw payload:', payload.slice(0, 80));
   }
 }
 ```
@@ -1966,7 +1966,7 @@ onError({ code }) {
   if (code === 'QUOTA_EXCEEDED') {
     // Option A: reduce the graph
     // intent.graph.prune() manually, then re-tune maxStates in config
-    console.warn('EdgeSignal: storage quota exhausted — switching to session-only mode.');
+    console.warn('PassiveIntent: storage quota exhausted — switching to session-only mode.');
     // Option B: switch adapter on next init:
     // asyncStorage: IndexedDBAdapter  (see §10 roadmap for IndexedDB adapter)
   }
@@ -1979,7 +1979,7 @@ When `QUOTA_EXCEEDED` fires, `getTelemetry().engineHealth` is set to `'quota_exc
 ```ts
 setInterval(() => {
   const { engineHealth } = intent.getTelemetry();
-  if (engineHealth === 'quota_exceeded') alertOps('EdgeSignal quota pressure');
+  if (engineHealth === 'quota_exceeded') alertOps('PassiveIntent quota pressure');
 }, 60_000);
 ```
 
@@ -2006,7 +2006,7 @@ setInterval(() => {
 `normalizeRouteState` is also exported from the package barrel for standalone use outside of `IntentManager`:
 
 ```ts
-import { normalizeRouteState } from '@edgesignal/core';
+import { normalizeRouteState } from '@passiveintent/core';
 
 // Use in router middleware, analytics pipelines, etc.
 const canonical = normalizeRouteState(window.location.href);
@@ -2022,7 +2022,7 @@ const canonical = normalizeRouteState(window.location.href);
 
 ### A/B Testing Holdout
 
-EdgeSignal's A/B holdout lets you measure the conversion-rate lift from behavioral interventions (discount triggers, paywall prompts, support-chat popups) without any server-side tracking — the split is computed locally, and conversions are captured via `trackConversion()`.
+PassiveIntent's A/B holdout lets you measure the conversion-rate lift from behavioral interventions (discount triggers, paywall prompts, support-chat popups) without any server-side tracking — the split is computed locally, and conversions are captured via `trackConversion()`.
 
 **How it works:**
 
@@ -2035,7 +2035,7 @@ When `holdoutConfig: { percentage: N }` is provided, the `IntentManager` constru
 **The `assignmentGroup` field is included in `getTelemetry()`.** Attach it to your conversion event so your analytics backend can separate treatment from control.
 
 ```ts
-import { IntentManager } from '@edgesignal/core';
+import { IntentManager } from '@passiveintent/core';
 
 const intent = new IntentManager({
   holdoutConfig: { percentage: 10 }, // ~10 % of sessions → control
@@ -2255,7 +2255,7 @@ If you only use `BloomFilter` and `MarkovGraph` directly (no `IntentManager`), t
 
 ## Privacy & GDPR Compliance
 
-EdgeSignal's privacy guarantee is architectural, not policy-based. It is enforced by the absence of certain code paths, not by configuration or legal agreements. This section documents what that means technically and under GDPR, CCPA, and ePrivacy.
+PassiveIntent's privacy guarantee is architectural, not policy-based. It is enforced by the absence of certain code paths, not by configuration or legal agreements. This section documents what that means technically and under GDPR, CCPA, and ePrivacy.
 
 ---
 
@@ -2268,9 +2268,9 @@ The privacy properties of this library are not marketing copy. Here is how each 
 | **No network calls**                | `grep -r "fetch\|XMLHttpRequest\|sendBeacon\|WebSocket" src/` returns zero results. The `package.json` has no runtime dependencies. The minified bundle can be audited in `dist/index.js`.                 |
 | **No fingerprinting**               | No access to `navigator`, `screen`, `canvas`, `AudioContext`, or any known fingerprinting surface. EntropyGuard uses only `performance.now()` deltas from your own explicit `track()` calls.               |
 | **No PII**                          | `track()` accepts a `string` label chosen entirely by the application. The library never reads cookies, URL query parameters, form fields, local storage keys other than `storageKey`, or any DOM content. |
-| **Local storage only**              | Persistence routes exclusively through the `StorageAdapter` interface, which defaults to `window.localStorage`. Inspect the stored state at any time: `localStorage.getItem('edge-signal')`.               |
+| **Local storage only**              | Persistence routes exclusively through the `StorageAdapter` interface, which defaults to `window.localStorage`. Inspect the stored state at any time: `localStorage.getItem('passive-intent')`.            |
 | **Transparent & auditable**         | `src/` is the exact code that ships. `tsup` minifies but does not inject code. Source maps in `dist/` make the minified output human-readable.                                                             |
-| **User can clear state**            | `localStorage.removeItem('edge-signal')` wipes all learned state. No server-side copy exists.                                                                                                              |
+| **User can clear state**            | `localStorage.removeItem('passive-intent')` wipes all learned state. No server-side copy exists.                                                                                                           |
 | **Temporal data is non-persistent** | Dwell-time accumulators (`dwellStats`) are held in memory only and never written to `localStorage`. Per-state timing distributions cannot be reconstructed across sessions.                                |
 | **Zero runtime dependencies**       | The dependency graph is empty — no transitive code paths can introduce egress, telemetry, or tracking.                                                                                                     |
 
@@ -2278,25 +2278,25 @@ The privacy properties of this library are not marketing copy. Here is how each 
 
 ### GDPR Article Mapping
 
-Because EdgeSignal processes no personal data as defined under GDPR Article 4(1), the majority of GDPR obligations simply do not attach. The table below maps each relevant GDPR article to EdgeSignal's behavior:
+Because PassiveIntent processes no personal data as defined under GDPR Article 4(1), the majority of GDPR obligations simply do not attach. The table below maps each relevant GDPR article to PassiveIntent's behavior:
 
-| GDPR Article                                          | Requirement                                                   | EdgeSignal status                                                                                                                                                                              |
+| GDPR Article                                          | Requirement                                                   | PassiveIntent status                                                                                                                                                                           |
 | ----------------------------------------------------- | ------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | **Art. 4(1)** — Personal data definition              | Data relating to an identified or identifiable natural person | **Not applicable.** State labels are application-defined strings (e.g. `/checkout`). No user identifier, IP address, device ID, or biometric is ever processed.                                |
 | **Art. 5(1)(a)** — Lawfulness, fairness, transparency | Processing must have a lawful basis                           | **Not triggered.** No personal data is processed, so no lawful basis is required.                                                                                                              |
 | **Art. 5(1)(b)** — Purpose limitation                 | Data collected for specified purposes only                    | **Not triggered.** No personal data is collected.                                                                                                                                              |
 | **Art. 5(1)(c)** — Data minimisation                  | Only data adequate and necessary for the purpose              | **Satisfied by design.** The library stores transition counts and anonymous timing statistics. No user-identifying field exists in the data model.                                             |
 | **Art. 5(1)(e)** — Storage limitation                 | Data retained no longer than necessary                        | **Satisfied.** Dwell-time statistics are session-scoped and never persisted. The Markov graph stores only aggregate counts, not timestamped event logs.                                        |
-| **Art. 6** — Lawful basis for processing              | Consent, contract, legitimate interest, etc.                  | **Not required.** GDPR Article 6 applies only to personal data processing. EdgeSignal does not process personal data.                                                                          |
+| **Art. 6** — Lawful basis for processing              | Consent, contract, legitimate interest, etc.                  | **Not required.** GDPR Article 6 applies only to personal data processing. PassiveIntent does not process personal data.                                                                       |
 | **Art. 7** — Conditions for consent                   | Freely given, specific, informed, unambiguous                 | **No consent banner required.** No personal data is collected, so ePrivacy / PECR consent for analytics cookies does not apply to this SDK.                                                    |
-| **Art. 13/14** — Information obligations              | Privacy notice must disclose processing                       | **No disclosure required** for EdgeSignal itself. Your existing privacy notice need not reference this SDK unless you pass personal data as state labels (which you should not do).            |
-| **Art. 17** — Right to erasure                        | Users can request deletion of their data                      | **Trivially satisfied.** `localStorage.removeItem('edge-signal')` is the complete deletion path. No server-side data exists to delete.                                                         |
+| **Art. 13/14** — Information obligations              | Privacy notice must disclose processing                       | **No disclosure required** for PassiveIntent itself. Your existing privacy notice need not reference this SDK unless you pass personal data as state labels (which you should not do).         |
+| **Art. 17** — Right to erasure                        | Users can request deletion of their data                      | **Trivially satisfied.** `localStorage.removeItem('passive-intent')` is the complete deletion path. No server-side data exists to delete.                                                      |
 | **Art. 20** — Right to data portability               | Users can receive their data in machine-readable form         | **Not triggered.** No personal data is processed.                                                                                                                                              |
 | **Art. 25** — Privacy by design and by default        | Privacy protections built into the system architecture        | **Satisfied by architecture.** Zero-egress design, session-scoped temporal data, and absence of fingerprinting APIs are hardcoded behaviors, not configuration choices.                        |
-| **Art. 28** — Data processor agreement                | Written contract required with processors                     | **No DPA required.** EdgeSignal is a client-side library, not a data processor. No personal data is transferred to any third party.                                                            |
+| **Art. 28** — Data processor agreement                | Written contract required with processors                     | **No DPA required.** PassiveIntent is a client-side library, not a data processor. No personal data is transferred to any third party.                                                         |
 | **Art. 33/34** — Breach notification                  | Controller must notify supervisory authority within 72h       | **Not triggered.** There is no server-side data store to breach. A user's `localStorage` being compromised is outside the scope of GDPR breach notification obligations for your organization. |
 
-> **Important caveat:** If your application passes personal data as state labels — for example `intent.track(user.email)` or `intent.track('/user/'+userId)` — GDPR obligations re-attach immediately. EdgeSignal's privacy guarantee depends entirely on the state labels remaining anonymous. Route paths and UI milestone names (`'/checkout'`, `'video-played'`) are inherently anonymous. User identifiers are not.
+> **Important caveat:** If your application passes personal data as state labels — for example `intent.track(user.email)` or `intent.track('/user/'+userId)` — GDPR obligations re-attach immediately. PassiveIntent's privacy guarantee depends entirely on the state labels remaining anonymous. Route paths and UI milestone names (`'/checkout'`, `'video-played'`) are inherently anonymous. User identifiers are not.
 
 ---
 
@@ -2307,58 +2307,58 @@ Under GDPR and ePrivacy (the EU Cookie Directive), consent is required for:
 1. **Storing information on a user's device** when that information is used to track them across sessions for analytics or marketing purposes.
 2. **Processing personal data** for behavioral profiling.
 
-EdgeSignal falls into neither category:
+PassiveIntent falls into neither category:
 
 - The `localStorage` entry it writes contains only aggregate transition counts and anonymous navigation statistics. It contains no user identifier and cannot be used across origins or shared with third parties.
 - No personal data is processed at any point.
 
-The net result: **no cookie banner, no consent prompt, and no opt-out mechanism is legally required** for EdgeSignal itself under GDPR, UK GDPR, or ePrivacy. You should confirm this with your own legal counsel for your specific jurisdiction and use case, but the technical basis is sound.
+The net result: **no cookie banner, no consent prompt, and no opt-out mechanism is legally required** for PassiveIntent itself under GDPR, UK GDPR, or ePrivacy. You should confirm this with your own legal counsel for your specific jurisdiction and use case, but the technical basis is sound.
 
 ---
 
 ### CCPA / ePrivacy
 
-| Regulation                              | Status                                                                                                                                                                                                                                                                                                                        |
-| --------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| **CCPA / CPRA** (California)            | EdgeSignal does not "sell" or "share" personal information as defined under CCPA. No data leaves the device. No opt-out mechanism is required for this SDK.                                                                                                                                                                   |
-| **ePrivacy Directive / PECR** (EU / UK) | Analytics cookies require consent when used to track user behavior. EdgeSignal's `localStorage` write does not track the user across sessions in a cross-site or cross-service manner and contains no personal data — placing it in the same category as strictly-necessary functional storage rather than analytics cookies. |
-| **LGPD** (Brazil)                       | No personal data is processed; no legal basis or data subject rights obligations are triggered.                                                                                                                                                                                                                               |
-| **PIPEDA** (Canada)                     | No personal information is collected or disclosed.                                                                                                                                                                                                                                                                            |
+| Regulation                              | Status                                                                                                                                                                                                                                                                                                                           |
+| --------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **CCPA / CPRA** (California)            | PassiveIntent does not "sell" or "share" personal information as defined under CCPA. No data leaves the device. No opt-out mechanism is required for this SDK.                                                                                                                                                                   |
+| **ePrivacy Directive / PECR** (EU / UK) | Analytics cookies require consent when used to track user behavior. PassiveIntent's `localStorage` write does not track the user across sessions in a cross-site or cross-service manner and contains no personal data — placing it in the same category as strictly-necessary functional storage rather than analytics cookies. |
+| **LGPD** (Brazil)                       | No personal data is processed; no legal basis or data subject rights obligations are triggered.                                                                                                                                                                                                                                  |
+| **PIPEDA** (Canada)                     | No personal information is collected or disclosed.                                                                                                                                                                                                                                                                               |
 
 ---
 
-### EdgeSignal vs. Traditional Analytics
+### PassiveIntent vs. Traditional Analytics
 
-The table below compares EdgeSignal against a typical behavioral analytics platform (heatmaps, session replay, A/B testing) from a compliance perspective:
+The table below compares PassiveIntent against a typical behavioral analytics platform (heatmaps, session replay, A/B testing) from a compliance perspective:
 
-| Dimension                                   | Traditional analytics SDK                            | EdgeSignal                                         |
-| ------------------------------------------- | ---------------------------------------------------- | -------------------------------------------------- |
-| Data leaves the device                      | Yes — streamed to third-party servers                | **No** — all computation is local                  |
-| Personal data processed                     | Yes — IP address, user ID, device fingerprint        | **No** — anonymous state labels only               |
-| GDPR lawful basis required                  | Yes — typically legitimate interest or consent       | **No**                                             |
-| Consent banner required                     | Yes — under ePrivacy / PECR                          | **No**                                             |
-| Data Processing Agreement required          | Yes — with the analytics vendor                      | **No**                                             |
-| Data breach notification risk               | Yes — server-side data store is in scope             | **No** — nothing to breach                         |
-| DSAR (data subject access request) exposure | Yes — must retrieve and potentially delete user data | **No** — no server-side user data exists           |
-| Cross-border data transfer (SCCs, adequacy) | Yes — if vendor servers are outside EEA              | **No** — data never crosses a border               |
-| Third-party script risk                     | Yes — vendor JS loaded from CDN                      | **No** — bundled locally, auditable                |
-| User can delete their data                  | Only via vendor portal / API                         | **Yes** — `localStorage.removeItem('edge-signal')` |
+| Dimension                                   | Traditional analytics SDK                            | PassiveIntent                                         |
+| ------------------------------------------- | ---------------------------------------------------- | ----------------------------------------------------- |
+| Data leaves the device                      | Yes — streamed to third-party servers                | **No** — all computation is local                     |
+| Personal data processed                     | Yes — IP address, user ID, device fingerprint        | **No** — anonymous state labels only                  |
+| GDPR lawful basis required                  | Yes — typically legitimate interest or consent       | **No**                                                |
+| Consent banner required                     | Yes — under ePrivacy / PECR                          | **No**                                                |
+| Data Processing Agreement required          | Yes — with the analytics vendor                      | **No**                                                |
+| Data breach notification risk               | Yes — server-side data store is in scope             | **No** — nothing to breach                            |
+| DSAR (data subject access request) exposure | Yes — must retrieve and potentially delete user data | **No** — no server-side user data exists              |
+| Cross-border data transfer (SCCs, adequacy) | Yes — if vendor servers are outside EEA              | **No** — data never crosses a border                  |
+| Third-party script risk                     | Yes — vendor JS loaded from CDN                      | **No** — bundled locally, auditable                   |
+| User can delete their data                  | Only via vendor portal / API                         | **Yes** — `localStorage.removeItem('passive-intent')` |
 
 ---
 
 ### Privacy-Preserving Intent Decay
 
-A common concern about any localStorage-backed SDK is the question of persistence: "does this build up a permanent behavioral profile of my users?" EdgeSignal's architecture makes that concern mathematically impossible — and two properties that might look like limitations are in fact deliberate, hardened privacy guarantees.
+A common concern about any localStorage-backed SDK is the question of persistence: "does this build up a permanent behavioral profile of my users?" PassiveIntent's architecture makes that concern mathematically impossible — and two properties that might look like limitations are in fact deliberate, hardened privacy guarantees.
 
 **Safari ITP and browser storage policies as a feature:**
 
-Browser privacy mechanisms — including Safari's Intelligent Tracking Prevention (ITP) and storage-clearing policies for domains classified as cross-site trackers — can evict `localStorage` data under certain conditions (for example, when a domain is identified as engaging in cross-site tracking). Rather than fighting these browser mechanisms, EdgeSignal embraces their spirit. The result is **automatic intent decay**: even if a user's navigational patterns are eventually cleared by the browser or by the user manually, EdgeSignal never has a server-side copy to fall back on. EdgeSignal is architecturally incapable of building a month-over-month behavioral profile of a user — there is no durable storage layer that survives independent of the user's own device and browser policies.
+Browser privacy mechanisms — including Safari's Intelligent Tracking Prevention (ITP) and storage-clearing policies for domains classified as cross-site trackers — can evict `localStorage` data under certain conditions (for example, when a domain is identified as engaging in cross-site tracking). Rather than fighting these browser mechanisms, PassiveIntent embraces their spirit. The result is **automatic intent decay**: even if a user's navigational patterns are eventually cleared by the browser or by the user manually, PassiveIntent never has a server-side copy to fall back on. PassiveIntent is architecturally incapable of building a month-over-month behavioral profile of a user — there is no durable storage layer that survives independent of the user's own device and browser policies.
 
 **Session-scoped dwell times:**
 
 Dwell-time accumulators — the per-state mean and variance statistics used for hesitation detection — are held **in memory only** and are never written to `localStorage`. They are destroyed the moment the browser tab closes. This is a hardcoded privacy boundary, not a configuration option.
 
-The practical consequence: EdgeSignal cannot permanently track how quickly a user reads articles, how long they linger on pricing pages, or whether they are getting faster or slower at navigating your checkout across visits. All temporal inference is grounded in the **current active session only**. Each new session starts with a blank temporal slate.
+The practical consequence: PassiveIntent cannot permanently track how quickly a user reads articles, how long they linger on pricing pages, or whether they are getting faster or slower at navigating your checkout across visits. All temporal inference is grounded in the **current active session only**. Each new session starts with a blank temporal slate.
 
 **Compliance implications:**
 
@@ -2404,7 +2404,7 @@ The `ConversionPayload` is `{ type: string, value?: number, currency?: string }`
 
 #### The `conversion` event remains local by default
 
-`trackConversion()` emits through the in-process `EventEmitter`. **No data leaves the device unless your `conversion` listener explicitly sends it.** Whether that transmission creates GDPR obligations depends on what you send and where — EdgeSignal itself is not the data controller or processor for any forwarding you choose to add.
+`trackConversion()` emits through the in-process `EventEmitter`. **No data leaves the device unless your `conversion` listener explicitly sends it.** Whether that transmission creates GDPR obligations depends on what you send and where — PassiveIntent itself is not the data controller or processor for any forwarding you choose to add.
 
 A GDPR-safe pattern for ROI reporting:
 
@@ -2425,7 +2425,7 @@ intent.on('conversion', ({ type, value, currency }) => {
 });
 ```
 
-This pattern does not require a consent banner, does not require a Data Processing Agreement with EdgeSignal (there is none — it is a bundled library), and does not expose behavioral profiles or user identifiers.
+This pattern does not require a consent banner, does not require a Data Processing Agreement with PassiveIntent (there is none — it is a bundled library), and does not expose behavioral profiles or user identifiers.
 
 #### Summary
 

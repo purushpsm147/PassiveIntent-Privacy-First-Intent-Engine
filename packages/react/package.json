@@ -1,7 +1,7 @@
 {
-  "name": "@edgesignal/react",
+  "name": "@passiveintent/react",
   "version": "1.0.0",
-  "description": "React wrapper for @edgesignal/core — drop-in useEdgeSignal hook for Next.js and React apps.",
+  "description": "React wrapper for @passiveintent/core — drop-in usePassiveIntent hook for Next.js and React apps.",
   "keywords": [
     "intent",
     "analytics",
@@ -18,10 +18,10 @@
   "license": "AGPL-3.0-only",
   "repository": {
     "type": "git",
-    "url": "https://github.com/purushpsm147/EdgeSignal-Privacy-First-Intent-Engine.git",
+    "url": "https://github.com/purushpsm147/PassiveIntent-Privacy-First-Intent-Engine.git",
     "directory": "packages/react"
   },
-  "homepage": "https://github.com/purushpsm147/EdgeSignal-Privacy-First-Intent-Engine#readme",
+  "homepage": "https://github.com/purushpsm147/PassiveIntent-Privacy-First-Intent-Engine#readme",
   "engines": {
     "node": ">=20"
   },
@@ -55,7 +55,7 @@
     "prepublishOnly": "npm run build"
   },
   "dependencies": {
-    "@edgesignal/core": "^1.0.0"
+    "@passiveintent/core": "^1.0.0"
   },
   "peerDependencies": {
     "react": ">=18.0.0",

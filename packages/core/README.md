@@ -5,21 +5,21 @@
   LICENSE file in the root directory of this source tree.
 -->
 
-# @edgesignal/core — EdgeSignal: A Privacy-First Intent Engine
+# @passiveintent/core — PassiveIntent: A Privacy-First Intent Engine
 
 [![Coverage: 97%](https://img.shields.io/badge/coverage-97%25-brightgreen)](#run-tests)
-[![Bundle Size](https://img.shields.io/bundlephobia/minzip/@edgesignal/core)](https://bundlephobia.com/package/@edgesignal/core)
-[![Open in StackBlitz](https://developer.stackblitz.com/img/open_in_stackblitz_small.svg)](https://stackblitz.com/github/purushpsm147/EdgeSignal-Privacy-First-Intent-Engine)
+[![Bundle Size](https://img.shields.io/bundlephobia/minzip/@passiveintent/core)](https://bundlephobia.com/package/@passiveintent/core)
+[![Open in StackBlitz](https://developer.stackblitz.com/img/open_in_stackblitz_small.svg)](https://stackblitz.com/github/purushpsm147/PassiveIntent-Privacy-First-Intent-Engine)
 
-**EdgeSignal is a 6 kB, zero-egress intent engine that detects user hesitation and frustration in real-time.**
-Catch rage-clicks, prevent checkout abandonment, and trigger personalized UI interventions in `< 2ms`—all entirely within the browser. Because zero behavioral data ever leaves the device, EdgeSignal requires **no cookie consent banner** and easily passes strict GDPR/HIPAA compliance.
+**PassiveIntent is a 6 kB, zero-egress intent engine that detects user hesitation and frustration in real-time.**
+Catch rage-clicks, prevent checkout abandonment, and trigger personalized UI interventions in `< 2ms`—all entirely within the browser. Because zero behavioral data ever leaves the device, PassiveIntent requires **no cookie consent banner** and easily passes strict GDPR/HIPAA compliance.
 
 _(Under the hood, it uses a highly-optimized sparse Markov graph and Bloom filters to model probabilistic intent locally.)_
 
-## Why EdgeSignal?
+## Why PassiveIntent?
 
 - **No Cookie Banners Required:** 100% local execution. No network requests, no PII sent to servers. Perfectly compliant with GDPR and CCPA.
-- **Sub-Millisecond Reactions:** Catch frustrated users _before_ they close the tab. Traditional analytics take minutes to process rage-clicks; EdgeSignal triggers in `< 2ms`.
+- **Sub-Millisecond Reactions:** Catch frustrated users _before_ they close the tab. Traditional analytics take minutes to process rage-clicks; PassiveIntent triggers in `< 2ms`.
 - **Detect True Hesitation:** Evaluates user reading speed and dwell-time anomalies dynamically, allowing you to trigger "Free Shipping" tooltips exactly when a user hesitates at checkout.
 - **Bot & Scraper Resilient:** Built-in `EntropyGuard` automatically detects impossibly fast or robotic click cadences, preventing bots from triggering your interventions.
 - **Zero Performance Hit:** Capped at 500 tracked states, compiles to a tiny 6 kB footprint, and uses dirty-flag persistence to skip unnecessary writes.
@@ -67,13 +67,13 @@ intent.on('trajectory_anomaly', (signal) => {
 ## Install
 
 ```bash
-npm install @edgesignal/core
+npm install @passiveintent/core
 ```
 
 ## Quick start
 
 ```ts
-import { IntentManager, BrowserStorageAdapter, BrowserTimerAdapter } from '@edgesignal/core';
+import { IntentManager, BrowserStorageAdapter, BrowserTimerAdapter } from '@passiveintent/core';
 
 // 1. Initialize the engine
 const intent = new IntentManager({
@@ -116,7 +116,7 @@ intent.on('high_entropy', (signal) => {
 
 import { useEffect, useRef } from 'react';
 import { usePathname } from 'next/navigation';
-import { IntentManager, BrowserStorageAdapter, BrowserTimerAdapter } from '@edgesignal/core';
+import { IntentManager, BrowserStorageAdapter, BrowserTimerAdapter } from '@passiveintent/core';
 
 export function IntentProvider({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
@@ -124,7 +124,7 @@ export function IntentProvider({ children }: { children: React.ReactNode }) {
 
   useEffect(() => {
     intentRef.current = new IntentManager({
-      storageKey: 'edge-signal',
+      storageKey: 'passive-intent',
       storage: new BrowserStorageAdapter(),
       timer: new BrowserTimerAdapter(),
     });
@@ -166,14 +166,14 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
 <script setup lang="ts">
 import { onMounted, onUnmounted, watch } from 'vue';
 import { useRoute } from 'vue-router';
-import { IntentManager, BrowserStorageAdapter, BrowserTimerAdapter } from '@edgesignal/core';
+import { IntentManager, BrowserStorageAdapter, BrowserTimerAdapter } from '@passiveintent/core';
 
 let intent: IntentManager | null = null;
 const route = useRoute();
 
 onMounted(() => {
   intent = new IntentManager({
-    storageKey: 'edge-signal',
+    storageKey: 'passive-intent',
     storage: new BrowserStorageAdapter(),
     timer: new BrowserTimerAdapter(),
   });
@@ -201,12 +201,12 @@ onUnmounted(() => {
 import { Injectable, OnDestroy } from '@angular/core';
 import { Router, NavigationEnd } from '@angular/router';
 import { filter, Subscription } from 'rxjs';
-import { IntentManager, BrowserStorageAdapter, BrowserTimerAdapter } from '@edgesignal/core';
+import { IntentManager, BrowserStorageAdapter, BrowserTimerAdapter } from '@passiveintent/core';
 
 @Injectable({ providedIn: 'root' })
 export class IntentService implements OnDestroy {
   private intent = new IntentManager({
-    storageKey: 'edge-signal',
+    storageKey: 'passive-intent',
     storage: new BrowserStorageAdapter(),
     timer: new BrowserTimerAdapter(),
   });
@@ -270,7 +270,7 @@ Inject `IntentService` in your root `AppComponent` (or import it in the root mod
 | ---------------------- | ------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
 | `predictNextStates`    | `(threshold?: number, sanitize?: (s: string) => boolean) => { state, probability }[]` | Top-N Markov predictions above `threshold` (default `0.3`). Always provide a `sanitize` guard in production to exclude sensitive routes.                                       |
 | `hasSeen`              | `(state: string) => boolean`                                                          | Bloom filter membership test — O(k), no false negatives.                                                                                                                       |
-| `getTelemetry`         | `() => EdgeSignalTelemetry`                                                           | GDPR-safe aggregate snapshot: `sessionId`, `transitionsEvaluated`, `botStatus`, `anomaliesFired`, `engineHealth`, `baselineStatus`, `assignmentGroup`. No raw behavioral data. |
+| `getTelemetry`         | `() => PassiveIntentTelemetry`                                                        | GDPR-safe aggregate snapshot: `sessionId`, `transitionsEvaluated`, `botStatus`, `anomaliesFired`, `engineHealth`, `baselineStatus`, `assignmentGroup`. No raw behavioral data. |
 | `exportGraph`          | `() => SerializedMarkovGraph`                                                         | Returns the full Markov graph as a JSON-serializable object.                                                                                                                   |
 | `getPerformanceReport` | `() => PerformanceReport`                                                             | Detailed benchmark report: op latencies, state/transition counts, serialization size.                                                                                          |
 
@@ -304,11 +304,11 @@ Inject `IntentService` in your root `AppComponent` (or import it in the root mod
 
 ```ts
 new IntentManager({
-  storageKey: 'edge-signal',
-  onError: (err: EdgeSignalError) => {
+  storageKey: 'passive-intent',
+  onError: (err: PassiveIntentError) => {
     // Fires on storage quota/security errors and validation failures.
     // err.code: 'STORAGE_READ' | 'STORAGE_WRITE' | 'QUOTA_EXCEEDED' | 'RESTORE_PARSE' | 'SERIALIZE' | 'VALIDATION'
-    console.warn('[EdgeSignal]', err.code, err.message);
+    console.warn('[PassiveIntent]', err.code, err.message);
   },
 });
 ```
@@ -345,19 +345,19 @@ Cross-tab synchronization over the [BroadcastChannel API](https://developer.mozi
 | `applyRemoteCounter(key, by)` | Apply a validated remote counter increment locally.                                           |
 | `close()`                     | Release the channel and remove the message handler. Called by `destroy()`.                    |
 
-### React Wrapper — `@edgesignal/react`
+### React Wrapper — `@passiveintent/react`
 
-A separate package ships a drop-in `useEdgeSignal` hook that manages the full `IntentManager` lifecycle for React 18+, Next.js, and React Router apps:
+A separate package ships a drop-in `usePassiveIntent` hook that manages the full `IntentManager` lifecycle for React 18+, Next.js, and React Router apps:
 
 ```bash
-npm install @edgesignal/react
+npm install @passiveintent/react
 ```
 
 ```tsx
-import { useEdgeSignal } from '@edgesignal/react';
+import { usePassiveIntent } from '@passiveintent/react';
 
-const { track, on, getTelemetry, predictNextStates } = useEdgeSignal({
-  storageKey: 'edge-signal',
+const { track, on, getTelemetry, predictNextStates } = usePassiveIntent({
+  storageKey: 'passive-intent',
   botProtection: true,
 });
 ```
@@ -563,21 +563,21 @@ packages/core/
 
 ## License
 
-EdgeSignal is dual-licensed:
+PassiveIntent is dual-licensed:
 
 ### AGPLv3 — Free
 
-Use EdgeSignal at no cost under the [GNU Affero General Public License v3.0](./LICENSE) if **all** of the following apply:
+Use PassiveIntent at no cost under the [GNU Affero General Public License v3.0](./LICENSE) if **all** of the following apply:
 
 - Your project is open-source **and** you publish the complete source code.
-- You are not incorporating EdgeSignal into a proprietary or closed-source product.
-- If you run EdgeSignal as part of a network service, your entire application is also released under AGPLv3.
+- You are not incorporating PassiveIntent into a proprietary or closed-source product.
+- If you run PassiveIntent as part of a network service, your entire application is also released under AGPLv3.
 
 ### Commercial License — Paid
 
 A commercial license removes the AGPLv3 copyleft obligations. You need one if:
 
-- You ship EdgeSignal inside a **closed-source or proprietary** product.
+- You ship PassiveIntent inside a **closed-source or proprietary** product.
 - You run it in a **SaaS / network service** without releasing your application source.
 - You re-sell or white-label it inside an analytics or AdTech platform.
 

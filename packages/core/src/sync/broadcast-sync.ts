@@ -112,7 +112,7 @@ function isValidCounterMessage(msg: Record<string, unknown>): boolean {
  *
  * @example
  * ```ts
- * const sync = new BroadcastSync('edgesignal-sync', graph, bloom, counters);
+ * const sync = new BroadcastSync('passiveintent-sync', graph, bloom, counters);
  * // Called by IntentManager after a verified local transition:
  * sync.broadcast('/home', '/products');
  * // Called by IntentManager after a local counter increment:

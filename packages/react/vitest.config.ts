@@ -15,12 +15,12 @@ export default defineConfig({
   resolve: {
     /**
      * Map the workspace dependency to its TypeScript source so tests work
-     * without requiring a prior `npm run build` in @edgesignal/core.
+     * without requiring a prior `npm run build` in @passiveintent/core.
      * The import is fully mocked in tests anyway; the alias exists so that
      * TypeScript (via esbuild) can resolve the module types.
      */
     alias: {
-      '@edgesignal/core': resolve(__dirname, '../core/src/index.ts'),
+      '@passiveintent/core': resolve(__dirname, '../core/src/index.ts'),
     },
   },
   test: {

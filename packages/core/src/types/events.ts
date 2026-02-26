@@ -24,7 +24,7 @@ export interface ConversionPayload {
   currency?: string;
 }
 
-export interface EdgeSignalTelemetry {
+export interface PassiveIntentTelemetry {
   sessionId: string;
   transitionsEvaluated: number;
   botStatus: 'human' | 'suspected_bot';
@@ -136,7 +136,7 @@ export interface MarkovGraphConfig {
  * The engine never throws these errors to the host application — they are
  * always swallowed and forwarded here so the host can log, alert, or recover.
  */
-export interface EdgeSignalError {
+export interface PassiveIntentError {
   /**
    * Machine-readable error category.
    * - `STORAGE_READ`    — `localStorage.getItem` threw (e.g., SecurityError in private browsing).
@@ -188,7 +188,7 @@ export interface IntentManagerConfig {
    * both set, _this field wins_ (same merge rule as `baselineMeanLL` above).
    */
   baselineStdLL?: number;
-  /** localStorage key used to persist the Bloom filter and Markov graph. Default: `'edge-signal'`. */
+  /** localStorage key used to persist the Bloom filter and Markov graph. Default: `'passive-intent'`. */
   storageKey?: string;
   /** Debounce delay in ms before writing to storage after a `track()` call. Default: 2000. */
   persistDebounceMs?: number;
@@ -228,13 +228,13 @@ export interface IntentManagerConfig {
    * new IntentManager({
    *   onError({ code, message, originalError }) {
    *     Sentry.captureException(originalError ?? new Error(message), {
-   *       tags: { edgesignal_error: code },
+   *       tags: { passiveintent_error: code },
    *     });
    *   },
    * });
    * ```
    */
-  onError?: (error: EdgeSignalError) => void;
+  onError?: (error: PassiveIntentError) => void;
   /** Enable heuristic bot detection via timing analysis. Default: `true`. */
   botProtection?: boolean;
   /**

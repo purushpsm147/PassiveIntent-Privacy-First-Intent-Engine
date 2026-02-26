@@ -39,7 +39,7 @@ jobs:
         run: npm run build
 
       - name: Verify core package
-        run: npm run verify:package -w @edgesignal/core
+        run: npm run verify:package -w @passiveintent/core
 
       - name: React pack dry-run
-        run: npm pack --dry-run -w @edgesignal/react
+        run: npm pack --dry-run -w @passiveintent/react

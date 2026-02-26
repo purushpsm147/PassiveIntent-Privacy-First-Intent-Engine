@@ -18,11 +18,11 @@ _Branch: `codex/convert-to-npm-workspaces-monorepo` — included in v1.0.0 initi
 
 ### Repository Structure
 
-- **npm workspaces monorepo** — repository restructured from a single-package layout to a proper npm workspaces monorepo. `@edgesignal/core` is the first published package; `@edgesignal/adaptive-ui` and `@edgesignal/security` are reserved as future workspace package names for upcoming releases.
-- **Self-contained package** — all files specific to `@edgesignal/core` (Cypress E2E suite, sandbox apps, benchmark scripts, `tsconfig.json`, `cypress.config.ts`) were moved inside `packages/core/`. The repository root is now pure monorepo orchestration.
+- **npm workspaces monorepo** — repository restructured from a single-package layout to a proper npm workspaces monorepo. `@passiveintent/core` is the first published package; `@passiveintent/adaptive-ui` and `@passiveintent/security` are reserved as future workspace package names for upcoming releases.
+- **Self-contained package** — all files specific to `@passiveintent/core` (Cypress E2E suite, sandbox apps, benchmark scripts, `tsconfig.json`, `cypress.config.ts`) were moved inside `packages/core/`. The repository root is now pure monorepo orchestration.
 - **Root scripts via `--workspaces --if-present`** — replaced 18 hardcoded per-package passthrough scripts in the root `package.json` with workspace-forwarded equivalents, following the React / Angular monorepo convention.
 - **Per-package `LICENSE` and `README.md`** — `packages/core/` now ships its own `LICENSE` (AGPL-3.0) and package-level `README.md` so npm consumers see the correct metadata without landing on the monorepo root.
-- **Planned future packages** — `@edgesignal/adaptive-ui` and `@edgesignal/security` are planned but not yet present in this repository; their package directories will be added once they are ready for public release.
+- **Planned future packages** — `@passiveintent/adaptive-ui` and `@passiveintent/security` are planned but not yet present in this repository; their package directories will be added once they are ready for public release.
 
 ### Developer Experience
 
@@ -34,10 +34,10 @@ _Branch: `codex/convert-to-npm-workspaces-monorepo` — included in v1.0.0 initi
 
 ### CI / CD
 
-- All GitHub Actions steps now target `@edgesignal/core` explicitly via `-w @edgesignal/core` to avoid running against placeholder packages.
+- All GitHub Actions steps now target `@passiveintent/core` explicitly via `-w @passiveintent/core` to avoid running against placeholder packages.
 - Added `format:check` step to `ci.yml` so unformatted code fails the pipeline.
 - Switched perf-matrix workflow to `npm ci` for reproducible installs.
-- Added `ci.react.yml` for `@edgesignal/react` typecheck/test/build coverage.
+- Added `ci.react.yml` for `@passiveintent/react` typecheck/test/build coverage.
 - Added `release-gate.yml` to run full release-critical checks (typecheck, tests, build, package verification, and React pack dry-run) on publish-critical changes.
 
 ### Performance Tooling

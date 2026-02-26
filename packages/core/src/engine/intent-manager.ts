@@ -24,8 +24,8 @@ import { BroadcastSync } from '../sync/broadcast-sync.js';
 import type { SerializedMarkovGraph } from '../core/markov.js';
 import type {
   ConversionPayload,
-  EdgeSignalError,
-  EdgeSignalTelemetry,
+  PassiveIntentError,
+  PassiveIntentTelemetry,
   IntentEventMap,
   IntentManagerConfig,
   MarkovGraphConfig,
@@ -96,7 +96,7 @@ export class IntentManager {
    */
   private hasPendingAsyncPersist = false;
   private readonly timer: TimerAdapter;
-  private readonly onError?: (error: EdgeSignalError) => void;
+  private readonly onError?: (error: PassiveIntentError) => void;
   private readonly botProtection: boolean;
   private readonly eventCooldownMs: number;
 
@@ -207,7 +207,7 @@ export class IntentManager {
   /** Aggregate count of anomaly events emitted this session. */
   private anomaliesFired = 0;
   /** Operational health flag — mutated by persist() and the quota error handler. */
-  private engineHealth: EdgeSignalTelemetry['engineHealth'] = 'healthy';
+  private engineHealth: PassiveIntentTelemetry['engineHealth'] = 'healthy';
 
   /* Hesitation detection: timestamps and z-scores from the last contributing signals */
   private lastTrajectoryAnomalyAt = -Infinity;
@@ -224,7 +224,7 @@ export class IntentManager {
   private readonly assignmentGroup: 'treatment' | 'control';
 
   constructor(config: IntentManagerConfig = {}) {
-    this.storageKey = config.storageKey ?? 'edge-signal';
+    this.storageKey = config.storageKey ?? 'passive-intent';
     this.persistDebounceMs = config.persistDebounceMs ?? 2000;
     this.benchmark = new BenchmarkRecorder(config.benchmark);
     this.storage = config.storage ?? new BrowserStorageAdapter();
@@ -297,7 +297,7 @@ export class IntentManager {
     this.broadcastSync =
       config.crossTabSync === true
         ? new BroadcastSync(
-            `edgesignal-sync:${this.storageKey}`,
+            `passiveintent-sync:${this.storageKey}`,
             this.graph,
             this.bloom,
             this.counters,
@@ -381,7 +381,7 @@ export class IntentManager {
     if (!config.asyncStorage) {
       throw new Error('IntentManager.createAsync() requires config.asyncStorage');
     }
-    const storageKey = config.storageKey ?? 'edge-signal';
+    const storageKey = config.storageKey ?? 'passive-intent';
     // Await the single I/O call up-front so the constructor stays synchronous.
     const raw = await config.asyncStorage.getItem(storageKey);
 
@@ -645,7 +645,7 @@ export class IntentManager {
    * //   anomaliesFired: 3, engineHealth: 'healthy' }
    * ```
    */
-  getTelemetry(): EdgeSignalTelemetry {
+  getTelemetry(): PassiveIntentTelemetry {
     return {
       sessionId: this.sessionId,
       transitionsEvaluated: this.transitionsEvaluated,

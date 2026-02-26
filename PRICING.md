@@ -5,9 +5,9 @@
   LICENSE file in the root directory of this source tree.
 -->
 
-# EdgeSignal Pricing
+# PassiveIntent Pricing
 
-EdgeSignal is **free and open-source** under AGPLv3 for open-source projects, hobby projects, and non-commercial use. For commercial use without the AGPLv3 copyleft obligations, purchase a commercial license below.
+PassiveIntent is **free and open-source** under AGPLv3 for open-source projects, hobby projects, and non-commercial use. For commercial use without the AGPLv3 copyleft obligations, purchase a commercial license below.
 
 > **Contact:** [purushpsm147@yahoo.co.in](mailto:purushpsm147@yahoo.co.in) · [successfulindian147@gmail.com](mailto:successfulindian147@gmail.com)
 
@@ -25,9 +25,9 @@ EdgeSignal is **free and open-source** under AGPLv3 for open-source projects, ho
 
 You need a commercial license if **any** of the following apply:
 
-- You ship EdgeSignal inside a **closed-source or proprietary product**.
-- You run EdgeSignal as part of a **network service** (SaaS, API, CDN edge) and you are **not** releasing your complete application source under AGPLv3.
-- You re-sell or white-label EdgeSignal as part of an analytics or AdTech platform.
+- You ship PassiveIntent inside a **closed-source or proprietary product**.
+- You run PassiveIntent as part of a **network service** (SaaS, API, CDN edge) and you are **not** releasing your complete application source under AGPLv3.
+- You re-sell or white-label PassiveIntent as part of an analytics or AdTech platform.
 
 ## What AGPLv3 permits for free
 
@@ -44,7 +44,7 @@ No. AGPLv3 requires you to release your application's source code if you run it 
 Indie covers one project. Startup covers three. Growth covers unlimited projects within one organisation. Enterprise covers multi-org and OEM redistribution.
 
 **What counts as a "project"?**  
-A single deployable web application or npm package that ships EdgeSignal. Micro-frontends under the same domain count as one project.
+A single deployable web application or npm package that ships PassiveIntent. Micro-frontends under the same domain count as one project.
 
 **Is there a trial period?**  
 The Free (AGPLv3) tier has no time limit and no feature restrictions — it is the full SDK. Commercial tiers add a support channel, AGPL exemption, and (for Growth/Enterprise) premium features as they ship.
@@ -53,7 +53,7 @@ The Free (AGPLv3) tier has no time limit and no feature restrictions — it is t
 
 ## Support Boundaries
 
-EdgeSignal is developed and maintained by a solo founder. The following terms apply to all paid tiers and are incorporated into every Commercial License Agreement.
+PassiveIntent is developed and maintained by a solo founder. The following terms apply to all paid tiers and are incorporated into every Commercial License Agreement.
 
 ### Business Hours
 
@@ -69,7 +69,7 @@ Support is strictly limited to:
 
 - Bug reports for reproducible SDK behavior.
 - Questions about SDK configuration and documented APIs.
-- Clarification of EdgeSignal documentation.
+- Clarification of PassiveIntent documentation.
 
 Support does **not** include:
 

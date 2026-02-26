@@ -6,21 +6,21 @@
  */
 
 import { useCallback, useEffect, useRef } from 'react';
-import { IntentManager } from '@edgesignal/core';
+import { IntentManager } from '@passiveintent/core';
 import type {
-  EdgeSignalTelemetry,
+  PassiveIntentTelemetry,
   IntentEventMap,
   IntentEventName,
   IntentManagerConfig,
-} from '@edgesignal/core';
+} from '@passiveintent/core';
 
 // ── Re-exports for consumer convenience ──────────────────────────────────────
 
-export type { IntentManagerConfig, EdgeSignalTelemetry } from '@edgesignal/core';
+export type { IntentManagerConfig, PassiveIntentTelemetry } from '@passiveintent/core';
 
 // ── Return type ───────────────────────────────────────────────────────────────
 
-export interface UseEdgeSignalReturn {
+export interface UsePassiveIntentReturn {
   /**
    * Track a page view or custom state transition.
    *
@@ -53,7 +53,7 @@ export interface UseEdgeSignalReturn {
    * Returns the current telemetry snapshot (session-scoped aggregate counters
    * only — no raw behavioral data). Returns an empty object cast during SSR.
    */
-  getTelemetry: () => EdgeSignalTelemetry;
+  getTelemetry: () => PassiveIntentTelemetry;
 
   /**
    * Returns `{ state, probability }[]` sorted descending by probability for
@@ -104,7 +104,7 @@ const NOOP_UNSUBSCRIBE: () => void = () => {};
 // ── Hook ──────────────────────────────────────────────────────────────────────
 
 /**
- * `useEdgeSignal` — React hook that manages an {@link IntentManager} singleton
+ * `usePassiveIntent` — React hook that manages an {@link IntentManager} singleton
  * lifecycle for you.
  *
  * - **Mount:** creates a new `IntentManager` with the config supplied at first
@@ -121,7 +121,7 @@ const NOOP_UNSUBSCRIBE: () => void = () => {};
  *   `typeof window` guard at the call site.
  * - **Config stability:** the config object is captured in a ref on first
  *   render. An unstable inline config object (e.g.
- *   `useEdgeSignal({ storageKey: 'x' })`) will not recreate the engine on
+ *   `usePassiveIntent({ storageKey: 'x' })`) will not recreate the engine on
  *   every render — only the config present at initial mount is used. To apply
  *   a new config, remount the component (e.g. change its `key` prop).
  *
@@ -129,13 +129,13 @@ const NOOP_UNSUBSCRIBE: () => void = () => {};
  *
  * @example
  * ```tsx
- * import { useEdgeSignal } from '@edgesignal/react';
+ * import { usePassiveIntent } from '@passiveintent/react';
  * import { useEffect } from 'react';
  * import { useLocation } from 'react-router-dom';
  *
- * export function EdgeSignalProvider() {
+ * export function PassiveIntentProvider() {
  *   const location = useLocation();
- *   const { track, on } = useEdgeSignal({
+ *   const { track, on } = usePassiveIntent({
  *     storageKey: 'my-app-intent',
  *     graph: { highEntropyThreshold: 0.8 },
  *     botProtection: true,
@@ -158,7 +158,7 @@ const NOOP_UNSUBSCRIBE: () => void = () => {};
  * }
  * ```
  */
-export function useEdgeSignal(config: IntentManagerConfig): UseEdgeSignalReturn {
+export function usePassiveIntent(config: IntentManagerConfig): UsePassiveIntentReturn {
   // Hold the instance across renders. A ref (not state) ensures that
   // replacing the instance does not schedule an extra render cycle.
   const instanceRef = useRef<IntentManager | null>(null);
@@ -206,11 +206,11 @@ export function useEdgeSignal(config: IntentManagerConfig): UseEdgeSignalReturn 
     [],
   );
 
-  const getTelemetry = useCallback((): EdgeSignalTelemetry => {
+  const getTelemetry = useCallback((): PassiveIntentTelemetry => {
     // Cast via unknown: before mount instanceRef is null, so we return a
     // partial object. Callers should only read telemetry after the first
     // track() call anyway.
-    return instanceRef.current?.getTelemetry() ?? ({} as EdgeSignalTelemetry);
+    return instanceRef.current?.getTelemetry() ?? ({} as PassiveIntentTelemetry);
   }, []);
 
   const predictNextStates = useCallback(

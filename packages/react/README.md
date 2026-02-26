@@ -1,13 +1,13 @@
-# `@edgesignal/react`
+# `@passiveintent/react`
 
-> React 18+ wrapper for [`@edgesignal/core`](../core/README.md) — drop-in `useEdgeSignal` hook with Strict Mode safety and SSR support.
+> React 18+ wrapper for [`@passiveintent/core`](../core/README.md) — drop-in `usePassiveIntent` hook with Strict Mode safety and SSR support.
 
 ---
 
 ## Installation
 
 ```bash
-npm install @edgesignal/react
+npm install @passiveintent/react
 # react / react-dom are peer dependencies — install once at app level
 ```
 
@@ -17,12 +17,12 @@ npm install @edgesignal/react
 
 ```tsx
 'use client'; // Next.js App Router
-import { useEdgeSignal } from '@edgesignal/react';
+import { usePassiveIntent } from '@passiveintent/react';
 import { usePathname } from 'next/navigation';
 import { useEffect } from 'react';
 
 export function TrackingProvider({ children }: { children: React.ReactNode }) {
-  const { track, on, getTelemetry } = useEdgeSignal({
+  const { track, on, getTelemetry } = usePassiveIntent({
     botProtection: true,
     eventCooldownMs: 60_000,
   });
@@ -35,7 +35,7 @@ export function TrackingProvider({ children }: { children: React.ReactNode }) {
 
   useEffect(() => {
     return on('high_entropy', () => {
-      console.log('[EdgeSignal] anomaly', getTelemetry());
+      console.log('[PassiveIntent] anomaly', getTelemetry());
     });
   }, [on, getTelemetry]);
 
@@ -47,7 +47,7 @@ export function TrackingProvider({ children }: { children: React.ReactNode }) {
 
 ## API
 
-### `useEdgeSignal(config: IntentManagerConfig): UseEdgeSignalReturn`
+### `usePassiveIntent(config: IntentManagerConfig): UsePassiveIntentReturn`
 
 All returned methods are stable across re-renders (`useCallback(…, [])`). Methods are no-ops
 before the first mount (SSR, Suspense, concurrent transitions) and after unmount.
@@ -56,7 +56,7 @@ before the first mount (SSR, Suspense, concurrent transitions) and after unmount
 | ------------------- | --------------------------------------------------------------------- | ---------------------------------------------------- |
 | `track`             | `(event: string) => void`                                             | Records a page-view or custom event                  |
 | `on`                | `(event, handler) => () => void`                                      | Subscribe; call the returned function to unsubscribe |
-| `getTelemetry`      | `() => EdgeSignalTelemetry`                                           | Full engine snapshot                                 |
+| `getTelemetry`      | `() => PassiveIntentTelemetry`                                        | Full engine snapshot                                 |
 | `predictNextStates` | `(threshold?, sanitize?) => { state: string; probability: number }[]` | Top-N Markov predictions                             |
 | `hasSeen`           | `(route: string) => boolean`                                          | Bloom filter membership test                         |
 | `incrementCounter`  | `(key: string, by?: number) => void`                                  | Exact session-scoped counter                         |
@@ -75,18 +75,18 @@ before the first mount (SSR, Suspense, concurrent transitions) and after unmount
 
 ## Monorepo Package Conventions
 
-All `@edgesignal/*` packages follow these conventions:
+All `@passiveintent/*` packages follow these conventions:
 
 ```
 packages/<name>/
-  package.json       → "name": "@edgesignal/<name>"
+  package.json       → "name": "@passiveintent/<name>"
   tsconfig.json      → extends ../../tsconfig.base.json
   src/
     index.ts         → primary export surface
   README.md          → this file pattern
 ```
 
-- `@edgesignal/core` dependency: pin to the corresponding release range (e.g. `"^1.0.0"`).
+- `@passiveintent/core` dependency: pin to the corresponding release range (e.g. `"^1.0.0"`).
 - Build: `tsup src/index.ts --format esm,cjs --dts --sourcemap`
 - Types: dual `d.ts` via `tsup --dts`
 

@@ -8,7 +8,7 @@
 /**
  * Amazon Clone E2E Tests
  *
- * These tests verify the EdgeSignal SDK functionality
+ * These tests verify the PassiveIntent SDK functionality
  * in a realistic e-commerce shopping context.
  */
 

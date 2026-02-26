@@ -5,22 +5,22 @@
   LICENSE file in the root directory of this source tree.
 -->
 
-# EdgeSignal — Monorepo
+# PassiveIntent — Monorepo
 
 [![License: AGPL-3.0-only](https://img.shields.io/badge/license-AGPL--3.0--only-blue.svg)](./LICENSE)
 [![TypeScript](https://img.shields.io/badge/TypeScript-5.6-3178c6.svg)](https://www.typescriptlang.org/)
-[![Open in StackBlitz](https://developer.stackblitz.com/img/open_in_stackblitz_small.svg)](https://stackblitz.com/github/purushpsm147/EdgeSignal-Privacy-First-Intent-Engine)
+[![Open in StackBlitz](https://developer.stackblitz.com/img/open_in_stackblitz_small.svg)](https://stackblitz.com/github/purushpsm147/PassiveIntent-Privacy-First-Intent-Engine)
 
-This repository is structured as an **npm workspaces monorepo** containing all EdgeSignal packages.
+This repository is structured as an **npm workspaces monorepo** containing all PassiveIntent packages.
 
 ---
 
 ## Packages
 
-| Package                                 | Version                                                                                                                                    | Description                                       |
-| --------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------ | ------------------------------------------------- |
-| [`@edgesignal/core`](./packages/core)   | [![npm](https://img.shields.io/badge/npm-coming%20soon-lightgrey)](https://github.com/purushpsm147/EdgeSignal-Privacy-First-Intent-Engine) | Privacy-first, on-device behavioral intent engine |
-| [`@edgesignal/react`](./packages/react) | [![npm](https://img.shields.io/badge/npm-coming%20soon-lightgrey)](https://github.com/purushpsm147/EdgeSignal-Privacy-First-Intent-Engine) | React 18+ hook wrapper for `@edgesignal/core`     |
+| Package                                    | Version                                                                                                                                       | Description                                       |
+| ------------------------------------------ | --------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------- |
+| [`@passiveintent/core`](./packages/core)   | [![npm](https://img.shields.io/badge/npm-coming%20soon-lightgrey)](https://github.com/purushpsm147/PassiveIntent-Privacy-First-Intent-Engine) | Privacy-first, on-device behavioral intent engine |
+| [`@passiveintent/react`](./packages/react) | [![npm](https://img.shields.io/badge/npm-coming%20soon-lightgrey)](https://github.com/purushpsm147/PassiveIntent-Privacy-First-Intent-Engine) | React 18+ hook wrapper for `@passiveintent/core`  |
 
 Full documentation for each package lives inside the package directory:
 
@@ -51,13 +51,13 @@ Full documentation for each package lives inside the package directory:
 │   ├── ISSUE_TEMPLATE/
 │   └── workflows/
 │       ├── ci.root.yml        # format:check (all packages)
-│       ├── ci.core.yml        # build / test / perf for @edgesignal/core
-│       ├── ci.react.yml       # build / test for @edgesignal/react
+│       ├── ci.core.yml        # build / test / perf for @passiveintent/core
+│       ├── ci.react.yml       # build / test for @passiveintent/react
 │       ├── release-gate.yml   # full pre-release validation gates
 │       └── perf-matrix.core.yml
 └── packages/
-    ├── core/                  # published as @edgesignal/core
-    └── react/                 # published as @edgesignal/react
+    ├── core/                  # published as @passiveintent/core
+    └── react/                 # published as @passiveintent/react
 ```
 
 ---
@@ -75,8 +75,8 @@ Full documentation for each package lives inside the package directory:
 Run workspaces individually to target a single package:
 
 ```bash
-npm run build --workspace=@edgesignal/core
-npm run test  --workspace=@edgesignal/core
+npm run build --workspace=@passiveintent/core
+npm run test  --workspace=@passiveintent/core
 ```
 
 ---
@@ -89,4 +89,4 @@ See [CONTRIBUTING.md](./CONTRIBUTING.md) for guidelines and [SECURITY.md](./SECU
 
 ## License
 
-EdgeSignal is dual-licensed — see [LICENSE](./LICENSE) and [PRICING.md](./PRICING.md) for details.
+PassiveIntent is dual-licensed — see [LICENSE](./LICENSE) and [PRICING.md](./PRICING.md) for details.

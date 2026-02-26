@@ -6,7 +6,7 @@
  */
 
 /**
- * EdgeSignal
+ * PassiveIntent
  * --------------------------------------------------------
  * Goals:
  * - Entirely local inference (no network/data egress)
@@ -41,12 +41,12 @@ export type {
   BotDetectedPayload,
   HesitationDetectedPayload,
   ConversionPayload,
-  EdgeSignalTelemetry,
+  PassiveIntentTelemetry,
   BloomFilterConfig,
   MarkovGraphConfig,
   IntentManagerConfig,
   DwellTimeConfig,
-  EdgeSignalError,
+  PassiveIntentError,
 } from './types/events.js';
 
 export type { SerializedMarkovGraph } from './core/markov.js';

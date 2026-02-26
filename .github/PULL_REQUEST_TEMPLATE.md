@@ -15,5 +15,5 @@
 - [ ] My code follows the project's style guidelines
 - [ ] I have run `npm run lint` and `npm run typecheck` locally
 - [ ] I have added/updated tests that prove my fix or feature works
-- [ ] All existing tests pass (`npm run test:unit -w @edgesignal/core`)
+- [ ] All existing tests pass (`npm run test:unit -w @passiveintent/core`)
 - [ ] I have updated documentation where applicable

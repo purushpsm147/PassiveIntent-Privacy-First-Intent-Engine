@@ -6,11 +6,11 @@
  */
 
 /**
- * EdgeSignal — Public API Barrel Export
+ * PassiveIntent — Public API Barrel Export
  * --------------------------------------------------------
  * Import everything you need from one clean entry-point:
  *
- *   import { IntentManager, BloomFilter, MarkovGraph } from '@edgesignal/core';
+ *   import { IntentManager, BloomFilter, MarkovGraph } from '@passiveintent/core';
  */
 
 /* ---- Core SDK ---- */
@@ -34,11 +34,11 @@ export type {
   BotDetectedPayload,
   HesitationDetectedPayload,
   ConversionPayload,
-  EdgeSignalTelemetry,
+  PassiveIntentTelemetry,
   BloomFilterConfig,
   MarkovGraphConfig,
   IntentManagerConfig,
-  EdgeSignalError,
+  PassiveIntentError,
   DwellTimeConfig,
   SerializedMarkovGraph,
 } from './intent-sdk.js';

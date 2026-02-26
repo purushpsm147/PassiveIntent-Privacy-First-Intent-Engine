@@ -34,16 +34,16 @@ jobs:
         run: npm ci
 
       - name: Type check
-        run: npm run typecheck -w @edgesignal/core
+        run: npm run typecheck -w @passiveintent/core
 
       - name: Build
-        run: npm run build -w @edgesignal/core
+        run: npm run build -w @passiveintent/core
 
       - name: Unit tests
-        run: npm run test:unit -w @edgesignal/core
+        run: npm run test:unit -w @passiveintent/core
 
       - name: Performance regression assertion
-        run: npm run test:perf:assert -w @edgesignal/core
+        run: npm run test:perf:assert -w @passiveintent/core
 
       - name: Package integrity
-        run: npm run verify:package -w @edgesignal/core
+        run: npm run verify:package -w @passiveintent/core

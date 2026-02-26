@@ -20,7 +20,7 @@ jobs:
         with:
           node-version: 20
       - run: npm ci
-      - run: npm run test:perf:run -w @edgesignal/core
-      - run: npm run test:perf:assert -w @edgesignal/core
+      - run: npm run test:perf:run -w @passiveintent/core
+      - run: npm run test:perf:assert -w @passiveintent/core
       - name: Validate scenario matrix
-        run: npm run test:perf:matrix -w @edgesignal/core
+        run: npm run test:perf:matrix -w @passiveintent/core

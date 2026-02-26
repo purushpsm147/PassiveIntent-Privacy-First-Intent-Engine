@@ -10,7 +10,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { execSync } from 'node:child_process';
 
-const tempRoot = mkdtempSync(join(tmpdir(), 'edge-signal-pack-'));
+const tempRoot = mkdtempSync(join(tmpdir(), 'passive-intent-pack-'));
 
 let tarballPath = '';
 try {
@@ -27,7 +27,7 @@ try {
   execSync(`npm install --silent "${tarballPath}"`, { cwd: consumerDir, stdio: 'inherit' });
 
   const smoke = `
-import { IntentManager, MarkovGraph, BloomFilter } from '@edgesignal/core';
+import { IntentManager, MarkovGraph, BloomFilter } from '@passiveintent/core';
 const g = new MarkovGraph();
 g.incrementTransition('home', 'search');
 const b = new BloomFilter();

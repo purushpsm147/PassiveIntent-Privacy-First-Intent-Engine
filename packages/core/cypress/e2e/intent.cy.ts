@@ -102,8 +102,8 @@ describe('Privacy-First Intent Sandbox', () => {
 
     cy.wait(600);
     cy.window().then((win) => {
-      const payload = win.localStorage.getItem('edge-signal');
-      expect(payload, 'edge-signal should be written to localStorage').to.be.a('string');
+      const payload = win.localStorage.getItem('passive-intent');
+      expect(payload, 'passive-intent should be written to localStorage').to.be.a('string');
 
       const parsed = JSON.parse(payload as string);
       expect(parsed).to.have.property('bloomBase64');
@@ -555,7 +555,7 @@ describe('Cross-Tab Sync (BroadcastSync)', () => {
 
   it('Test AC: IntentManager with crossTabSync:true initializes and tracks correctly', () => {
     cy.window().then((win) => {
-      const { IntentManager } = (win as any).__EdgeSignalSDK;
+      const { IntentManager } = (win as any).__PassiveIntentSDK;
       const mgr = new IntentManager({
         storageKey: 'cross-tab-test',
         botProtection: false,
@@ -572,7 +572,7 @@ describe('Cross-Tab Sync (BroadcastSync)', () => {
 
   it('Test AD: BroadcastSync.applyRemote() updates the graph and Bloom filter', () => {
     cy.window().then((win) => {
-      const { BloomFilter, MarkovGraph, BroadcastSync } = (win as any).__EdgeSignalSDK;
+      const { BloomFilter, MarkovGraph, BroadcastSync } = (win as any).__PassiveIntentSDK;
 
       const bloom = new BloomFilter();
       const graph = new MarkovGraph();
@@ -590,7 +590,7 @@ describe('Cross-Tab Sync (BroadcastSync)', () => {
 
   it('Test AE: BroadcastSync.applyRemoteCounter() updates the shared counters Map', () => {
     cy.window().then((win) => {
-      const { BloomFilter, MarkovGraph, BroadcastSync } = (win as any).__EdgeSignalSDK;
+      const { BloomFilter, MarkovGraph, BroadcastSync } = (win as any).__PassiveIntentSDK;
 
       const bloom = new BloomFilter();
       const graph = new MarkovGraph();
@@ -609,11 +609,11 @@ describe('Cross-Tab Sync (BroadcastSync)', () => {
 
   it('Test AF: incrementCounter broadcasts counter messages when crossTabSync:true', () => {
     cy.window().then((win) => {
-      const { IntentManager } = (win as any).__EdgeSignalSDK;
+      const { IntentManager } = (win as any).__PassiveIntentSDK;
 
       // Capture all messages on the channel IntentManager will use
       const received: any[] = [];
-      const listener = new win.BroadcastChannel('edgesignal-sync:counter-broadcast-test');
+      const listener = new win.BroadcastChannel('passiveintent-sync:counter-broadcast-test');
       listener.onmessage = (e: MessageEvent) => received.push(e.data);
       (win as any).__testListenerAF = listener;
 
@@ -652,7 +652,7 @@ describe('Cross-Tab Sync (BroadcastSync)', () => {
 
   it('Test AG: remote counter increment is reflected in getCounter() on the receiving tab', () => {
     cy.window().then((win) => {
-      const { IntentManager } = (win as any).__EdgeSignalSDK;
+      const { IntentManager } = (win as any).__PassiveIntentSDK;
 
       // "Tab A" — the receiver
       const mgrA = new IntentManager({
@@ -663,7 +663,7 @@ describe('Cross-Tab Sync (BroadcastSync)', () => {
       (win as any).__testMgrAG = mgrA;
 
       // "Tab B" — simulate by posting directly to the channel
-      const channelName = 'edgesignal-sync:counter-receive-test';
+      const channelName = 'passiveintent-sync:counter-receive-test';
       const sender = new win.BroadcastChannel(channelName);
       sender.postMessage({ type: 'counter', key: 'articles_read', by: 7 });
       (win as any).__testSenderAG = sender;

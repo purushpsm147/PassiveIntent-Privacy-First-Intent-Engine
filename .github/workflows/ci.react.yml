@@ -34,10 +34,10 @@ jobs:
         run: npm ci
 
       - name: Type check
-        run: npm run typecheck -w @edgesignal/react
+        run: npm run typecheck -w @passiveintent/react
 
       - name: Unit tests
-        run: npm run test -w @edgesignal/react
+        run: npm run test -w @passiveintent/react
 
       - name: Build
-        run: npm run build -w @edgesignal/react
+        run: npm run build -w @passiveintent/react

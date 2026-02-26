@@ -9,7 +9,7 @@
 
 ## Supported Versions
 
-Only the latest stable release of the EdgeSignal SDK receives security fixes.
+Only the latest stable release of the PassiveIntent SDK receives security fixes.
 Please upgrade to the latest version before reporting a vulnerability.
 
 | Version | Supported          |
@@ -61,7 +61,7 @@ We do not currently operate a paid bug bounty program. We do, however, credit al
 
 The following are **in scope** for security reports:
 
-- The `edge-signal` npm package (`src/`)
+- The `@passiveintent/core` and `@passiveintent/react` npm packages (`src/`)
 - The public SDK API surface (`IntentManager`, adapters, configuration)
 - Data leakage or privacy violations stemming from SDK behaviour
 
