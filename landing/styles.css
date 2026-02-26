@@ -216,8 +216,74 @@ nav a:hover {
   gap: 14px;
 }
 
+.metric-grid,
+.integration-grid {
+  margin-top: 20px;
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 14px;
+}
+
 .card {
   padding: 18px;
+}
+
+.metric-card,
+.integration-card {
+  padding: 18px;
+  border: 1px solid var(--border);
+  background: linear-gradient(160deg, rgba(255, 255, 255, 0.05), rgba(255, 255, 255, 0.02));
+  border-radius: var(--radius);
+}
+
+.metric-card h3,
+.integration-card h3 {
+  margin-top: 0;
+  margin-bottom: 8px;
+}
+
+.metric-card p,
+.integration-card p {
+  margin: 0;
+  color: var(--muted);
+}
+
+.card-top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin-bottom: 8px;
+}
+
+.chip {
+  border-radius: 999px;
+  border: 1px solid rgba(86, 226, 240, 0.5);
+  color: var(--primary);
+  background: rgba(86, 226, 240, 0.14);
+  font-size: 0.72rem;
+  padding: 4px 8px;
+  white-space: nowrap;
+}
+
+.chip-soon {
+  border-color: rgba(255, 184, 108, 0.5);
+  color: var(--secondary);
+  background: rgba(255, 184, 108, 0.14);
+}
+
+.integration-card a {
+  display: inline-block;
+  margin-top: 10px;
+  color: var(--primary);
+  text-decoration: none;
+}
+
+.coming-link {
+  display: inline-block;
+  margin-top: 10px;
+  color: var(--secondary);
+  font-size: 0.9rem;
 }
 
 .card h3 {
@@ -364,6 +430,8 @@ details p {
 
 @media (max-width: 920px) {
   .hero-grid,
+  .metric-grid,
+  .integration-grid,
   .pricing-grid,
   .cards,
   .code-section {
