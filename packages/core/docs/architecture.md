@@ -1159,7 +1159,7 @@ import type { IntentManagerConfig, UsePassiveIntentReturn } from '@passiveintent
 | `getTelemetry`      | `() => PassiveIntentTelemetry`                                        | empty object cast before mount     |
 | `predictNextStates` | `(threshold?, sanitize?) => { state: string; probability: number }[]` | `[]` before first mount            |
 | `hasSeen`           | `(route: string) => boolean`                                          | `false` before first mount         |
-| `incrementCounter`  | `(key: string, by?: number) => void`                                  | —                                  |
+| `incrementCounter`  | `(key: string, by?: number) => number`                                | returns new value; `0` before mount / SSR          |
 | `getCounter`        | `(key: string) => number`                                             | `0` before first mount             |
 | `resetCounter`      | `(key: string) => void`                                               | —                                  |
 

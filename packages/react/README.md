@@ -59,7 +59,7 @@ before the first mount (SSR, Suspense, concurrent transitions) and after unmount
 | `getTelemetry`      | `() => PassiveIntentTelemetry`                                        | Full engine snapshot                                 |
 | `predictNextStates` | `(threshold?, sanitize?) => { state: string; probability: number }[]` | Top-N Markov predictions                             |
 | `hasSeen`           | `(route: string) => boolean`                                          | Bloom filter membership test                         |
-| `incrementCounter`  | `(key: string, by?: number) => void`                                  | Exact session-scoped counter                         |
+| `incrementCounter`  | `(key: string, by?: number) => number`                                | Exact session-scoped counter; returns new value, `0` during SSR |
 | `getCounter`        | `(key: string) => number`                                             | Read a session-scoped counter                        |
 | `resetCounter`      | `(key: string) => void`                                               | Reset a session-scoped counter                       |
 

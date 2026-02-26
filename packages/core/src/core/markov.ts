@@ -81,10 +81,14 @@ export class MarkovGraph {
    * Dirichlet / Laplace smoothing pseudo-count.
    * When > 0, `getProbability` uses:
    *   P = (count + alpha) / (total + alpha * k)
-   * where k = number of live states.  When 0 (default), falls back to
-   * exact frequentist math (count / total) with zero extra cost.
+   * where k = number of live states.  When 0, falls back to exact
+   * frequentist math (count / total) with zero extra cost.
    *
-   * Set to a value such as `0.1` to enable cold-start regularization.
+   * **Default: `0.1`** — mild Bayesian regularization that prevents
+   * cold-start 100 % probability spikes on Day-1 sessions.
+   * Pass `0` explicitly to restore pure frequentist behaviour.
+   *
+   * Non-finite or negative values are clamped to `0` by the constructor.
    */
   readonly smoothingAlpha: number;
 
