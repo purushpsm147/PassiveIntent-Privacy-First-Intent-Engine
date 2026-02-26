@@ -1,0 +1,177 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>PassiveIntent | Privacy-First Intent Engine</title>
+    <meta
+      name="description"
+      content="Detect user hesitation and frustration in under 2ms, fully on-device, with zero behavioral data egress."
+    />
+    <meta property="og:title" content="PassiveIntent | Privacy-First Intent Engine" />
+    <meta
+      property="og:description"
+      content="Real-time intent detection with zero data egress. Built for privacy-conscious B2B teams."
+    />
+    <meta property="og:type" content="website" />
+    <meta property="og:url" content="https://passiveintent.dev" />
+    <meta name="theme-color" content="#0f172a" />
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;700&family=IBM+Plex+Mono:wght@400;500&display=swap"
+      rel="stylesheet"
+    />
+    <link rel="stylesheet" href="./styles.css" />
+  </head>
+  <body>
+    <div class="bg-glow bg-glow-1"></div>
+    <div class="bg-glow bg-glow-2"></div>
+
+    <header class="site-header">
+      <a class="brand" href="#top">
+        <span class="brand-mark"></span>
+        <span>PassiveIntent</span>
+      </a>
+      <nav>
+        <a href="#features">Features</a>
+        <a href="#pricing">Pricing</a>
+        <a href="#faq">FAQ</a>
+        <a class="pill" href="https://github.com/purushpsm147/PassiveIntent-Privacy-First-Intent-Engine" target="_blank" rel="noreferrer">GitHub</a>
+      </nav>
+    </header>
+
+    <main id="top">
+      <section class="hero section reveal">
+        <p class="eyebrow">No cookies. No tracking servers. No legal nightmare.</p>
+        <h1>Stop churn before it happens with <span>on-device intent signals</span>.</h1>
+        <p class="subhead">
+          PassiveIntent detects hesitation, path divergence, and rage-click behavior in under
+          <strong>2ms</strong> directly in the browser. Zero behavioral data leaves the device.
+        </p>
+        <div class="hero-cta">
+          <a class="btn btn-primary" href="https://github.com/purushpsm147/PassiveIntent-Privacy-First-Intent-Engine/tree/main/packages/core" target="_blank" rel="noreferrer">Get SDK</a>
+          <a class="btn btn-ghost" href="https://github.com/purushpsm147/PassiveIntent-Privacy-First-Intent-Engine/blob/main/packages/core/docs/architecture.md" target="_blank" rel="noreferrer">Read Docs</a>
+        </div>
+        <div class="hero-grid">
+          <article>
+            <h3>&lt; 2ms</h3>
+            <p>Hot-path inference latency per <code>track()</code> call.</p>
+          </article>
+          <article>
+            <h3>~6kB</h3>
+            <p>Gzipped footprint, tree-shakeable TypeScript SDK.</p>
+          </article>
+          <article>
+            <h3>0 egress</h3>
+            <p>No clickstream upload, no data broker risk.</p>
+          </article>
+        </div>
+      </section>
+
+      <section id="features" class="section reveal">
+        <div class="section-head">
+          <p class="eyebrow">Built for high-conviction product teams</p>
+          <h2>Intervene at the exact moment users get stuck</h2>
+        </div>
+        <div class="cards">
+          <article class="card">
+            <h3>Hesitation Detection</h3>
+            <p>Welford z-score identifies unusual dwell-time spikes before users abandon checkout.</p>
+          </article>
+          <article class="card">
+            <h3>Trajectory Anomaly</h3>
+            <p>Log-likelihood against a baseline Markov graph flags unusual path drift in real time.</p>
+          </article>
+          <article class="card">
+            <h3>EntropyGuard</h3>
+            <p>Suppresses bot-driven false positives using timing variance and cadence checks.</p>
+          </article>
+          <article class="card">
+            <h3>Privacy by Design</h3>
+            <p>No PII capture, no fingerprinting APIs, no forced cookie consent banner.</p>
+          </article>
+        </div>
+      </section>
+
+      <section class="section code-section reveal">
+        <div>
+          <p class="eyebrow">Ship in minutes</p>
+          <h2>Simple API. Strong defaults.</h2>
+          <p>
+            Drop PassiveIntent into any SPA and react instantly to behavioral signals with
+            full client-side control.
+          </p>
+        </div>
+        <pre><code>import { IntentManager } from '@passiveintent/core';
+
+const intent = new IntentManager({ storageKey: 'passive-intent' });
+
+intent.track('/checkout/payment');
+
+intent.on('dwell_time_anomaly', ({ zScore }) => {
+  if (zScore > 2.0) showTooltip('Need help finishing this step?');
+});</code></pre>
+      </section>
+
+      <section id="pricing" class="section reveal">
+        <div class="section-head">
+          <p class="eyebrow">Clear licensing</p>
+          <h2>Start free, upgrade when your product grows</h2>
+        </div>
+        <div class="pricing-grid">
+          <article class="price-card">
+            <h3>Free</h3>
+            <p class="price">$0</p>
+            <p>AGPLv3 for OSS, students, internal learning projects.</p>
+          </article>
+          <article class="price-card featured">
+            <span class="tag">Popular</span>
+            <h3>Startup</h3>
+            <p class="price">$599<span>/year</span></p>
+            <p>Up to 3 commercial projects plus priority async support.</p>
+          </article>
+          <article class="price-card">
+            <h3>Growth</h3>
+            <p class="price">$1,999<span>/year</span></p>
+            <p>Unlimited internal projects for one organization.</p>
+          </article>
+        </div>
+        <p class="pricing-note">
+          Need custom legal review or OEM terms? Use Enterprise licensing.
+          <a href="mailto:purushpsm147@yahoo.co.in">Contact sales</a>.
+        </p>
+      </section>
+
+      <section id="faq" class="section reveal">
+        <div class="section-head">
+          <p class="eyebrow">FAQ</p>
+          <h2>Common deployment and compliance questions</h2>
+        </div>
+        <div class="faq-list">
+          <details>
+            <summary>Can I host this site for free on Cloudflare Pages?</summary>
+            <p>Yes. This landing page is static and works on Cloudflare Pages free tier with GitHub integration.</p>
+          </details>
+          <details>
+            <summary>Do I need a cookie consent banner for PassiveIntent?</summary>
+            <p>Not for PassiveIntent itself when you keep state labels anonymous and do not transmit personal data.</p>
+          </details>
+          <details>
+            <summary>Can I deploy the same code on Vercel?</summary>
+            <p>Yes. Set framework preset to Other and output directory to <code>landing</code> for static deployment.</p>
+          </details>
+        </div>
+      </section>
+    </main>
+
+    <footer class="site-footer reveal">
+      <p>PassiveIntent © <span id="year"></span> · Privacy-First Intent Engine</p>
+      <a href="https://github.com/purushpsm147/PassiveIntent-Privacy-First-Intent-Engine" target="_blank" rel="noreferrer">
+        Source on GitHub
+      </a>
+    </footer>
+
+    <script src="./script.js"></script>
+  </body>
+</html>

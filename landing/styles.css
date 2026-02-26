@@ -1,0 +1,387 @@
+:root {
+  --bg: #0b1020;
+  --surface: #111936;
+  --surface-2: #0f1a3a;
+  --text: #ecf3ff;
+  --muted: #9fb2d7;
+  --primary: #4dd0e1;
+  --secondary: #ffb86c;
+  --border: rgba(255, 255, 255, 0.14);
+  --radius: 16px;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  margin: 0;
+  padding: 0;
+}
+
+body {
+  font-family: 'Space Grotesk', sans-serif;
+  color: var(--text);
+  background:
+    radial-gradient(circle at 85% 14%, rgba(93, 165, 255, 0.22), transparent 34%),
+    radial-gradient(circle at 8% 25%, rgba(255, 184, 108, 0.14), transparent 32%),
+    linear-gradient(180deg, #070c1a 0%, #0b1020 100%);
+  min-height: 100vh;
+  line-height: 1.5;
+  overflow-x: hidden;
+}
+
+.bg-glow {
+  position: fixed;
+  z-index: -1;
+  border-radius: 999px;
+  filter: blur(64px);
+  opacity: 0.35;
+  pointer-events: none;
+}
+
+.bg-glow-1 {
+  width: 320px;
+  height: 320px;
+  top: -120px;
+  right: -80px;
+  background: #2f80ed;
+}
+
+.bg-glow-2 {
+  width: 280px;
+  height: 280px;
+  bottom: 8vh;
+  left: -120px;
+  background: #ffb86c;
+}
+
+.site-header {
+  max-width: 1120px;
+  margin: 0 auto;
+  padding: 24px clamp(18px, 4vw, 36px);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+}
+
+.brand {
+  color: var(--text);
+  font-weight: 700;
+  text-decoration: none;
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.brand-mark {
+  width: 12px;
+  height: 12px;
+  background: linear-gradient(135deg, var(--primary), #5ba8ff);
+  border-radius: 50%;
+  box-shadow: 0 0 18px rgba(77, 208, 225, 0.9);
+}
+
+nav {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+}
+
+nav a {
+  color: var(--muted);
+  text-decoration: none;
+  font-size: 0.96rem;
+}
+
+nav a:hover {
+  color: var(--text);
+}
+
+.pill {
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  padding: 8px 14px;
+}
+
+.section {
+  max-width: 1120px;
+  margin: 0 auto;
+  padding: clamp(40px, 8vw, 72px) clamp(18px, 4vw, 36px);
+}
+
+.hero h1 {
+  font-size: clamp(2rem, 6vw, 4rem);
+  line-height: 1.08;
+  margin: 0 0 12px;
+}
+
+.hero h1 span {
+  color: var(--primary);
+}
+
+.eyebrow {
+  display: inline-block;
+  color: var(--secondary);
+  font-family: 'IBM Plex Mono', monospace;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  font-size: 0.78rem;
+  margin: 0 0 14px;
+}
+
+.subhead {
+  max-width: 760px;
+  color: var(--muted);
+  font-size: clamp(1rem, 2.3vw, 1.2rem);
+}
+
+.hero-cta {
+  margin-top: 24px;
+  display: flex;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  text-decoration: none;
+  border-radius: 12px;
+  padding: 11px 16px;
+  font-weight: 500;
+  transition: transform 150ms ease;
+}
+
+.btn:hover {
+  transform: translateY(-2px);
+}
+
+.btn-primary {
+  color: #041221;
+  background: linear-gradient(135deg, #56e2f0, #7eb3ff);
+}
+
+.btn-ghost {
+  color: var(--text);
+  border: 1px solid var(--border);
+}
+
+.hero-grid {
+  margin-top: 28px;
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.hero-grid article,
+.card,
+.price-card,
+.code-section pre,
+.faq-list details {
+  border: 1px solid var(--border);
+  background: linear-gradient(160deg, rgba(255, 255, 255, 0.05), rgba(255, 255, 255, 0.02));
+  border-radius: var(--radius);
+}
+
+.hero-grid article {
+  padding: 16px;
+}
+
+.hero-grid h3 {
+  margin: 0;
+  color: var(--primary);
+  font-size: 1.4rem;
+}
+
+.hero-grid p {
+  margin: 8px 0 0;
+  color: var(--muted);
+}
+
+.section-head h2 {
+  margin: 0;
+  font-size: clamp(1.5rem, 3.6vw, 2.2rem);
+}
+
+.cards {
+  margin-top: 20px;
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 14px;
+}
+
+.card {
+  padding: 18px;
+}
+
+.card h3 {
+  margin-top: 0;
+  margin-bottom: 8px;
+}
+
+.card p {
+  margin: 0;
+  color: var(--muted);
+}
+
+.code-section {
+  display: grid;
+  grid-template-columns: 1.1fr 1fr;
+  gap: 16px;
+  align-items: start;
+}
+
+.code-section p {
+  color: var(--muted);
+}
+
+pre {
+  margin: 0;
+  overflow-x: auto;
+}
+
+code {
+  font-family: 'IBM Plex Mono', monospace;
+}
+
+.code-section pre {
+  padding: 18px;
+}
+
+.pricing-grid {
+  margin-top: 20px;
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 14px;
+}
+
+.price-card {
+  padding: 18px;
+  position: relative;
+}
+
+.price-card h3 {
+  margin: 0 0 8px;
+}
+
+.price {
+  margin: 0 0 8px;
+  font-size: 2rem;
+  font-weight: 700;
+}
+
+.price span {
+  font-size: 0.95rem;
+  color: var(--muted);
+}
+
+.price-card p {
+  margin: 0;
+  color: var(--muted);
+}
+
+.price-card.featured {
+  border-color: rgba(86, 226, 240, 0.65);
+  box-shadow: 0 14px 40px rgba(0, 0, 0, 0.3);
+}
+
+.tag {
+  position: absolute;
+  top: 12px;
+  right: 12px;
+  border-radius: 999px;
+  background: rgba(86, 226, 240, 0.14);
+  color: var(--primary);
+  border: 1px solid rgba(86, 226, 240, 0.5);
+  font-size: 0.72rem;
+  padding: 4px 8px;
+}
+
+.pricing-note {
+  margin-top: 14px;
+  color: var(--muted);
+}
+
+.pricing-note a {
+  color: var(--primary);
+}
+
+.faq-list {
+  margin-top: 20px;
+  display: grid;
+  gap: 10px;
+}
+
+.faq-list details {
+  padding: 14px 16px;
+}
+
+summary {
+  cursor: pointer;
+  font-weight: 500;
+}
+
+details p {
+  margin: 8px 0 0;
+  color: var(--muted);
+}
+
+.site-footer {
+  max-width: 1120px;
+  margin: 0 auto;
+  padding: 24px clamp(18px, 4vw, 36px) 32px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+  color: var(--muted);
+  border-top: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+.site-footer a {
+  color: var(--primary);
+  text-decoration: none;
+}
+
+.reveal {
+  opacity: 0;
+  transform: translateY(18px);
+  transition: opacity 450ms ease, transform 450ms ease;
+}
+
+.reveal.visible {
+  opacity: 1;
+  transform: translateY(0);
+}
+
+@media (max-width: 920px) {
+  .hero-grid,
+  .pricing-grid,
+  .cards,
+  .code-section {
+    grid-template-columns: 1fr;
+  }
+
+  .site-footer {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+}
+
+@media (max-width: 560px) {
+  .site-header {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+
+  nav {
+    width: 100%;
+    gap: 10px;
+  }
+}
