@@ -43,16 +43,23 @@
     }
   },
   "files": [
-    "dist"
+    "dist/*.js",
+    "dist/*.js.map",
+    "dist/*.cjs",
+    "dist/*.cjs.map",
+    "dist/*.d.ts",
+    "dist/*.d.ts.map"
   ],
   "sideEffects": false,
   "scripts": {
-    "build": "tsup src/index.ts --format esm,cjs --dts --sourcemap",
+    "clean": "node -e \"require('fs').rmSync('dist', { recursive: true, force: true })\"",
+    "build": "npm run clean && tsup src/index.ts --format esm,cjs --dts --sourcemap",
+    "pack": "npm run build && npm pack",
+    "publish": "npm run build && npm publish",
     "test": "vitest run",
     "test:watch": "vitest",
     "test:coverage": "vitest run --coverage",
     "typecheck": "tsc -b",
-    "clean": "node -e \"require('fs').rmSync('dist', { recursive: true, force: true })\"",
     "prepublishOnly": "npm run build"
   },
   "dependencies": {

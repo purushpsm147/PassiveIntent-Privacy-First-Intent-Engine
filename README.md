@@ -11,6 +11,8 @@
 [![TypeScript](https://img.shields.io/badge/TypeScript-5.6-3178c6.svg)](https://www.typescriptlang.org/)
 [![Open in StackBlitz](https://developer.stackblitz.com/img/open_in_stackblitz_small.svg)](https://stackblitz.com/github/purushpsm147/PassiveIntent-Privacy-First-Intent-Engine)
 
+**Website:** [passiveintent.dev](https://passiveintent.dev)
+
 This repository is structured as an **npm workspaces monorepo** containing all PassiveIntent packages.
 
 ---
