@@ -73,9 +73,9 @@ const BASE_CONFIG = { storageKey: 'test-key' };
 describe('usePassiveIntent', () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    MockIM.mockImplementation(
-      () => makeFakeInstance() as unknown as InstanceType<typeof IntentManager>,
-    );
+    MockIM.mockImplementation(function MockIntentManager() {
+      return makeFakeInstance() as unknown as InstanceType<typeof IntentManager>;
+    });
   });
 
   // ── 1. Lifecycle ────────────────────────────────────────────────────────────

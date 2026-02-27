@@ -12,7 +12,7 @@
 [![Open in StackBlitz](https://developer.stackblitz.com/img/open_in_stackblitz_small.svg)](https://stackblitz.com/github/purushpsm147/PassiveIntent-Privacy-First-Intent-Engine)
 
 **PassiveIntent is a 6 kB, zero-egress intent engine that detects user hesitation and frustration in real-time.**
-Catch rage-clicks, prevent checkout abandonment, and trigger personalized UI interventions in `< 2ms`—all entirely within the browser. Because zero behavioral data ever leaves the device, PassiveIntent requires **no cookie consent banner** and easily passes strict GDPR/HIPAA compliance.
+Catch rage-clicks, prevent checkout abandonment, and trigger personalized UI interventions in `< 2ms`—all entirely within the browser. Because zero behavioral data leaves the device by default, PassiveIntent can **reduce cookie-consent and GDPR overhead** for intent detection, subject to your full implementation and legal review.
 
 _(Under the hood, it uses a highly-optimized sparse Markov graph and Bloom filters to model probabilistic intent locally.)_
 

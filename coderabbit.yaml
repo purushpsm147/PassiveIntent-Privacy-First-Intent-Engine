@@ -1,0 +1,38 @@
+# Coderabbit configuration for Privacy-First-Intent-Engine
+
+checks:
+  - test-coverage
+  - lint
+  - security
+  - license
+
+pr:
+  require_tests: true
+  require_cla: true
+  require_description: true
+
+branches:
+  protected:
+    - main
+    - release
+
+notifications:
+  email:
+    enabled: true
+    recipients:
+      - purushpsm147@yahoo.co.in
+
+# Optional: customize as needed for your workflow
+language: 'en-US'
+reviews:
+  profile: 'chill' # Reduces nitpicky styling comments
+  request_changes_workflow: false # Never let the bot block a PR
+  high_level_summary: true
+  system_instructions: |
+    You are an expert Principal Engineer reviewing a highly constrained, privacy-first intent engine. 
+    Before making ANY suggestion, you must strictly adhere to these invariants:
+    1. ZERO EGRESS: This library must never make a network request. Never suggest fetch, XHR, or sending telemetry.
+    2. BUNDLE SIZE: The core bundle is strictly capped at 6kB. Never suggest importing external npm packages (like lodash, uuid, etc.). Use native browser APIs only.
+    3. MAIN THREAD LATENCY: The tracking loop must execute in < 2ms. Do not suggest heavy array mapping, deep cloning, or recursive functions that could block the UI thread.
+    4. NO BROWSER PERMISSIONS: Do not suggest using geolocation, camera, or heavy sensor APIs.
+    Focus your review on memory leaks, XSS vulnerabilities, asynchronous race conditions, and mathematical logic bugs.
