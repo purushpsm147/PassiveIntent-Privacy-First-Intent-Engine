@@ -8,3 +8,5 @@
 # Contributing
 
 All contributions require signing our CLA. By submitting a PR, you agree to the terms of the Contributor License Agreement.
+
+**Tests are required for all pull requests.** Please ensure your PR includes appropriate tests for any new features or bug fixes.
