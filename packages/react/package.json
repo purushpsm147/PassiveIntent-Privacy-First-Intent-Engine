@@ -54,8 +54,8 @@
   "scripts": {
     "clean": "node -e \"require('fs').rmSync('dist', { recursive: true, force: true })\"",
     "build": "npm run clean && tsup src/index.ts --format esm,cjs --dts --sourcemap",
-    "pack": "npm run build && npm pack",
-    "publish": "npm run build && npm publish",
+    "release:pack": "npm run build && npm pack",
+    "release": "npm publish",
     "test": "vitest run",
     "test:watch": "vitest",
     "test:coverage": "vitest run --coverage",
