@@ -62,12 +62,11 @@
     "typecheck": "tsc -b",
     "prepublishOnly": "npm run build"
   },
-  "dependencies": {
-    "@passiveintent/core": "^1.0.0"
-  },
+  "dependencies": {},
   "peerDependencies": {
     "react": ">=18.0.0",
-    "react-dom": ">=18.0.0"
+    "react-dom": ">=18.0.0",
+    "@passiveintent/core": "^1.0.0"
   },
   "peerDependenciesMeta": {
     "react-dom": {
