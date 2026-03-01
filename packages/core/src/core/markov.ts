@@ -246,7 +246,7 @@ export class MarkovGraph {
    */
   static logLikelihoodTrajectory(
     baseline: MarkovGraph,
-    sequence: string[],
+    sequence: readonly string[],
     epsilon = 0.01,
   ): number {
     if (sequence.length < 2) return 0;

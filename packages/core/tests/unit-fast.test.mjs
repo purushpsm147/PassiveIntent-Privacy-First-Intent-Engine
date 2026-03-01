@@ -745,6 +745,11 @@ test('eventCooldownMs: trajectory_anomaly respects cooldown independently', () =
       },
       botProtection: false,
       eventCooldownMs: 3000,
+      // Disable drift protection so it doesn't interfere with cooldown assertions.
+      // With the corrected drift counting (all anomalies counted, not just emitted
+      // ones), a highly anomalous walk would exceed the default 40% rate and silence
+      // evaluateTrajectory before the second assertion batch runs.
+      driftProtection: { maxAnomalyRate: 1.0, evaluationWindowMs: 300_000 },
     });
 
     let anomalyCount = 0;
@@ -3846,14 +3851,18 @@ test('onError: RESTORE_PARSE fires when stored graph is corrupt JSON', () => {
     `Expected 'RESTORE_PARSE', got: '${errors[0].code}'`,
   );
   assert.ok(typeof errors[0].message === 'string' && errors[0].message.length > 0);
-  // originalError must carry the raw payload for forensic debugging
+  // originalError carries payloadLength (byte size) for diagnostics; the raw payload is redacted
   assert.ok(
     errors[0].originalError != null && typeof errors[0].originalError === 'object',
     'originalError must be an object',
   );
   assert.ok(
-    typeof errors[0].originalError.payload === 'string',
-    'originalError.payload must be the raw stored string',
+    typeof errors[0].originalError.payloadLength === 'number',
+    'originalError.payloadLength must be the byte length of the stored string (payload is redacted)',
+  );
+  assert.ok(
+    !('payload' in errors[0].originalError),
+    'originalError must not expose the raw stored string',
   );
 });
 
@@ -4410,8 +4419,7 @@ test('internally-created lifecycleAdapter IS destroyed when IntentManager.destro
 
   // Wire the spy in place of whatever adapter the constructor created
   // (null in a non-browser env, or BrowserLifecycleAdapter in a browser env).
-  manager.lifecycleAdapter = spyAdapter;
-  manager.ownsLifecycleAdapter = true;
+  manager.lifecycleCoordinator.setAdapterForTest(spyAdapter, true);
 
   // Prime resumeCallback so we can later verify it was cleared by destroy().
   spyAdapter.onResume(() => {});

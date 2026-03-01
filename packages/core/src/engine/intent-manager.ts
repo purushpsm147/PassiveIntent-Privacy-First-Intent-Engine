@@ -7,23 +7,10 @@
 
 import { BenchmarkRecorder } from '../performance-instrumentation.js';
 import type { PerformanceReport } from '../performance-instrumentation.js';
-import {
-  BrowserLifecycleAdapter,
-  BrowserStorageAdapter,
-  BrowserTimerAdapter,
-} from '../adapters.js';
-import type {
-  AsyncStorageAdapter,
-  LifecycleAdapter,
-  StorageAdapter,
-  TimerAdapter,
-  TimerHandle,
-} from '../adapters.js';
-import { base64ToUint8, uint8ToBase64 } from '../persistence/codec.js';
+import { BrowserStorageAdapter, BrowserTimerAdapter } from '../adapters.js';
+import type { AsyncStorageAdapter, StorageAdapter, TimerAdapter } from '../adapters.js';
 import { BloomFilter } from '../core/bloom.js';
 import { MarkovGraph } from '../core/markov.js';
-import { EntropyGuard } from './entropy-guard.js';
-import { dwellStd, updateDwellStats } from './dwell.js';
 import { normalizeRouteState } from '../utils/route-normalizer.js';
 import { BroadcastSync } from '../sync/broadcast-sync.js';
 import type { SerializedMarkovGraph } from '../core/markov.js';
@@ -35,37 +22,14 @@ import type {
   IntentManagerConfig,
   MarkovGraphConfig,
 } from '../types/events.js';
-import {
-  SMOOTHING_EPSILON,
-  MIN_WINDOW_LENGTH,
-  MAX_WINDOW_LENGTH,
-  MIN_SAMPLE_TRANSITIONS,
-  MAX_PLAUSIBLE_DWELL_MS,
-} from './constants.js';
+import { SMOOTHING_EPSILON, MAX_WINDOW_LENGTH, MAX_PLAUSIBLE_DWELL_MS } from './constants.js';
 import { EventEmitter } from './event-emitter.js';
-
-/**
- * Persisted payload format.
- *
- * `graphBinary` is a base64-encoded Uint8Array produced by MarkovGraph.toBinary().
- * The `graph` field (JSON-serialized) is kept for the baseline config path only;
- * the persistence hot-path always uses the binary format.
- */
-interface PersistedPayload {
-  /** Always present. */
-  bloomBase64: string;
-  /** Base64-encoded binary graph (preferred for restore). */
-  graphBinary?: string;
-  /** JSON-serialized graph — used only for the baseline config path. */
-  graph?: SerializedMarkovGraph;
-}
+import { SignalEngine } from './signal-engine.js';
+import { PersistenceCoordinator } from './persistence-coordinator.js';
+import { LifecycleCoordinator } from './lifecycle-coordinator.js';
 
 /**
  * Shared mutable context passed through each `trackStages` pipeline function.
- *
- * Fields are populated incrementally — `from` and `isNewToBloom` start as
- * sentinel values and are set by the Bloom and transition-context stages
- * before the graph/signal stage reads them.
  */
 interface TrackContext {
   state: string;
@@ -83,248 +47,55 @@ export class IntentManager {
   private readonly graph: MarkovGraph;
   private readonly baseline: MarkovGraph | null;
   private readonly emitter = new EventEmitter<IntentEventMap>();
-  private readonly storageKey: string;
-  /**
-   * Used exclusively for the async-error retry path (`schedulePersist`) and
-   * `flushNow()` timer cancellation. The primary persist is synchronous
-   * (called directly from `runEmitAndPersistStage`), so this value no longer
-   * controls write frequency for normal `track()` flow.
-   */
-  private readonly persistDebounceMs: number;
   private readonly benchmark: BenchmarkRecorder;
-  private readonly storage: StorageAdapter;
-  /** Async storage backend — present only when created via `createAsync`. */
-  private readonly asyncStorage: AsyncStorageAdapter | null;
-  /**
-   * Guards against overlapping async `setItem` calls.
-   * When `true`, a promise-based write is already in flight;
-   * subsequent `persist()` calls return early and rely on `isDirty` to
-   * ensure the accumulated state is saved once the in-flight write completes.
-   */
-  private isAsyncWriting = false;
-  /**
-   * Set when persist() is invoked while an async write is in flight.
-   * Guarantees one follow-up persist pass after the in-flight write settles.
-   */
-  private hasPendingAsyncPersist = false;
-  /**
-   * Counts consecutive async `setItem` failures for the in-progress retry
-   * sequence.  Reset to 0 on every successful write.  Used to schedule exactly
-   * one automatic retry after the first failure without risking an infinite
-   * retry loop when storage is persistently broken.
-   */
-  private asyncWriteFailCount = 0;
-  /**
-   * Maximum interval (ms) between prune+serialize+write cycles.  0 = disabled
-   * (every dirty `track()` writes synchronously — full crash-safety).
-   */
-  private readonly persistThrottleMs: number;
-  /** Timestamp (from `timer.now()`) of the last successful persist write. */
-  private lastPersistedAt: number = -Infinity;
   private readonly timer: TimerAdapter;
   private readonly onError?: (error: PassiveIntentError) => void;
   private readonly botProtection: boolean;
-  private readonly eventCooldownMs: number;
-
-  /* Dwell-time anomaly detection */
   private readonly dwellTimeEnabled: boolean;
-  private readonly dwellTimeMinSamples: number;
-  private readonly dwellTimeZScoreThreshold: number;
-  /**
-   * Per-state Welford accumulators: { count, meanMs, m2 }.
-   *
-   * **Session-scoped — intentionally not persisted.**
-   * Persisting per-state timing distributions across page reloads would
-   * meaningfully increase the cross-session fingerprinting surface area,
-   * which conflicts with the library's privacy-first design goal.
-   * As a result, the learning phase (governed by `minSamples`) restarts
-   * on every new `IntentManager` instance.  Increase `minSamples` if
-   * short sessions cause excessive false positives.
-   */
-  private readonly dwellStats = new Map<string, { count: number; meanMs: number; m2: number }>();
 
-  /* Selective bigram (2nd-order) Markov */
-  private readonly enableBigrams: boolean;
-  private readonly bigramFrequencyThreshold: number;
+  /* Cross-tab synchronization */
+  private readonly broadcastSync: BroadcastSync | null;
 
-  /* ================================================================== */
-  /*  Tab-Visibility Dwell-Time Correction                               */
-  /* ================================================================== */
+  /* Collaborators */
+  private readonly signalEngine: SignalEngine;
+  private readonly persistenceCoordinator: PersistenceCoordinator;
+  private readonly lifecycleCoordinator: LifecycleCoordinator;
 
-  /**
-   * Timestamp (ms, from timer.now()) when the tab last became hidden.
-   * `null` while the tab is visible or before the first hide event.
-   */
-  private tabHiddenAt: number | null = null;
-  /** Lifecycle adapter for page-visibility — drives dwell-time correction. */
-  private readonly lifecycleAdapter: LifecycleAdapter | null;
-  /**
-   * True when IntentManager created the adapter internally (no `lifecycleAdapter`
-   * was provided in config).  Only the internally-created adapter should be
-   * destroyed on `destroy()` — injected adapters may be shared across multiple
-   * IntentManager instances and must not be torn down by any one of them.
-   */
-  private readonly ownsLifecycleAdapter: boolean;
-  /**
-   * Unsubscribe handles returned by `lifecycleAdapter.onPause/onResume`.
-   * Called in `destroy()` to remove this instance's specific callbacks from
-   * the adapter without tearing down the adapter itself — which is essential
-   * for shared (injected) adapters that may still be used by other managers.
-   */
-  private pauseUnsub: (() => void) | null = null;
-  private resumeUnsub: (() => void) | null = null;
-
-  /* ================================================================== */
-  /*  Failsafe Killswitch — Baseline Drift Protection                   */
-  /* ================================================================== */
-
-  /** When true, evaluateTrajectory is silently disabled. */
-  private isBaselineDrifted = false;
-  /** Upper bound on trajectory_anomaly / track() ratio before drift is declared. */
-  private readonly driftMaxAnomalyRate: number;
-  /** Rolling evaluation window length in ms. */
-  private readonly driftEvaluationWindowMs: number;
-  /** Timestamp (ms) when the current rolling window started. */
-  private driftWindowStart = 0;
-  /** Number of track() calls in the current rolling window. */
-  private driftWindowTrackCount = 0;
-  /** Number of trajectory_anomaly emissions in the current rolling window. */
-  private driftWindowAnomalyCount = 0;
-
-  /** Timestamp of the last emission per cooldown-gated event type */
-  private lastEmittedAt: Record<
-    'high_entropy' | 'trajectory_anomaly' | 'dwell_time_anomaly',
-    number
-  > = {
-    high_entropy: -Infinity,
-    trajectory_anomaly: -Infinity,
-    dwell_time_anomaly: -Infinity,
-  };
-
-  /**
-   * Trailing-flush timer for the persist throttle gate.  Fires within
-   * `persistThrottleMs` ms to write any dirty state that was skipped during
-   * the throttle window.  Kept separate from `retryTimer` so an async-write
-   * failure cannot cancel a pending throttle flush (and vice-versa).
-   */
-  private throttleTimer: TimerHandle | null = null;
-  /**
-   * One-shot retry timer scheduled by `schedulePersist()` after the first
-   * consecutive async `setItem` failure.  Kept separate from `throttleTimer`
-   * so cancelling a retry does not affect the throttle trailing flush.
-   */
-  private retryTimer: TimerHandle | null = null;
+  /* Pipeline state */
   private previousState: string | null = null;
-  /** Timestamp (ms, from timer.now()) when previousState was entered */
   private previousStateEnteredAt: number = 0;
   private recentTrajectory: string[] = [];
 
-  /* Dirty-flag persistence: only persist when state actually changed */
-  private isDirty = false;
-
-  /* ================================================================== */
-  /*  Deterministic Counters                                             */
-  /* ================================================================== */
-
-  /**
-   * Exact named counters — session-scoped, never persisted.
-   *
-   * Unlike the probabilistic Bloom filter, these counters are fully
-   * deterministic: `getCounter()` always returns the precise count.
-   * Use them for exact business metrics such as "articles read" or
-   * "items added to cart" where false positives are unacceptable.
-   */
+  /* Deterministic named counters — session-scoped, never persisted */
   private counters = new Map<string, number>();
 
-  /* EntropyGuard: bot detection state */
-  private readonly entropyGuard = new EntropyGuard();
-
-  /* Cross-tab synchronization via BroadcastChannel */
-  private readonly broadcastSync: BroadcastSync | null;
-
-  /* ================================================================== */
-  /*  GDPR-Compliant Telemetry                                           */
-  /* ================================================================== */
-
-  /**
-   * Short-lived session identifier. Generated once at construction.
-   * Never persisted to storage and never transmitted.
-   */
+  /* GDPR-compliant telemetry */
   private readonly sessionId: string;
-  /** Aggregate count of state transitions evaluated this session. */
-  private transitionsEvaluated = 0;
-  /** Aggregate count of anomaly events emitted this session. */
-  private anomaliesFired = 0;
-  /** Operational health flag — mutated by persist() and the quota error handler. */
-  private engineHealth: PassiveIntentTelemetry['engineHealth'] = 'healthy';
-
-  /* Hesitation detection: timestamps and z-scores from the last contributing signals */
-  private lastTrajectoryAnomalyAt = -Infinity;
-  private lastTrajectoryAnomalyZScore = 0;
-  private lastDwellAnomalyAt = -Infinity;
-  private lastDwellAnomalyZScore = 0;
-  /** The state where the user dwelled anomalously — anchors hesitation_detected.state. */
-  private lastDwellAnomalyState = '';
-  private readonly hesitationCorrelationWindowMs: number;
-  /** Effective smoothing epsilon used for runtime trajectory scoring. */
-  private readonly trajectorySmoothingEpsilon: number;
-  private readonly trackStages: Array<(ctx: TrackContext) => void>;
-  /** A/B holdout group for this session. */
   private readonly assignmentGroup: 'treatment' | 'control';
 
+  private readonly trackStages: Array<(ctx: TrackContext) => void>;
+
   constructor(config: IntentManagerConfig = {}) {
-    this.storageKey = config.storageKey ?? 'passive-intent';
-    // NOTE: persistDebounceMs is no longer the primary write policy.
-    // track() -> persist() is now synchronous (crash-safe).  This value is
-    // only consulted by schedulePersist() on the async-error retry path.
-    this.persistDebounceMs = config.persistDebounceMs ?? 2000;
-    this.persistThrottleMs = config.persistThrottleMs ?? 0;
     this.benchmark = new BenchmarkRecorder(config.benchmark);
-    this.storage = config.storage ?? new BrowserStorageAdapter();
-    this.asyncStorage = config.asyncStorage ?? null;
-    // When asyncStorage is set, it is used for all writes (in persist()).
-    // The sync storage adapter is only consulted by restore() to read the
-    // pre-loaded payload (injected by createAsync); its setItem is never called.
     this.timer = config.timer ?? new BrowserTimerAdapter();
     this.onError = config.onError;
     this.botProtection = config.botProtection ?? true;
-    this.eventCooldownMs = config.eventCooldownMs ?? 0;
-    this.hesitationCorrelationWindowMs = config.hesitationCorrelationWindowMs ?? 30_000;
-
-    // Dwell-time config
     this.dwellTimeEnabled = config.dwellTime?.enabled ?? false;
-    this.dwellTimeMinSamples = config.dwellTime?.minSamples ?? 10;
-    this.dwellTimeZScoreThreshold = config.dwellTime?.zScoreThreshold ?? 2.5;
 
-    // Bigram config
-    this.enableBigrams = config.enableBigrams ?? false;
-    this.bigramFrequencyThreshold = config.bigramFrequencyThreshold ?? 5;
-
-    // Drift protection config (defaults: 40 % anomaly rate over 5 minutes)
-    this.driftMaxAnomalyRate = config.driftProtection?.maxAnomalyRate ?? 0.4;
-    this.driftEvaluationWindowMs = config.driftProtection?.evaluationWindowMs ?? 300_000;
-
-    // Telemetry: generate a short-lived, local-only session ID.
-    // globalThis.crypto.randomUUID() is available in all modern browsers and
-    // Node ≥ 19 (unflagged). Node 14.17–18 exposed randomUUID() only via the
-    // built-in 'crypto' module (require('crypto')), NOT as a global, so those
-    // runtimes will correctly fall back to the Math.random path below.
+    // Session ID — local-only, never transmitted.
     this.sessionId =
       typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function'
         ? crypto.randomUUID()
         : Math.random().toString(36).slice(2) + Math.random().toString(36).slice(2);
 
-    // A/B holdout assignment: randomly place the session in 'control' or 'treatment'
-    // based on holdoutConfig.percentage (0–100 chance of being control).
-    // The percentage is clamped to [0, 100] to guard against invalid config values.
+    // A/B holdout assignment: randomly place the session in 'control' or 'treatment'.
+    // Percentage is clamped to [0, 100] to guard against invalid config values.
     const holdoutPct = Math.min(100, Math.max(0, config.holdoutConfig?.percentage ?? 0));
     this.assignmentGroup = Math.random() * 100 < holdoutPct ? 'control' : 'treatment';
 
-    // Merge baseline statistics: the top-level convenience aliases
-    // (config.baselineMeanLL / config.baselineStdLL / config.smoothingAlpha) take
-    // precedence over the nested graph config equivalents.  Both paths are supported
-    // for backward compatibility — see IntentManagerConfig in types/events.ts for the
-    // full rationale and precedence documentation.
+    // Merge top-level convenience aliases into the nested graph config.
+    // Top-level fields take precedence when both are supplied — see
+    // IntentManagerConfig in types/events.ts for the full rationale.
     const graphConfig: MarkovGraphConfig = {
       ...config.graph,
       baselineMeanLL: config.baselineMeanLL ?? config.graph?.baselineMeanLL,
@@ -332,32 +103,85 @@ export class IntentManager {
       smoothingAlpha: config.smoothingAlpha ?? config.graph?.smoothingAlpha,
     };
     const configuredSmoothing = graphConfig.smoothingEpsilon;
-    this.trajectorySmoothingEpsilon =
+    const trajectorySmoothingEpsilon =
       typeof configuredSmoothing === 'number' &&
       Number.isFinite(configuredSmoothing) &&
       configuredSmoothing > 0
         ? configuredSmoothing
         : SMOOTHING_EPSILON;
 
-    const restored = this.restore(graphConfig);
+    // ── PersistenceCoordinator (restore on construction) ──────────────────────
+    const persistenceCoordinator = new PersistenceCoordinator({
+      storageKey: config.storageKey ?? 'passive-intent',
+      persistDebounceMs: config.persistDebounceMs ?? 2000,
+      persistThrottleMs: config.persistThrottleMs ?? 0,
+      storage: config.storage ?? new BrowserStorageAdapter(),
+      asyncStorage: config.asyncStorage ?? null,
+      timer: this.timer,
+      onError: config.onError,
+    });
+    this.persistenceCoordinator = persistenceCoordinator;
+
+    const restored = persistenceCoordinator.restore(graphConfig);
 
     this.bloom = restored?.bloom ?? new BloomFilter(config.bloom);
     this.graph = restored?.graph ?? new MarkovGraph(graphConfig);
     this.baseline = config.baseline ? MarkovGraph.fromJSON(config.baseline, graphConfig) : null;
 
-    // Cross-tab synchronization — only initialized when explicitly opted in.
-    // The channel name is derived from storageKey so that multiple independent
-    // IntentManager instances (different storageKeys) never share messages.
+    // Attach the live graph + bloom so the coordinator can serialise them.
+    persistenceCoordinator.attach(this.graph, this.bloom);
+
+    // ── Cross-tab sync ────────────────────────────────────────────────────────
+    // Channel name derives from storageKey so independent IntentManager instances
+    // (different storageKeys) never share messages.
     this.broadcastSync =
       config.crossTabSync === true
         ? new BroadcastSync(
-            `passiveintent-sync:${this.storageKey}`,
+            `passiveintent-sync:${config.storageKey ?? 'passive-intent'}`,
             this.graph,
             this.bloom,
             this.counters,
           )
         : null;
 
+    // ── SignalEngine ──────────────────────────────────────────────────────────
+    this.signalEngine = new SignalEngine({
+      graph: this.graph,
+      baseline: this.baseline,
+      timer: this.timer,
+      benchmark: this.benchmark,
+      emitter: this.emitter,
+      assignmentGroup: this.assignmentGroup,
+      eventCooldownMs: config.eventCooldownMs ?? 0,
+      dwellTimeEnabled: config.dwellTime?.enabled ?? false,
+      dwellTimeMinSamples: config.dwellTime?.minSamples ?? 10,
+      dwellTimeZScoreThreshold: config.dwellTime?.zScoreThreshold ?? 2.5,
+      enableBigrams: config.enableBigrams ?? false,
+      bigramFrequencyThreshold: config.bigramFrequencyThreshold ?? 5,
+      driftMaxAnomalyRate: config.driftProtection?.maxAnomalyRate ?? 0.4,
+      driftEvaluationWindowMs: config.driftProtection?.evaluationWindowMs ?? 300_000,
+      hesitationCorrelationWindowMs: config.hesitationCorrelationWindowMs ?? 30_000,
+      trajectorySmoothingEpsilon,
+    });
+
+    // ── LifecycleCoordinator ──────────────────────────────────────────────────
+    this.lifecycleCoordinator = new LifecycleCoordinator({
+      lifecycleAdapter: config.lifecycleAdapter,
+      timer: this.timer,
+      dwellTimeEnabled: config.dwellTime?.enabled ?? false,
+      emitter: this.emitter,
+      onAdjustBaseline: (delta: number) => {
+        this.previousStateEnteredAt += delta;
+      },
+      onResetBaseline: () => {
+        this.previousStateEnteredAt = this.timer.now();
+      },
+      hasPreviousState: () => this.previousState !== null,
+    });
+
+    // ── Pipeline stages ───────────────────────────────────────────────────────
+    // Stages are bound arrow functions so future versions can insert, replace, or
+    // reorder steps without touching the core track() loop.
     this.trackStages = [
       this.runBotProtectionStage,
       this.runBloomStage,
@@ -365,76 +189,6 @@ export class IntentManager {
       this.runGraphAndSignalStage,
       this.runEmitAndPersistStage,
     ];
-    // Pipeline design: stages are an array of bound arrow functions rather
-    // than a monolithic method so that future versions can insert, replace, or
-    // reorder steps (e.g. add a rate-limit stage or an A/B experiment hook)
-    // without touching the core track() loop.  Each stage mutates `ctx` in
-    // place so no intermediate allocations are required.
-
-    // Tab-visibility correction for dwell-time anomaly detection.
-    // When the user switches tabs the monotonic timer keeps ticking, which
-    // would inflate dwellMs and fire spurious dwell_time_anomaly events.
-    // The fix: onPause we snapshot tabHiddenAt; onResume we add the hidden
-    // duration to previousStateEnteredAt so the dwell calculation ignores
-    // off-screen gaps.  Wired through LifecycleAdapter to support React Native
-    // and SSR environments where document is unavailable.
-    // Track whether this instance owns the adapter so destroy() only tears
-    // down adapters it created itself.  Injected adapters may be shared across
-    // multiple IntentManager instances and must not be destroyed by any one of
-    // them.
-    if (config.lifecycleAdapter !== undefined) {
-      this.lifecycleAdapter = config.lifecycleAdapter;
-      this.ownsLifecycleAdapter = false;
-    } else {
-      this.lifecycleAdapter = typeof window !== 'undefined' ? new BrowserLifecycleAdapter() : null;
-      this.ownsLifecycleAdapter = true;
-    }
-
-    if (this.lifecycleAdapter) {
-      this.pauseUnsub = this.lifecycleAdapter.onPause(() => {
-        this.tabHiddenAt = this.timer.now();
-      });
-      this.resumeUnsub = this.lifecycleAdapter.onResume(() => {
-        if (this.tabHiddenAt === null) return;
-        const hiddenDuration = this.timer.now() - this.tabHiddenAt;
-        this.tabHiddenAt = null;
-
-        // All resume-path operations (previousStateEnteredAt adjustment and
-        // session_stale) are dwell-time bookkeeping.  When dwell-time detection
-        // is disabled the caller has opted out of all dwell-related diagnostics,
-        // so skip everything.  This makes hidden_duration_exceeded consistent
-        // with dwell_exceeded, which is already gated by dwellTimeEnabled in
-        // runTransitionContextStage.
-        if (!this.dwellTimeEnabled) return;
-
-        if (hiddenDuration > MAX_PLAUSIBLE_DWELL_MS) {
-          // The host machine was almost certainly suspended (sleep, hibernate,
-          // lid close, etc.).  Only act when we have an active dwell epoch
-          // (previousState !== null) — if the user hasn't navigated anywhere
-          // yet there is nothing to measure or report.
-          if (this.previousState !== null) {
-            // Adding this massive gap to previousStateEnteredAt would push the
-            // baseline far into the past and corrupt every subsequent dwell-time
-            // measurement.  Instead: reset the baseline to now so the next
-            // track() call begins a clean dwell epoch.
-            this.previousStateEnteredAt = this.timer.now();
-            this.emitter.emit('session_stale', {
-              reason: 'hidden_duration_exceeded',
-              measuredMs: hiddenDuration,
-              thresholdMs: MAX_PLAUSIBLE_DWELL_MS,
-            });
-          }
-          return;
-        }
-
-        // Only offset the dwell baseline when we are actively tracking a state.
-        // If no state has been entered yet (previousState === null) there is no
-        // dwell accumulation in progress, so no adjustment is needed.
-        if (this.previousState !== null) {
-          this.previousStateEnteredAt += hiddenDuration;
-        }
-      });
-    }
   }
 
   on<K extends keyof IntentEventMap>(
@@ -509,14 +263,12 @@ export class IntentManager {
    * ```
    */
   track(state: string): void {
-    // Normalize first: strip query strings, hash fragments, trailing slashes,
+    // Normalise first: strip query strings, hash fragments, trailing slashes,
     // and replace dynamic ID segments (UUIDs, MongoDB ObjectIDs) with ':id'.
-    // This allows callers to pass raw window.location.href / pathname values.
     state = normalizeRouteState(state);
 
     // Guard: '' is reserved internally as a tombstone marker.
-    // Silently drop the call and surface a non-fatal error rather than letting
-    // MarkovGraph.ensureState() throw and potentially crash the host app.
+    // Silently drop and surface a non-fatal error rather than crashing the host.
     if (state === '') {
       if (this.onError) {
         this.onError({
@@ -527,18 +279,11 @@ export class IntentManager {
       return;
     }
 
-    // Use timer.now() for bot detection to ensure it works even when benchmark is disabled
     const now = this.timer.now();
     const trackStart = this.benchmark.now();
 
-    // Drift protection: advance the rolling window and count this call.
-    // O(1) — only two scalar comparisons and integer increments; no allocations.
-    if (now - this.driftWindowStart >= this.driftEvaluationWindowMs) {
-      this.driftWindowStart = now;
-      this.driftWindowTrackCount = 0;
-      this.driftWindowAnomalyCount = 0;
-    }
-    this.driftWindowTrackCount += 1;
+    // Advance drift-protection rolling window (O(1), no allocations)
+    this.signalEngine.advanceDriftWindow(now);
 
     const ctx: TrackContext = {
       state,
@@ -557,7 +302,7 @@ export class IntentManager {
 
   private runBotProtectionStage = (ctx: TrackContext): void => {
     if (!this.botProtection) return;
-    const botResult = this.entropyGuard.record(ctx.now);
+    const botResult = this.signalEngine.recordBotCheck(ctx.now);
     if (botResult.transitionedToBot) {
       this.emitter.emit('bot_detected', { state: ctx.state });
     }
@@ -574,7 +319,7 @@ export class IntentManager {
     ctx.from = this.previousState;
     this.previousState = ctx.state;
 
-    if (this.dwellTimeEnabled && ctx.from && !this.entropyGuard.suspected) {
+    if (this.dwellTimeEnabled && ctx.from && !this.signalEngine.suspected) {
       const dwellMs = ctx.now - this.previousStateEnteredAt;
       if (dwellMs > MAX_PLAUSIBLE_DWELL_MS) {
         // Implausibly large dwell — CPU suspend or OS hibernation slipped past
@@ -587,7 +332,7 @@ export class IntentManager {
           thresholdMs: MAX_PLAUSIBLE_DWELL_MS,
         });
       } else {
-        this.evaluateDwellTime(ctx.from, dwellMs);
+        this.signalEngine.evaluateDwellTime(ctx.from, dwellMs);
       }
     }
     this.previousStateEnteredAt = ctx.now;
@@ -598,33 +343,19 @@ export class IntentManager {
 
   private runGraphAndSignalStage = (ctx: TrackContext): void => {
     if (ctx.from) {
-      this.transitionsEvaluated += 1;
-
       const incrementStart = this.benchmark.now();
       this.graph.incrementTransition(ctx.from, ctx.state);
       this.benchmark.record('incrementTransition', incrementStart);
 
-      if (this.enableBigrams && this.recentTrajectory.length >= 3) {
-        const prev2 = this.recentTrajectory[this.recentTrajectory.length - 3];
-        const bigramFrom = `${prev2}\u2192${ctx.from}`;
-        const bigramTo = `${ctx.from}\u2192${ctx.state}`;
-        // U+2192 (→) separates bigram tokens.  The arrow character is chosen
-        // deliberately: it is unlikely to appear in real state labels (which
-        // are typically URL paths or semantic page names) so it acts as a
-        // collision-resistant join key without requiring a separate namespace.
-        if (this.graph.rowTotal(ctx.from) >= this.bigramFrequencyThreshold) {
-          this.graph.incrementTransition(bigramFrom, bigramTo);
-        }
-      }
+      // Delegate bigram accounting and transitionsEvaluated increment to SignalEngine
+      this.signalEngine.recordTransition(ctx.from, ctx.state, this.recentTrajectory);
 
-      this.isDirty = true;
-      this.evaluateEntropy(ctx.state);
-      this.evaluateTrajectory(ctx.from, ctx.state);
+      this.persistenceCoordinator.markDirty();
+      this.signalEngine.evaluateEntropy(ctx.state);
+      this.signalEngine.evaluateTrajectory(ctx.from, ctx.state, this.recentTrajectory);
 
-      // Broadcast this transition to other tabs only when the local EntropyGuard
-      // has NOT flagged the session as a bot.  This prevents a local bot script
-      // from amplifying noisy transitions into every other open tab.
-      if (this.broadcastSync && !this.entropyGuard.suspected) {
+      // Broadcast only when not a suspected bot (prevents bot-amplification across tabs)
+      if (this.broadcastSync && !this.signalEngine.suspected) {
         this.broadcastSync.broadcast(ctx.from, ctx.state);
       }
 
@@ -632,29 +363,16 @@ export class IntentManager {
     }
 
     if (ctx.isNewToBloom) {
-      this.isDirty = true;
+      this.persistenceCoordinator.markDirty();
     }
   };
 
   private runEmitAndPersistStage = (ctx: TrackContext): void => {
     this.emitter.emit('state_change', { from: ctx.from, to: ctx.state });
     // Synchronous persist on every transition — crash-safe against sudden OS
-    // process kills (iOS swipe-up, Android OOM reaper, Chrome tab discard) where
-    // lifecycle events (visibilitychange, pagehide, beforeunload) never fire.
-    //
-    // For sync StorageAdapter (localStorage): writes the binary-encoded payload
-    // immediately, before the browser paints the next frame.
-    //
-    // For AsyncStorageAdapter: fires the promise immediately; the in-flight write
-    // guard in persist() ensures overlapping writes are serialized correctly.
-    //
-    // The dirty-flag short-circuit in persist() means this is a no-op when
-    // nothing has changed, keeping the overhead negligible for redundant calls.
-    //
-    // If `persistThrottleMs` is configured, the prune+serialize+write pipeline
-    // is throttled to at most once per window; a trailing timer flushes any
-    // skipped dirty state within `persistThrottleMs` ms.
-    this.persist();
+    // process kills where lifecycle events never fire.
+    // The dirty-flag short-circuit keeps this a no-op when nothing changed.
+    this.persistenceCoordinator.persist();
   };
 
   hasSeen(state: string): boolean {
@@ -725,18 +443,7 @@ export class IntentManager {
   }
 
   flushNow(): void {
-    if (this.throttleTimer !== null) {
-      this.timer.clearTimeout(this.throttleTimer);
-      this.throttleTimer = null;
-    }
-    if (this.retryTimer !== null) {
-      this.timer.clearTimeout(this.retryTimer);
-      this.retryTimer = null;
-    }
-    // Bypass persistThrottleMs — flushNow() and destroy() must always flush
-    // dirty state immediately, regardless of the throttle window.
-    this.lastPersistedAt = -Infinity;
-    this.persist();
+    this.persistenceCoordinator.flushNow();
   }
 
   /**
@@ -750,20 +457,10 @@ export class IntentManager {
    * After `destroy()` the instance should be discarded.
    */
   destroy(): void {
-    this.flushNow();
+    this.persistenceCoordinator.flushNow(); // best-effort final write (may be async)
+    this.persistenceCoordinator.close(); // prevent post-destroy timer re-arm
     this.emitter.removeAll();
-    // Deregister this instance's specific pause/resume callbacks so the adapter
-    // no longer holds closure references to this (now-destroyed) manager.
-    // For owned adapters this is superseded by adapter.destroy() below;
-    // for shared injected adapters it is the only teardown path.
-    this.pauseUnsub?.();
-    this.pauseUnsub = null;
-    this.resumeUnsub?.();
-    this.resumeUnsub = null;
-    // Only destroy the adapter when this instance created it.  An injected
-    // adapter may be shared by other IntentManager instances; destroying it
-    // here would silently remove their lifecycle listeners too.
-    if (this.ownsLifecycleAdapter) this.lifecycleAdapter?.destroy();
+    this.lifecycleCoordinator.destroy();
     this.broadcastSync?.close();
   }
 
@@ -784,11 +481,11 @@ export class IntentManager {
   getTelemetry(): PassiveIntentTelemetry {
     return {
       sessionId: this.sessionId,
-      transitionsEvaluated: this.transitionsEvaluated,
-      botStatus: this.entropyGuard.suspected ? 'suspected_bot' : 'human',
-      anomaliesFired: this.anomaliesFired,
-      engineHealth: this.engineHealth,
-      baselineStatus: this.isBaselineDrifted ? 'drifted' : 'active',
+      transitionsEvaluated: this.signalEngine.transitionsEvaluated,
+      botStatus: this.signalEngine.suspected ? 'suspected_bot' : 'human',
+      anomaliesFired: this.signalEngine.anomaliesFired,
+      engineHealth: this.persistenceCoordinator.engineHealth,
+      baselineStatus: this.signalEngine.baselineStatus,
       assignmentGroup: this.assignmentGroup,
     };
   }
@@ -860,7 +557,7 @@ export class IntentManager {
     this.counters.set(key, next);
     // Broadcast the increment to other tabs when cross-tab sync is enabled,
     // applying the same bot-containment guard used for Markov transitions.
-    if (this.broadcastSync && !this.entropyGuard.suspected) {
+    if (this.broadcastSync && !this.signalEngine.suspected) {
       this.broadcastSync.broadcastCounter(key, by);
     }
     return next;
@@ -907,464 +604,5 @@ export class IntentManager {
       bloomBitsetBytes: this.bloom.getBitsetByteSize(),
       serializedGraphBytes: this.benchmark.serializedSizeBytes(serialized),
     });
-  }
-
-  private evaluateEntropy(state: string): void {
-    const start = this.benchmark.now();
-
-    // EntropyGuard: silently skip for suspected bots
-    if (this.entropyGuard.suspected) {
-      this.benchmark.record('entropyComputation', start);
-      return;
-    }
-
-    // Skip if there are fewer than MIN_SAMPLE_TRANSITIONS outgoing transitions (too small a sample).
-    if (this.graph.rowTotal(state) < MIN_SAMPLE_TRANSITIONS) {
-      this.benchmark.record('entropyComputation', start);
-      return;
-    }
-
-    const entropy = this.graph.entropyForState(state);
-    const normalizedEntropy = this.graph.normalizedEntropyForState(state);
-
-    if (normalizedEntropy >= this.graph.highEntropyThreshold) {
-      const now = this.timer.now();
-      if (
-        this.eventCooldownMs <= 0 ||
-        now - this.lastEmittedAt.high_entropy >= this.eventCooldownMs
-      ) {
-        this.lastEmittedAt.high_entropy = now;
-        this.anomaliesFired += 1;
-        if (this.assignmentGroup !== 'control') {
-          this.emitter.emit('high_entropy', {
-            state,
-            entropy,
-            normalizedEntropy,
-          });
-        }
-      }
-    }
-
-    this.benchmark.record('entropyComputation', start);
-  }
-
-  private evaluateTrajectory(from: string, to: string): void {
-    const start = this.benchmark.now();
-
-    // Failsafe killswitch: if baseline has drifted, silently skip all evaluation.
-    if (this.isBaselineDrifted) {
-      this.benchmark.record('divergenceComputation', start);
-      return;
-    }
-
-    // EntropyGuard: silently skip for suspected bots
-    if (this.entropyGuard.suspected) {
-      this.benchmark.record('divergenceComputation', start);
-      return;
-    }
-
-    // Stabilization gate: wait until window reaches minimum size for statistical stability.
-    if (this.recentTrajectory.length < MIN_WINDOW_LENGTH) {
-      this.benchmark.record('divergenceComputation', start);
-      return;
-    }
-
-    if (!this.baseline) {
-      this.benchmark.record('divergenceComputation', start);
-      return;
-    }
-
-    // Use the configured smoothing epsilon (with defensive fallback to default)
-    // for parity with calibration/runtime assumptions.
-    // "real"     = how likely this sequence is under the *live* (learned) graph.
-    // "expected" = how likely it would be under the *baseline* reference graph.
-    // These two values are the meaningful comparison exposed in the event payload.
-    const real = MarkovGraph.logLikelihoodTrajectory(
-      this.graph,
-      this.recentTrajectory,
-      this.trajectorySmoothingEpsilon,
-    );
-    const expected = MarkovGraph.logLikelihoodTrajectory(
-      this.baseline,
-      this.recentTrajectory,
-      this.trajectorySmoothingEpsilon,
-    );
-
-    const N = Math.max(1, this.recentTrajectory.length - 1);
-    const expectedAvg = expected / N;
-    const threshold = -Math.abs(this.graph.divergenceThreshold);
-
-    const hasCalibratedBaseline =
-      typeof this.graph.baselineMeanLL === 'number' &&
-      typeof this.graph.baselineStdLL === 'number' &&
-      Number.isFinite(this.graph.baselineMeanLL) &&
-      Number.isFinite(this.graph.baselineStdLL) &&
-      this.graph.baselineStdLL > 0;
-
-    // Dynamic variance scaling: std of an average scales by 1/sqrt(N).
-    // Scale baselineStdLL by sqrt(CALIBRATION_LENGTH / N) where CALIBRATION_LENGTH = MAX_WINDOW_LENGTH.
-    const adjustedStd = hasCalibratedBaseline
-      ? this.graph.baselineStdLL * Math.sqrt(MAX_WINDOW_LENGTH / N)
-      : 0;
-
-    const zScore = hasCalibratedBaseline
-      ? (expectedAvg - this.graph.baselineMeanLL) / adjustedStd
-      : expectedAvg;
-
-    const shouldEmit = hasCalibratedBaseline ? zScore <= threshold : expectedAvg <= threshold;
-
-    // ⚠  KNOWN LIMITATION (v1 — accepted for initial release):
-    //    At very low noise deltas (Δε ≤ 0.05, entropy difference < 0.05 nats)
-    //    the z-score distributions of normal and anomalous sessions overlap
-    //    substantially, yielding AUC ≈ 0.74 at the best operating point.
-    //    This is a *fundamental signal constraint*, not a tuning problem:
-    //    no post-processing layer (CUSUM, EWMA, confirmation counter) on top
-    //    of a 32-step single-window average log-likelihood can fully separate
-    //    distributions that close without either:
-    //      a) a significantly longer observation horizon (> 32 steps), or
-    //      b) richer feature space beyond marginal transition probabilities
-    //         (e.g. dwell-time, click-velocity, inter-event interval entropy).
-    //    Revisit when:  longer trajectory windows are viable, or when timing
-    //    side-channels (EntropyGuard deltas) can be folded into the score.
-
-    if (shouldEmit) {
-      const now = this.timer.now();
-      if (
-        this.eventCooldownMs <= 0 ||
-        now - this.lastEmittedAt.trajectory_anomaly >= this.eventCooldownMs
-      ) {
-        this.lastEmittedAt.trajectory_anomaly = now;
-        this.anomaliesFired += 1;
-        if (this.assignmentGroup !== 'control') {
-          this.emitter.emit('trajectory_anomaly', {
-            stateFrom: from,
-            stateTo: to,
-            realLogLikelihood: real,
-            expectedBaselineLogLikelihood: expected,
-            zScore,
-          });
-        }
-        this.lastTrajectoryAnomalyAt = now;
-        this.lastTrajectoryAnomalyZScore = zScore;
-        this.maybeEmitHesitation();
-
-        // Drift protection: count this anomaly emission and check the ratio.
-        this.driftWindowAnomalyCount += 1;
-        if (
-          this.driftWindowTrackCount > 0 &&
-          this.driftWindowAnomalyCount / this.driftWindowTrackCount > this.driftMaxAnomalyRate
-        ) {
-          this.isBaselineDrifted = true;
-        }
-      }
-    }
-
-    this.benchmark.record('divergenceComputation', start);
-  }
-
-  /* ================================================================== */
-  /*  Dwell-Time Anomaly Detection                                       */
-  /* ================================================================== */
-
-  /**
-   * Evaluate dwell time on the *previous* state using Welford's online
-   * algorithm to maintain running mean and variance.  Fires a
-   * `dwell_time_anomaly` event when the z-score exceeds the configured
-   * threshold and enough samples have been collected.
-   *
-   * All computation is O(1) per call — no arrays or sorting.
-   */
-  private evaluateDwellTime(state: string, dwellMs: number): void {
-    // Ignore non-positive dwell times (first track, or clock issues)
-    if (dwellMs <= 0) return;
-
-    const updated = updateDwellStats(this.dwellStats.get(state), dwellMs);
-    this.dwellStats.set(state, updated);
-
-    // Need enough samples for a meaningful standard deviation
-    if (updated.count < this.dwellTimeMinSamples) return;
-
-    const std = dwellStd(updated);
-
-    // Guard: if std is zero (all identical dwell times) skip
-    if (std <= 0) return;
-
-    const zScore = (dwellMs - updated.meanMs) / std;
-
-    if (Math.abs(zScore) >= this.dwellTimeZScoreThreshold) {
-      const now = this.timer.now();
-      if (
-        this.eventCooldownMs <= 0 ||
-        now - this.lastEmittedAt.dwell_time_anomaly >= this.eventCooldownMs
-      ) {
-        this.lastEmittedAt.dwell_time_anomaly = now;
-        this.anomaliesFired += 1;
-        if (this.assignmentGroup !== 'control') {
-          this.emitter.emit('dwell_time_anomaly', {
-            state,
-            dwellMs,
-            meanMs: updated.meanMs,
-            stdMs: std,
-            zScore,
-          });
-        }
-        // Only lingering (positive z-score) contributes to hesitation.
-        if (zScore > 0) {
-          this.lastDwellAnomalyAt = now;
-          this.lastDwellAnomalyZScore = zScore;
-          this.lastDwellAnomalyState = state;
-          this.maybeEmitHesitation();
-        }
-      }
-    }
-  }
-
-  /**
-   * Emit `hesitation_detected` when a `trajectory_anomaly` and a positive
-   * `dwell_time_anomaly` have both fired within `hesitationCorrelationWindowMs`.
-   * Called from both evaluateTrajectory and evaluateDwellTime after they update
-   * their respective timestamps.
-   *
-   * `hesitation_detected.state` is always the dwell-anomaly state (where the user
-   * lingered), regardless of which signal fires second.  This is consistent with
-   * the interface docs and avoids the caller-provided value varying between the
-   * two call sites.
-   */
-  private maybeEmitHesitation(): void {
-    const now = this.timer.now();
-    const correlated =
-      now - this.lastTrajectoryAnomalyAt < this.hesitationCorrelationWindowMs &&
-      now - this.lastDwellAnomalyAt < this.hesitationCorrelationWindowMs;
-
-    if (!correlated) return;
-
-    // Reset timestamps to prevent re-triggering until both signals fire again.
-    this.lastTrajectoryAnomalyAt = -Infinity;
-    this.lastDwellAnomalyAt = -Infinity;
-
-    if (this.assignmentGroup !== 'control') {
-      this.emitter.emit('hesitation_detected', {
-        state: this.lastDwellAnomalyState,
-        trajectoryZScore: this.lastTrajectoryAnomalyZScore,
-        dwellZScore: this.lastDwellAnomalyZScore,
-      });
-    }
-  }
-
-  private schedulePersist(): void {
-    if (this.retryTimer !== null) {
-      this.timer.clearTimeout(this.retryTimer);
-    }
-
-    this.retryTimer = this.timer.setTimeout(() => {
-      this.retryTimer = null;
-      this.persist();
-    }, this.persistDebounceMs);
-  }
-
-  private persist(): void {
-    // Dirty-flag optimization: skip persistence if nothing changed
-    if (!this.isDirty) {
-      return;
-    }
-
-    // Async fast-exit: if a write is already in-flight there is no point
-    // running the expensive prune + toBinary + base64 pipeline — the result
-    // would be thrown away anyway when the isAsyncWriting check fires below.
-    // Mark hasPendingAsyncPersist so the in-flight write's .then() callback
-    // schedules one follow-up pass once the channel is clear.
-    if (this.asyncStorage && this.isAsyncWriting) {
-      this.hasPendingAsyncPersist = true;
-      return;
-    }
-
-    // Throttle gate: skip the expensive prune+serialize+write pipeline if the
-    // last successful write was within `persistThrottleMs` ms.  A trailing timer
-    // fires within one window to flush remaining dirty state so crash data loss
-    // is bounded by at most `persistThrottleMs` ms.  Disabled when 0 (default).
-    if (this.persistThrottleMs > 0) {
-      const now = this.timer.now();
-      const elapsed = now - this.lastPersistedAt;
-      if (elapsed < this.persistThrottleMs) {
-        if (this.throttleTimer === null) {
-          const remainingMs = this.persistThrottleMs - elapsed;
-          this.throttleTimer = this.timer.setTimeout(() => {
-            this.throttleTimer = null;
-            this.persist();
-          }, remainingMs);
-        }
-        return;
-      }
-    }
-
-    // LFU prune before serializing — keeps storage bounded.
-    // Wrap in try-finally so engineHealth is always restored even if prune() throws.
-    this.engineHealth = 'pruning_active';
-    try {
-      this.graph.prune();
-    } finally {
-      this.engineHealth = 'healthy';
-    }
-
-    // Binary-encode the graph: avoids JSON.stringify on potentially
-    // large objects, keeping the main thread free of heavy work.
-    // toBinary() and uint8ToBase64() can throw (e.g., on invalid UTF-16
-    // surrogate pairs or a broken btoa() polyfill). Catch them here so the
-    // error stays off the main-thread call stack and reaches the host via
-    // onError instead.
-    let graphBinary: string;
-    try {
-      const graphBytes = this.graph.toBinary();
-      // Convert Uint8Array → base64 string for localStorage compatibility.
-      // Uses chunked String.fromCharCode to avoid O(n) string concatenation.
-      graphBinary = uint8ToBase64(graphBytes);
-    } catch (err) {
-      if (this.onError) {
-        this.onError({
-          code: 'SERIALIZE',
-          message: err instanceof Error ? err.message : String(err),
-          originalError: err,
-        });
-      }
-      // Leave isDirty = true so the next scheduled persist cycle retries.
-      return;
-    }
-
-    // Build the minimal JSON envelope (two short strings, no deep trees).
-    const payload: PersistedPayload = {
-      bloomBase64: this.bloom.toBase64(),
-      graphBinary,
-    };
-
-    if (this.asyncStorage) {
-      // ── Async path ────────────────────────────────────────────────────────
-      // isAsyncWriting was already checked above — if we reach this point the
-      // channel is clear and we can start a new write immediately.
-      this.isAsyncWriting = true;
-      this.hasPendingAsyncPersist = false;
-      // Optimistically clear isDirty now that we've captured the current state
-      // into `payload`.  If the write fails we restore the flag.
-      this.isDirty = false;
-
-      this.asyncStorage
-        .setItem(this.storageKey, JSON.stringify(payload))
-        .then(() => {
-          this.isAsyncWriting = false;
-          // Successful write: reset the consecutive-failure counter so the
-          // next failure (if any) gets its own single automatic retry.
-          this.asyncWriteFailCount = 0;
-          this.lastPersistedAt = this.timer.now();
-          if (this.hasPendingAsyncPersist || this.isDirty) {
-            this.hasPendingAsyncPersist = false;
-            this.persist();
-          }
-        })
-        .catch((err: unknown) => {
-          this.isAsyncWriting = false;
-          // Restore dirty flag so the data is not silently discarded.
-          this.isDirty = true;
-          this.asyncWriteFailCount += 1;
-          const isQuota =
-            err instanceof Error &&
-            (err.name === 'QuotaExceededError' || err.message.toLowerCase().includes('quota'));
-          if (isQuota) {
-            this.engineHealth = 'quota_exceeded';
-          }
-          if (this.onError) {
-            this.onError({
-              code: isQuota ? 'QUOTA_EXCEEDED' : 'STORAGE_WRITE',
-              message: err instanceof Error ? err.message : String(err),
-              originalError: err,
-            });
-          }
-          // Schedule exactly one automatic retry pass after the FIRST consecutive
-          // failure, regardless of whether a write was queued during this
-          // in-flight attempt.  This covers the common case where no new
-          // track()/flushNow() call will arrive to re-trigger persist().
-          //
-          // Subsequent consecutive failures (asyncWriteFailCount > 1) are NOT
-          // auto-retried to prevent infinite retry loops when storage is
-          // persistently broken.  isDirty remains true, so the next
-          // track()/flushNow() call will naturally trigger a new attempt.
-          //
-          // hasPendingAsyncPersist is cleared here — any queued write is
-          // already covered by the scheduled retry below.
-          this.hasPendingAsyncPersist = false;
-          if (this.asyncWriteFailCount === 1) {
-            this.schedulePersist();
-          }
-        });
-    } else {
-      // ── Sync path (existing behaviour, unchanged) ─────────────────────────
-      try {
-        this.storage.setItem(this.storageKey, JSON.stringify(payload));
-        // Reset dirty flag after successful save
-        this.isDirty = false;
-        this.lastPersistedAt = this.timer.now();
-      } catch (err) {
-        // QuotaExceededError, SecurityError, or Private Browsing restrictions.
-        // Surface through the optional error callback; never crash the main thread.
-        const isQuota =
-          err instanceof Error &&
-          (err.name === 'QuotaExceededError' || err.message.toLowerCase().includes('quota'));
-        if (isQuota) {
-          this.engineHealth = 'quota_exceeded';
-        }
-        if (this.onError) {
-          this.onError({
-            code: isQuota ? 'QUOTA_EXCEEDED' : 'STORAGE_WRITE',
-            message: err instanceof Error ? err.message : String(err),
-            originalError: err,
-          });
-        }
-      }
-    }
-  }
-
-  private restore(
-    graphConfig: MarkovGraphConfig,
-  ): { bloom: BloomFilter; graph: MarkovGraph } | null {
-    // ── Step 1: read raw bytes from storage ─────────────────────────────────
-    let raw: string | null;
-    try {
-      raw = this.storage.getItem(this.storageKey);
-    } catch (err) {
-      // SecurityError in private-browsing mode, or storage entirely unavailable.
-      // Cold-start the graph — never crash the host app.
-      if (this.onError) {
-        this.onError({
-          code: 'STORAGE_READ',
-          message: err instanceof Error ? err.message : String(err),
-          originalError: err,
-        });
-      }
-      return null;
-    }
-
-    if (!raw) return null;
-
-    // ── Step 2: deserialise — any failure here means corrupt / stale data ───
-    try {
-      const parsed = JSON.parse(raw) as PersistedPayload;
-      if (!parsed.graphBinary) return null;
-
-      const bloom = BloomFilter.fromBase64(parsed.bloomBase64);
-      const bytes = base64ToUint8(parsed.graphBinary);
-      const graph = MarkovGraph.fromBinary(bytes, graphConfig);
-
-      return { bloom, graph };
-    } catch (err) {
-      // JSON parse error, base64 decode failure, or binary format mismatch.
-      // Cold-start the graph and report the raw payload so the caller can
-      // investigate what was stored.
-      if (this.onError) {
-        this.onError({
-          code: 'RESTORE_PARSE',
-          message: err instanceof Error ? err.message : String(err),
-          originalError: { cause: err, payload: raw },
-        });
-      }
-      return null;
-    }
   }
 }

@@ -218,8 +218,10 @@ export interface PassiveIntentError {
   message: string;
   /**
    * The underlying caught value, if available.
-   * For `RESTORE_PARSE`, this is `{ cause: unknown; payload: string }` where
-   * `payload` is the raw string that failed to parse.
+   * For `RESTORE_PARSE`, this is `{ cause: unknown; payloadLength: number }` where
+   * `payloadLength` is the byte length of the raw string that failed to parse.
+   * The raw payload itself is intentionally omitted to avoid surfacing stored
+   * user-navigation data in error reports.
    * For all other codes, this is the raw caught exception.
    */
   originalError?: unknown;
@@ -407,8 +409,10 @@ export interface IntentManagerConfig {
   bigramFrequencyThreshold?: number;
   /**
    * Failsafe killswitch: protects against baseline drift by monitoring the
-   * ratio of `trajectory_anomaly` emissions to `track()` calls within a
-   * rolling time window.  When the ratio exceeds `maxAnomalyRate` the engine
+   * ratio of `trajectory_anomaly` **detections** to `track()` calls within a
+   * rolling time window.  A detection is counted every time the z-score crosses
+   * the anomaly threshold, regardless of whether the event was suppressed by
+   * `eventCooldownMs`.  When the ratio exceeds `maxAnomalyRate` the engine
    * sets an internal `isBaselineDrifted` flag that silently disables further
    * trajectory evaluation until the instance is replaced.
    *
