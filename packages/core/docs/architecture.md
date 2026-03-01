@@ -1885,13 +1885,14 @@ export interface LifecycleAdapter {
 import { BrowserLifecycleAdapter } from '@passiveintent/core';
 
 // This is the default used by IntentManager in browser contexts.
-// You only need to construct it directly if you want to share one instance
-// across multiple managers or hook into pause/resume outside IntentManager.
+// You only need to construct it directly when you want to hook into
+// pause/resume outside IntentManager, or to share a single adapter instance
+// across multiple managers (see ownership note below).
 const lifecycle = new BrowserLifecycleAdapter();
 lifecycle.onPause(() => console.log('app hidden'));
 lifecycle.onResume(() => console.log('app visible'));
 // later...
-lifecycle.destroy();
+lifecycle.destroy(); // call from the owner, not from any IntentManager
 ```
 
 `BrowserLifecycleAdapter` guards every `document` access with `typeof document !== 'undefined'` so the class can be safely imported and instantiated in any environment.
@@ -1903,6 +1904,24 @@ const intent = new IntentManager({
   lifecycleAdapter: myCustomAdapter, // overrides BrowserLifecycleAdapter
 });
 ```
+
+> **Ownership semantics.** `IntentManager.destroy()` only calls
+> `lifecycleAdapter.destroy()` on the adapter it **created internally**.
+> When you supply an adapter via `lifecycleAdapter` in config, `destroy()`
+> intentionally leaves it alive — you own it, and possibly share it across
+> multiple `IntentManager` instances.  You are responsible for calling
+> `adapter.destroy()` when all consumers are done.
+>
+> ```ts
+> // Safe: one shared adapter, two managers
+> const lifecycle = new BrowserLifecycleAdapter();
+> const intentA = new IntentManager({ lifecycleAdapter: lifecycle });
+> const intentB = new IntentManager({ lifecycleAdapter: lifecycle });
+>
+> intentA.destroy(); // does NOT destroy lifecycle
+> intentB.destroy(); // does NOT destroy lifecycle
+> lifecycle.destroy(); // you tear it down when both managers are gone
+> ```
 
 When `lifecycleAdapter` is omitted, the engine falls back to
 `typeof window !== 'undefined' ? new BrowserLifecycleAdapter() : null`.

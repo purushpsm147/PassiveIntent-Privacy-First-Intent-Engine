@@ -144,6 +144,13 @@ export class IntentManager {
   private tabHiddenAt: number | null = null;
   /** Lifecycle adapter for page-visibility — drives dwell-time correction. */
   private readonly lifecycleAdapter: LifecycleAdapter | null;
+  /**
+   * True when IntentManager created the adapter internally (no `lifecycleAdapter`
+   * was provided in config).  Only the internally-created adapter should be
+   * destroyed on `destroy()` — injected adapters may be shared across multiple
+   * IntentManager instances and must not be torn down by any one of them.
+   */
+  private readonly ownsLifecycleAdapter: boolean;
 
   /* ================================================================== */
   /*  Failsafe Killswitch — Baseline Drift Protection                   */
@@ -336,9 +343,18 @@ export class IntentManager {
     // duration to previousStateEnteredAt so the dwell calculation ignores
     // off-screen gaps.  Wired through LifecycleAdapter to support React Native
     // and SSR environments where document is unavailable.
-    this.lifecycleAdapter =
-      config.lifecycleAdapter ??
-      (typeof window !== 'undefined' ? new BrowserLifecycleAdapter() : null);
+    // Track whether this instance owns the adapter so destroy() only tears
+    // down adapters it created itself.  Injected adapters may be shared across
+    // multiple IntentManager instances and must not be destroyed by any one of
+    // them.
+    if (config.lifecycleAdapter !== undefined) {
+      this.lifecycleAdapter = config.lifecycleAdapter;
+      this.ownsLifecycleAdapter = false;
+    } else {
+      this.lifecycleAdapter =
+        typeof window !== 'undefined' ? new BrowserLifecycleAdapter() : null;
+      this.ownsLifecycleAdapter = true;
+    }
 
     if (this.lifecycleAdapter) {
       this.lifecycleAdapter.onPause(() => {
@@ -686,7 +702,10 @@ export class IntentManager {
   destroy(): void {
     this.flushNow();
     this.emitter.removeAll();
-    this.lifecycleAdapter?.destroy();
+    // Only destroy the adapter when this instance created it.  An injected
+    // adapter may be shared by other IntentManager instances; destroying it
+    // here would silently remove their lifecycle listeners too.
+    if (this.ownsLifecycleAdapter) this.lifecycleAdapter?.destroy();
     this.broadcastSync?.close();
   }
 
