@@ -201,7 +201,19 @@ export class IntentManager {
     dwell_time_anomaly: -Infinity,
   };
 
-  private persistTimer: TimerHandle | null = null;
+  /**
+   * Trailing-flush timer for the persist throttle gate.  Fires within
+   * `persistThrottleMs` ms to write any dirty state that was skipped during
+   * the throttle window.  Kept separate from `retryTimer` so an async-write
+   * failure cannot cancel a pending throttle flush (and vice-versa).
+   */
+  private throttleTimer: TimerHandle | null = null;
+  /**
+   * One-shot retry timer scheduled by `schedulePersist()` after the first
+   * consecutive async `setItem` failure.  Kept separate from `throttleTimer`
+   * so cancelling a retry does not affect the throttle trailing flush.
+   */
+  private retryTimer: TimerHandle | null = null;
   private previousState: string | null = null;
   /** Timestamp (ms, from timer.now()) when previousState was entered */
   private previousStateEnteredAt: number = 0;
@@ -713,9 +725,13 @@ export class IntentManager {
   }
 
   flushNow(): void {
-    if (this.persistTimer !== null) {
-      this.timer.clearTimeout(this.persistTimer);
-      this.persistTimer = null;
+    if (this.throttleTimer !== null) {
+      this.timer.clearTimeout(this.throttleTimer);
+      this.throttleTimer = null;
+    }
+    if (this.retryTimer !== null) {
+      this.timer.clearTimeout(this.retryTimer);
+      this.retryTimer = null;
     }
     // Bypass persistThrottleMs — flushNow() and destroy() must always flush
     // dirty state immediately, regardless of the throttle window.
@@ -1136,12 +1152,12 @@ export class IntentManager {
   }
 
   private schedulePersist(): void {
-    if (this.persistTimer !== null) {
-      this.timer.clearTimeout(this.persistTimer);
+    if (this.retryTimer !== null) {
+      this.timer.clearTimeout(this.retryTimer);
     }
 
-    this.persistTimer = this.timer.setTimeout(() => {
-      this.persistTimer = null;
+    this.retryTimer = this.timer.setTimeout(() => {
+      this.retryTimer = null;
       this.persist();
     }, this.persistDebounceMs);
   }
@@ -1170,10 +1186,10 @@ export class IntentManager {
       const now = this.timer.now();
       const elapsed = now - this.lastPersistedAt;
       if (elapsed < this.persistThrottleMs) {
-        if (this.persistTimer === null) {
+        if (this.throttleTimer === null) {
           const remainingMs = this.persistThrottleMs - elapsed;
-          this.persistTimer = this.timer.setTimeout(() => {
-            this.persistTimer = null;
+          this.throttleTimer = this.timer.setTimeout(() => {
+            this.throttleTimer = null;
             this.persist();
           }, remainingMs);
         }
