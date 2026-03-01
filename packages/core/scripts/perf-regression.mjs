@@ -21,7 +21,9 @@ if (!fs.existsSync(latestPath)) {
 const baseline = JSON.parse(fs.readFileSync(baselinePath, 'utf8'));
 const latest = JSON.parse(fs.readFileSync(latestPath, 'utf8'));
 
-// Percentage threshold used only for graph-size (a deterministic metric).
+// Percentage threshold used as a hard-fail gate only for graph-size
+// (a deterministic metric). For timing metrics, this threshold is
+// warning-only (informational) and does not fail the run.
 // Sub-millisecond timing metrics are NOT gated on this value — they vary
 // 50–150 % across environments (Windows vs. Linux CI runner, scheduler
 // jitter, runner load) even with identical code, making cross-machine

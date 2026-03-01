@@ -107,6 +107,13 @@ export class IntentManager {
    * Guarantees one follow-up persist pass after the in-flight write settles.
    */
   private hasPendingAsyncPersist = false;
+  /**
+   * Counts consecutive async `setItem` failures for the in-progress retry
+   * sequence.  Reset to 0 on every successful write.  Used to schedule exactly
+   * one automatic retry after the first failure without risking an infinite
+   * retry loop when storage is persistently broken.
+   */
+  private asyncWriteFailCount = 0;
   private readonly timer: TimerAdapter;
   private readonly onError?: (error: PassiveIntentError) => void;
   private readonly botProtection: boolean;
@@ -351,8 +358,7 @@ export class IntentManager {
       this.lifecycleAdapter = config.lifecycleAdapter;
       this.ownsLifecycleAdapter = false;
     } else {
-      this.lifecycleAdapter =
-        typeof window !== 'undefined' ? new BrowserLifecycleAdapter() : null;
+      this.lifecycleAdapter = typeof window !== 'undefined' ? new BrowserLifecycleAdapter() : null;
       this.ownsLifecycleAdapter = true;
     }
 
@@ -1173,6 +1179,9 @@ export class IntentManager {
         .setItem(this.storageKey, JSON.stringify(payload))
         .then(() => {
           this.isAsyncWriting = false;
+          // Successful write: reset the consecutive-failure counter so the
+          // next failure (if any) gets its own single automatic retry.
+          this.asyncWriteFailCount = 0;
           if (this.hasPendingAsyncPersist || this.isDirty) {
             this.hasPendingAsyncPersist = false;
             this.persist();
@@ -1180,8 +1189,9 @@ export class IntentManager {
         })
         .catch((err: unknown) => {
           this.isAsyncWriting = false;
-          // Restore dirty flag so the data is retried on the next persist cycle.
+          // Restore dirty flag so the data is not silently discarded.
           this.isDirty = true;
+          this.asyncWriteFailCount += 1;
           const isQuota =
             err instanceof Error &&
             (err.name === 'QuotaExceededError' || err.message.toLowerCase().includes('quota'));
@@ -1195,10 +1205,20 @@ export class IntentManager {
               originalError: err,
             });
           }
-          // If a persist attempt was queued while this write was in flight,
-          // schedule one retry pass after the failure surface has been reported.
-          if (this.hasPendingAsyncPersist) {
-            this.hasPendingAsyncPersist = false;
+          // Schedule exactly one automatic retry pass after the FIRST consecutive
+          // failure, regardless of whether a write was queued during this
+          // in-flight attempt.  This covers the common case where no new
+          // track()/flushNow() call will arrive to re-trigger persist().
+          //
+          // Subsequent consecutive failures (asyncWriteFailCount > 1) are NOT
+          // auto-retried to prevent infinite retry loops when storage is
+          // persistently broken.  isDirty remains true, so the next
+          // track()/flushNow() call will naturally trigger a new attempt.
+          //
+          // hasPendingAsyncPersist is cleared here — any queued write is
+          // already covered by the scheduled retry below.
+          this.hasPendingAsyncPersist = false;
+          if (this.asyncWriteFailCount === 1) {
             this.schedulePersist();
           }
         });

@@ -3444,6 +3444,121 @@ test('IntentManager async persist: isDirty restored on error, onError is called'
 
   manager.destroy();
 });
+
+test('async setItem failure always schedules a retry even without hasPendingAsyncPersist', async () => {
+  // Regression guard for the doc/impl drift: a failed async write must
+  // schedule one retry via schedulePersist() unconditionally, not only when
+  // another persist() call was queued during the in-flight write.
+  let failOnce = true;
+  const writes = [];
+  const asyncStorage = {
+    getItem: async () => null,
+    setItem: async (_key, value) => {
+      if (failOnce) {
+        failOnce = false;
+        throw new Error('transient failure');
+      }
+      writes.push(value);
+    },
+  };
+
+  let timerFired = false;
+  const fakeTimers = [];
+  const fakeTimer = {
+    now: () => 0,
+    setTimeout: (cb, _ms) => {
+      const id = { id: fakeTimers.length };
+      fakeTimers.push({ cb, id, fired: false });
+      return id;
+    },
+    clearTimeout: (handle) => {
+      const entry = fakeTimers.find((t) => t.id === handle);
+      if (entry) entry.fired = true; // mark cancelled
+    },
+  };
+
+  const manager = await IntentManager.createAsync({
+    storageKey: 'async-retry-unconditional',
+    asyncStorage,
+    botProtection: false,
+    persistDebounceMs: 10,
+    timer: fakeTimer,
+  });
+
+  manager.track('/home');
+  manager.track('/product');
+
+  // Wait for the first (failing) write to resolve
+  await new Promise((r) => setTimeout(r, 20));
+
+  // The retry timer must have been scheduled — one pending timer entry
+  const uncancelled = fakeTimers.filter((t) => !t.fired);
+  assert.equal(uncancelled.length, 1, 'exactly one retry timer must be scheduled after a failure');
+
+  // Fire the timer manually → should trigger persist() → successful write
+  uncancelled[0].cb();
+  await new Promise((r) => setTimeout(r, 20));
+
+  assert.equal(writes.length, 1, 'retry must produce one successful write');
+  manager.destroy();
+});
+
+test('consecutive async setItem failures do not schedule infinite retries', async () => {
+  // The second consecutive failure must NOT schedule another schedulePersist()
+  // (asyncWriteFailCount > 1 guard).  Without this guard, a persistently broken
+  // storage backend would produce an infinite retry loop.
+  let timerScheduleCount = 0;
+  const fakeTimers = [];
+  const fakeTimer = {
+    now: () => 0,
+    setTimeout: (cb, _ms) => {
+      timerScheduleCount += 1;
+      const id = { id: timerScheduleCount };
+      fakeTimers.push({ cb, id });
+      return id;
+    },
+    clearTimeout: () => {},
+  };
+
+  const asyncStorage = {
+    getItem: async () => null,
+    setItem: async () => {
+      throw new Error('persistent failure');
+    },
+  };
+
+  const manager = await IntentManager.createAsync({
+    storageKey: 'async-retry-no-loop',
+    asyncStorage,
+    botProtection: false,
+    persistDebounceMs: 10,
+    timer: fakeTimer,
+  });
+
+  manager.track('/home');
+  manager.track('/product');
+
+  // Wait for first write attempt to fail
+  await new Promise((r) => setTimeout(r, 20));
+
+  const afterFirstFail = timerScheduleCount;
+  assert.ok(afterFirstFail >= 1, 'at least one retry must be scheduled after first failure');
+
+  // Fire all pending timers to trigger the retry attempt (which also fails)
+  const pending = [...fakeTimers];
+  for (const t of pending) t.cb();
+  await new Promise((r) => setTimeout(r, 20));
+
+  // No additional timer must have been scheduled after the second failure
+  assert.equal(
+    timerScheduleCount,
+    afterFirstFail,
+    'second consecutive async failure must NOT schedule another retry timer',
+  );
+
+  manager.destroy();
+});
+
 // ─── onError — PassiveIntentError structured contract ───────────────────────────
 
 test('onError: sync persist emits QUOTA_EXCEEDED code on QuotaExceededError', () => {
@@ -3898,7 +4013,11 @@ test('IntentManager: injected lifecycleAdapter.destroy() is NOT called from Inte
 
   manager.track('/home');
   manager.destroy();
-  assert.equal(destroyed, false, 'IntentManager.destroy() must NOT call destroy() on an injected adapter — caller owns it');
+  assert.equal(
+    destroyed,
+    false,
+    'IntentManager.destroy() must NOT call destroy() on an injected adapter — caller owns it',
+  );
 });
 
 test('IntentManager: tab-hidden gap is excluded from dwell measurement via custom LifecycleAdapter', () => {
@@ -4060,10 +4179,18 @@ test('injected lifecycleAdapter is NOT destroyed when IntentManager.destroy() is
   });
 
   managerA.destroy();
-  assert.equal(destroyCalls, 0, 'destroy() on managerA must NOT call destroy() on an injected adapter');
+  assert.equal(
+    destroyCalls,
+    0,
+    'destroy() on managerA must NOT call destroy() on an injected adapter',
+  );
 
   managerB.destroy();
-  assert.equal(destroyCalls, 0, 'destroy() on managerB must NOT call destroy() on an injected adapter');
+  assert.equal(
+    destroyCalls,
+    0,
+    'destroy() on managerB must NOT call destroy() on an injected adapter',
+  );
 });
 
 test('internally-created lifecycleAdapter IS destroyed when IntentManager.destroy() is called', () => {
@@ -4129,11 +4256,13 @@ test('internally-created lifecycleAdapter IS destroyed when IntentManager.destro
   // Calling destroy() should NOT throw even if the internally created adapter
   // is BrowserLifecycleAdapter in a non-browser env (it guards with typeof
   // document checks).
-  assert.doesNotThrow(() => manager.destroy(), 'destroy() must not throw when internal adapter is a no-op');
+  assert.doesNotThrow(
+    () => manager.destroy(),
+    'destroy() must not throw when internal adapter is a no-op',
+  );
 });
 
 test('session_stale fires with hidden_duration_exceeded when hidden gap > MAX_PLAUSIBLE_DWELL_MS', () => {
-
   let pauseCallback = null;
   let resumeCallback = null;
   const fakeAdapter = {

@@ -1909,7 +1909,7 @@ const intent = new IntentManager({
 > `lifecycleAdapter.destroy()` on the adapter it **created internally**.
 > When you supply an adapter via `lifecycleAdapter` in config, `destroy()`
 > intentionally leaves it alive — you own it, and possibly share it across
-> multiple `IntentManager` instances.  You are responsible for calling
+> multiple `IntentManager` instances. You are responsible for calling
 > `adapter.destroy()` when all consumers are done.
 >
 > ```ts

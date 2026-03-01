@@ -271,9 +271,12 @@ export interface IntentManagerConfig {
    * no longer controls write frequency for the primary persist flow.
    *
    * It still governs two narrower scenarios:
-   * - **Async storage retry**: when an async `setItem` fails, one retry pass is
-   *   scheduled after `persistDebounceMs` so the host app has time to surface
-   *   the error before the next attempt.
+   * - **Async storage retry**: when an async `setItem` fails for the first time
+   *   in a consecutive sequence, one retry pass is scheduled after
+   *   `persistDebounceMs`.  This gives the host app time to surface the error
+   *   (via `onError`) before the retry fires.  If the retry also fails, no
+   *   further automatic retry is scheduled — the dirty flag is preserved and
+   *   the next `track()` or `flushNow()` call will trigger a fresh attempt.
    * - **`flushNow()`**: cancels any pending retry timer and forces an immediate
    *   write; reducing this value has no observable effect on normal operation.
    *
