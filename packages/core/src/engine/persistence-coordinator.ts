@@ -155,10 +155,14 @@ export class PersistenceCoordinator {
       return { bloom, graph };
     } catch (err) {
       if (this.onError) {
+        const payloadByteLength =
+          typeof TextEncoder !== 'undefined'
+            ? new TextEncoder().encode(raw as string).length
+            : (raw as string).length;
         this.onError({
           code: 'RESTORE_PARSE',
           message: err instanceof Error ? err.message : String(err),
-          originalError: { cause: err, payloadLength: raw.length },
+          originalError: { cause: err, payloadLength: payloadByteLength },
         });
       }
       return null;
