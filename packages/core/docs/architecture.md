@@ -1865,7 +1865,7 @@ export interface LifecycleAdapter {
   onPause(callback: () => void): void;
   /** Called with a callback to invoke when the environment becomes active again. */
   onResume(callback: () => void): void;
-  /** Remove all event listeners and release resources. Called by IntentManager.destroy(). */
+  /** Remove all event listeners and release resources. Called by the owner; IntentManager.destroy() calls this only for adapters it creates internally. */
   destroy(): void;
 }
 ```
