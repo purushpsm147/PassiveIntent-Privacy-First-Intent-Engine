@@ -240,9 +240,9 @@ export class IntentManager {
     if (!config.asyncStorage) {
       throw new Error('IntentManager.createAsync() requires config.asyncStorage');
     }
-    // Use the normalized key from buildIntentManagerOptions so any future
-    // normalization/clamping applied there is respected during the preload.
-    const { storageKey } = buildIntentManagerOptions(config);
+    // Use the same default storage key as the config normalizer without
+    // incurring a second full normalization pass.
+    const storageKey = config.storageKey ?? 'passive-intent';
     // Await the single I/O call up-front so the constructor stays synchronous.
     const raw = await config.asyncStorage.getItem(storageKey);
 
