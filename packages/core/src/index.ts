@@ -49,8 +49,6 @@ export type {
   EntropyDecision,
   TrajectoryDecision,
   DwellDecision,
-  AnomalyDispatcherConfig,
-  SignalEngineConfig,
 } from './intent-sdk.js';
 
 /* ---- Adapters ---- */
