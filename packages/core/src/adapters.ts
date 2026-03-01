@@ -160,6 +160,21 @@ export interface LifecycleAdapter {
    * any other registered callbacks untouched.
    */
   onResume(callback: () => void): () => void;
+  /**
+   * Optional: register a callback to be invoked on any user interaction
+   * (mouse, keyboard, scroll, touch).  Used by the idle-state detector.
+   *
+   * Implementations should throttle the callback internally (e.g. max once
+   * per 1 000 ms) to avoid flooding the engine with high-frequency events.
+   *
+   * Returns an unsubscribe function that removes only this callback, or
+   * `null` when the environment cannot deliver interaction events (e.g.
+   * SSR, Node.js tests with a stubbed `window`).
+   *
+   * Backward-compatible — adapters that do not implement this method are
+   * silently skipped and idle detection is disabled.
+   */
+  onInteraction?(callback: () => void): (() => void) | null;
   /** Remove all event listeners and release resources held by this adapter. */
   destroy(): void;
 }
@@ -188,7 +203,19 @@ export interface LifecycleAdapter {
 export class BrowserLifecycleAdapter implements LifecycleAdapter {
   private readonly pauseCallbacks: Array<() => void> = [];
   private readonly resumeCallbacks: Array<() => void> = [];
+  private readonly interactionCallbacks: Array<() => void> = [];
   private readonly handler: () => void;
+
+  /** Tracks the DOM listeners registered for interaction throttling. */
+  private interactionHandler: (() => void) | null = null;
+  private interactionLastFired = 0;
+  private static readonly INTERACTION_THROTTLE_MS = 1_000;
+  private static readonly INTERACTION_EVENTS: ReadonlyArray<string> = [
+    'mousemove',
+    'scroll',
+    'touchstart',
+    'keydown',
+  ];
 
   constructor() {
     this.handler = () => {
@@ -221,11 +248,73 @@ export class BrowserLifecycleAdapter implements LifecycleAdapter {
     };
   }
 
+  onInteraction(callback: () => void): (() => void) | null {
+    // When DOM event APIs are unavailable (SSR, Node.js tests with a
+    // stubbed `window`), interaction tracking cannot function.
+    // Return null to signal "not supported" so the coordinator skips
+    // idle-check timer scheduling.
+    if (typeof window === 'undefined' || typeof window.addEventListener !== 'function') {
+      return null;
+    }
+
+    this.interactionCallbacks.push(callback);
+
+    // Lazily attach DOM listeners on the first subscription.
+    if (
+      this.interactionHandler === null &&
+      typeof window !== 'undefined' &&
+      typeof window.addEventListener === 'function'
+    ) {
+      this.interactionHandler = () => {
+        const now =
+          typeof performance !== 'undefined' && typeof performance.now === 'function'
+            ? performance.now()
+            : Date.now();
+        if (now - this.interactionLastFired < BrowserLifecycleAdapter.INTERACTION_THROTTLE_MS) {
+          return;
+        }
+        this.interactionLastFired = now;
+        for (const cb of this.interactionCallbacks) cb();
+      };
+
+      const opts: AddEventListenerOptions = { passive: true };
+      for (const evt of BrowserLifecycleAdapter.INTERACTION_EVENTS) {
+        window.addEventListener(evt, this.interactionHandler, opts);
+      }
+    }
+
+    return () => {
+      const idx = this.interactionCallbacks.indexOf(callback);
+      if (idx !== -1) this.interactionCallbacks.splice(idx, 1);
+
+      // Remove DOM listeners when the last subscriber unsubscribes.
+      if (this.interactionCallbacks.length === 0) {
+        this.teardownInteractionListeners();
+      }
+    };
+  }
+
+  /** Remove interaction DOM listeners if they are currently attached. */
+  private teardownInteractionListeners(): void {
+    if (
+      this.interactionHandler !== null &&
+      typeof window !== 'undefined' &&
+      typeof window.removeEventListener === 'function'
+    ) {
+      for (const evt of BrowserLifecycleAdapter.INTERACTION_EVENTS) {
+        window.removeEventListener(evt, this.interactionHandler);
+      }
+    }
+    this.interactionHandler = null;
+  }
+
   destroy(): void {
     if (typeof document !== 'undefined') {
       document.removeEventListener('visibilitychange', this.handler);
     }
+    this.teardownInteractionListeners();
     this.pauseCallbacks.length = 0;
     this.resumeCallbacks.length = 0;
+    this.interactionCallbacks.length = 0;
   }
 }

@@ -56,6 +56,8 @@ PassiveIntent takes the opposite approach. It is a tiny, tree-shakeable TypeScri
 - [Tab-Visibility Dwell-Time Correction](#tab-visibility-dwell-time-correction)
 - [LifecycleAdapter (Isomorphic)](#lifecycleadapter-isomorphic)
 - [CPU / OS Suspend Guard](#cpu--os-suspend-guard)
+- [Comparison Shopper Detection (attention_return)](#comparison-shopper-detection-attention_return)
+- [Idle-State Detector (user_idle / user_resumed)](#idle-state-detector-user_idle--user_resumed)
 - [Baseline Drift Auto-Killswitch](#baseline-drift-auto-killswitch)
 - [Selective Bigram Markov Transitions](#selective-bigram-markov-transitions)
 - [Event Cooldown](#event-cooldown)
@@ -143,6 +145,8 @@ The PassiveIntent SDK is a **local behavioral inference library**. As a user nav
 9. Auto-normalizes URL strings passed to `track()` via a built-in **route normalizer**: query strings, hash fragments, trailing slashes, UUIDs, and MongoDB ObjectIDs are stripped so the engine always receives a stable canonical state label.
 10. Provides a **deterministic counter API** (`incrementCounter` / `getCounter` / `resetCounter`) for exact business metrics (e.g. “articles read”) that must not tolerate Bloom filter false positives.
 11. Supports **A/B testing holdout** — randomly assigns each session to `treatment` or `control` at construction time. Control sessions perform all inference and increment telemetry counters but suppress behavioral events, enabling conversion-lift measurement with zero server-side infrastructure.
+12. Detects **comparison shopping** — when the user switches to another tab and returns ≥ 15 seconds later, an `attention_return` event fires with the state they were viewing and hidden duration, enabling Welcome Back discount modals with zero latency.
+13. Tracks **user idle state** — when no mouse, keyboard, scroll, or touch events are detected for 2 minutes, a `user_idle` event fires. The first interaction after idle fires `user_resumed` and the dwell-time baseline is automatically adjusted to exclude the idle gap.
 
 All of this happens inside the user’s browser. No analytics endpoint. No fingerprinting. No PII.
 
@@ -150,30 +154,32 @@ All of this happens inside the user’s browser. No analytics endpoint. No finge
 
 ## Strengths
 
-| Property                      | Detail                                                                                                                                                                                                                                                                                                                         |
-| ----------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| **Zero data egress**          | Every computation runs on the device. Nothing leaves the browser.                                                                                                                                                                                                                                                              |
-| **Tiny footprint**            | Minified bundle ≈ 6 kB gzip. Bloom filter default: 256 bytes. Serialized graph: ~1.4 kB for 100 states.                                                                                                                                                                                                                        |
-| **Sub-millisecond hot path**  | `track()` averages **0.0019 ms** at steady state (p99 < 0.005 ms).                                                                                                                                                                                                                                                             |
-| **SSR-safe**                  | All browser globals are behind `StorageAdapter` / `TimerAdapter` interfaces. Works in Next.js, Nuxt, Remix, and Cloudflare Workers without a `typeof window` guard.                                                                                                                                                            |
-| **Isomorphic adapters**       | Ship your own storage and timer implementations for testing, Redis, or any other backing store.                                                                                                                                                                                                                                |
-| **Dirty-flag persistence**    | `localStorage` writes only happen when state actually changed, eliminating jank on high-frequency routes.                                                                                                                                                                                                                      |
-| **Bounded memory growth**     | LFU pruning evicts the least-used 20 % of states when the graph exceeds `maxStates` (default: 500).                                                                                                                                                                                                                            |
-| **Cold-start smoothing**      | Unlike brittle rule engines that overreact to brand-new users, you can enable Bayesian Laplace smoothing (`smoothingAlpha`) so sparse Day-1 traffic is handled gracefully instead of being over-penalized by sparse-history spikes.                                                                                            |
-| **Bot-resilient**             | EntropyGuard detects impossibly-fast timing patterns and silently suppresses entropy/trajectory events for suspected bots, preventing discount abuse.                                                                                                                                                                          |
-| **Dwell-time anomaly**        | O(1) Welford’s online z-score per state — fires `dwell_time_anomaly` when a user lingers or rushes through a page anomalously.                                                                                                                                                                                                 |
-| **Selective bigrams**         | Optional second-order Markov transitions, frequency-gated and LFU-pruned. Only 18 bytes additional graph overhead at 50 states.                                                                                                                                                                                                |
-| **Event cooldown**            | Per-channel cooldown gating (`eventCooldownMs`) prevents event flooding without losing detection fidelity.                                                                                                                                                                                                                     |
-| **Tab-visibility correction** | Dwell timer is automatically paused via `LifecycleAdapter` while the tab or app is hidden. Tabs switched away for 30 seconds do not produce a 30-second dwell reading. No configuration required; `BrowserLifecycleAdapter` is the default in browser contexts.                                                                |
-| **CPU / OS suspend guard**    | Any dwell-time or hidden-duration measurement exceeding `MAX_PLAUSIBLE_DWELL_MS` (30 minutes) is discarded to protect the Welford accumulator from laptop-sleep / OS-hibernate artifacts. A `session_stale` diagnostic event is emitted so host apps can observe the guard activating.                                         |
-| **Drift auto-killswitch**     | A rolling-window guard monitors the `trajectory_anomaly`/`track()` ratio. When it exceeds `driftProtection.maxAnomalyRate`, trajectory evaluation is silently disabled so a stale baseline can never flood your UI with false positives. `getTelemetry().baselineStatus` reflects `'drifted'` when the killswitch has engaged. |
-| **Deterministic counters**    | `incrementCounter(key)` / `getCounter(key)` / `resetCounter(key)` — exact integer counters, zero false positives, session-scoped. Use for business metrics like “articles read” where the Bloom filter’s probabilistic nature is unacceptable.                                                                                 |
-| **Route normalization**       | `track()` auto-normalizes raw URLs: strips `?query`, `#hash`, trailing slashes, and replaces UUIDs / MongoDB ObjectIDs with `:id`. Pass `window.location.href` directly — the engine always receives a stable state label.                                                                                                     |
-| **A/B holdout**               | `holdoutConfig: { percentage: 10 }` routes ~10 % of sessions to a `control` group. Control sessions run all inference and increment `anomaliesFired` identically to treatment but suppress behavioral event emissions, giving you clean conversion-lift data with zero server-side tracking.                                   |
-| **Clean teardown**            | `destroy()` API flushes state, cancels timers, and removes listeners for leak-free SPA lifecycle management.                                                                                                                                                                                                                   |
-| **Fully typed**               | Ships `.d.ts` declarations for every public API and event payload.                                                                                                                                                                                                                                                             |
-| **Dual CJS + ESM**            | `dist/index.js` (ESM) + `dist/index.cjs` (CommonJS) with source maps.                                                                                                                                                                                                                                                          |
-| **Zero runtime deps**         | The entire package has no external runtime dependencies.                                                                                                                                                                                                                                                                       |
+| Property                      | Detail                                                                                                                                                                                                                                                                                                                           |
+| ----------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **Zero data egress**          | Every computation runs on the device. Nothing leaves the browser.                                                                                                                                                                                                                                                                |
+| **Tiny footprint**            | Minified bundle ≈ 6 kB gzip. Bloom filter default: 256 bytes. Serialized graph: ~1.4 kB for 100 states.                                                                                                                                                                                                                          |
+| **Sub-millisecond hot path**  | `track()` averages **0.0019 ms** at steady state (p99 < 0.005 ms).                                                                                                                                                                                                                                                               |
+| **SSR-safe**                  | All browser globals are behind `StorageAdapter` / `TimerAdapter` interfaces. Works in Next.js, Nuxt, Remix, and Cloudflare Workers without a `typeof window` guard.                                                                                                                                                              |
+| **Isomorphic adapters**       | Ship your own storage and timer implementations for testing, Redis, or any other backing store.                                                                                                                                                                                                                                  |
+| **Dirty-flag persistence**    | `localStorage` writes only happen when state actually changed, eliminating jank on high-frequency routes.                                                                                                                                                                                                                        |
+| **Bounded memory growth**     | LFU pruning evicts the least-used 20 % of states when the graph exceeds `maxStates` (default: 500).                                                                                                                                                                                                                              |
+| **Cold-start smoothing**      | Unlike brittle rule engines that overreact to brand-new users, you can enable Bayesian Laplace smoothing (`smoothingAlpha`) so sparse Day-1 traffic is handled gracefully instead of being over-penalized by sparse-history spikes.                                                                                              |
+| **Bot-resilient**             | EntropyGuard detects impossibly-fast timing patterns and silently suppresses entropy/trajectory events for suspected bots, preventing discount abuse.                                                                                                                                                                            |
+| **Dwell-time anomaly**        | O(1) Welford’s online z-score per state — fires `dwell_time_anomaly` when a user lingers or rushes through a page anomalously.                                                                                                                                                                                                   |
+| **Selective bigrams**         | Optional second-order Markov transitions, frequency-gated and LFU-pruned. Only 18 bytes additional graph overhead at 50 states.                                                                                                                                                                                                  |
+| **Event cooldown**            | Per-channel cooldown gating (`eventCooldownMs`) prevents event flooding without losing detection fidelity.                                                                                                                                                                                                                       |
+| **Tab-visibility correction** | Dwell timer is automatically paused via `LifecycleAdapter` while the tab or app is hidden. Tabs switched away for 30 seconds do not produce a 30-second dwell reading. No configuration required; `BrowserLifecycleAdapter` is the default in browser contexts.                                                                  |
+| **CPU / OS suspend guard**    | Any dwell-time or hidden-duration measurement exceeding `MAX_PLAUSIBLE_DWELL_MS` (30 minutes) is discarded to protect the Welford accumulator from laptop-sleep / OS-hibernate artifacts. A `session_stale` diagnostic event is emitted so host apps can observe the guard activating.                                           |
+| **Comparison shopper**        | When a user returns after hiding the tab for ≥ 15 seconds, an `attention_return` event fires with the state they were viewing and the hidden duration. Perfect for triggering "Welcome Back" discount modals after the user price-shops on a competitor tab. Independent of `session_stale` and `dwellTime.enabled`.             |
+| **Idle-state detection**      | After 2 minutes of inactivity (no mouse, keyboard, scroll, or touch), a `user_idle` event fires. When the user resumes interacting, `user_resumed` fires. The dwell-time baseline is automatically adjusted to exclude the idle gap so Welford anomaly statistics are not distorted. Polling cadence: 5 seconds, negligible CPU. |
+| **Drift auto-killswitch**     | A rolling-window guard monitors the `trajectory_anomaly`/`track()` ratio. When it exceeds `driftProtection.maxAnomalyRate`, trajectory evaluation is silently disabled so a stale baseline can never flood your UI with false positives. `getTelemetry().baselineStatus` reflects `'drifted'` when the killswitch has engaged.   |
+| **Deterministic counters**    | `incrementCounter(key)` / `getCounter(key)` / `resetCounter(key)` — exact integer counters, zero false positives, session-scoped. Use for business metrics like “articles read” where the Bloom filter’s probabilistic nature is unacceptable.                                                                                   |
+| **Route normalization**       | `track()` auto-normalizes raw URLs: strips `?query`, `#hash`, trailing slashes, and replaces UUIDs / MongoDB ObjectIDs with `:id`. Pass `window.location.href` directly — the engine always receives a stable state label.                                                                                                       |
+| **A/B holdout**               | `holdoutConfig: { percentage: 10 }` routes ~10 % of sessions to a `control` group. Control sessions run all inference and increment `anomaliesFired` identically to treatment but suppress behavioral event emissions, giving you clean conversion-lift data with zero server-side tracking.                                     |
+| **Clean teardown**            | `destroy()` API flushes state, cancels timers, and removes listeners for leak-free SPA lifecycle management.                                                                                                                                                                                                                     |
+| **Fully typed**               | Ships `.d.ts` declarations for every public API and event payload.                                                                                                                                                                                                                                                               |
+| **Dual CJS + ESM**            | `dist/index.js` (ESM) + `dist/index.cjs` (CommonJS) with source maps.                                                                                                                                                                                                                                                            |
+| **Zero runtime deps**         | The entire package has no external runtime dependencies.                                                                                                                                                                                                                                                                         |
 
 ---
 
@@ -349,6 +355,24 @@ interface ConversionPayload {
   type: string; // e.g. 'purchase', 'signup', 'trial_start'
   value?: number; // optional monetary value
   currency?: string; // ISO 4217 code, e.g. 'USD'
+}
+
+// Fires when the user returns to the tab after ≥ 15 seconds (comparison shopping)
+interface AttentionReturnPayload {
+  state: string; // the state the user was viewing before tabbing away
+  hiddenDuration: number; // how long the tab was hidden, in milliseconds
+}
+
+// Fires after 2 minutes of user inactivity (no mouse, keyboard, scroll, or touch)
+interface UserIdlePayload {
+  state: string; // the state the user was viewing when they became idle
+  idleMs: number; // duration of inactivity at the time the event fired
+}
+
+// Fires on the first interaction after an idle period
+interface UserResumedPayload {
+  state: string; // the state the user was viewing when they resumed
+  idleMs: number; // total idle duration before the user resumed
 }
 
 // Returned by intent.getTelemetry() — aggregate counters only, no raw data
@@ -1254,7 +1278,7 @@ flowchart LR
         subgraph COORDS["Coordinators"]
             direction LR
             PC["PersistenceCoordinator\nthrottle · dirty-flag\nsync/async strategies"]
-            LC["LifecycleCoordinator\ntab-visibility · session_stale\nLifecycleAdapter"]
+            LC["LifecycleCoordinator\ntab-visibility · session_stale\nattention_return · idle detect\nLifecycleAdapter"]
         end
 
         subgraph ENGINE["Signal Kernel"]
@@ -1322,23 +1346,23 @@ flowchart LR
     style STORE fill:#3d405b,color:#fff,stroke:#81b29a
 ```
 
-| Component                                            | Role                                                                                                                                                                                                                   | Key constraint                                                                                                                                           |
-| ---------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| **IntentManager**                                    | Single public orchestrator — assembles coordinators, policies, and signal kernel; routes every `track()` call through a deterministic staged pipeline                                                                  | `readonly` fields; never throws to the host; delegates all feature logic to policies and coordinators                                                    |
-| **BloomFilter**                                      | Probabilistic set membership for `hasSeen()`                                                                                                                                                                           | Fixed-size `Uint8Array`; O(k) per operation regardless of state count                                                                                    |
-| **MarkovGraph**                                      | Sparse first-order Markov chain; learns transition counts in real time                                                                                                                                                 | State labels interned to `uint16` indices; max 65 535 states                                                                                             |
-| **SignalEngine**                                     | Pure evaluation kernel — `evaluateEntropy()`, `evaluateTrajectory()`, `evaluateDwellTime()` return typed `AnomalyDecision` objects; no I/O or event emission; only internal statistical state updates in these methods | Owns `EntropyGuard`; all side-effects applied by `AnomalyDispatcher.dispatch()`                                                                          |
-| **AnomalyDispatcher**                                | Single side-effect point for all anomaly events — applies cooldown gate, holdout suppression, telemetry counting, drift accounting, and hesitation correlation                                                         | All decision side-effects here and only here; `assertNever` enforces exhaustive handling of new decision kinds at compile time                           |
-| **EntropyGuard**                                     | Bot / automation detector based on inter-call timing                                                                                                                                                                   | Fixed-size circular buffer; zero heap allocations in hot path                                                                                            |
-| **PersistenceCoordinator**                           | Owns all write/read/retry orchestration — throttle gate, dirty-flag short-circuit, sync vs. async strategy selection, and write-failure retry                                                                          | Fires typed `PassiveIntentError` codes (`RESTORE_PARSE`, `STORAGE_WRITE`, `QUOTA_EXCEEDED`) via `onError`                                                |
-| **LifecycleCoordinator**                             | Owns pause/resume handling — adjusts `previousStateEnteredAt` on tab hide/show; emits `session_stale` when hidden duration exceeds `MAX_PLAUSIBLE_DWELL_MS`                                                            | SSR-safe; accepts `null` adapter to disable entirely; conditionally owns or borrows the `LifecycleAdapter` based on whether one was injected via config  |
-| **DwellTimePolicy** (`EnginePolicy`)                 | Measures dwell time in `onTrackContext()` and passes a `DwellDecision` to `SignalEngine.dispatch()`                                                                                                                    | Session-scoped Welford accumulators; intentionally not persisted to avoid cross-session timing fingerprints                                              |
-| **BigramPolicy** (`EnginePolicy`)                    | Records second-order (`A→B→C`) Markov transitions in `onTransition()`                                                                                                                                                  | Frequency-gated via `bigramFrequencyThreshold`; shares graph and LFU pruning budget with unigrams                                                        |
-| **DriftProtectionPolicy** (`EnginePolicy`)           | Maintains rolling-window `trajectory_anomaly` / `track()` ratio; sets `isDrifted` when `maxAnomalyRate` is exceeded                                                                                                    | `recordAnomaly()` called by `AnomalyDispatcher` _before_ the cooldown check so all raw signals — even rate-limited ones — count against the drift window |
-| **CrossTabSyncPolicy** (`EnginePolicy`)              | Propagates transitions and counter increments across tabs via `BroadcastChannel`                                                                                                                                       | Validates payload version byte and length before deserializing; attacker-controlled XSS in one tab cannot inflate the graph in sibling tabs              |
-| **EventEmitter**                                     | Typed mini event bus                                                                                                                                                                                                   | ~20 lines; no `EventTarget` dependency for SSR safety                                                                                                    |
-| **BenchmarkRecorder**                                | Optional per-operation p95/p99 latency sampler                                                                                                                                                                         | Disabled by default; ring-buffer avoids unbounded growth                                                                                                 |
-| **StorageAdapter / TimerAdapter / LifecycleAdapter** | Isomorphic interfaces for storage, timers, and page-visibility                                                                                                                                                         | Swap all three for test doubles without mocking any browser global                                                                                       |
+| Component                                            | Role                                                                                                                                                                                                                                                                                                                           | Key constraint                                                                                                                                           |
+| ---------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | -------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **IntentManager**                                    | Single public orchestrator — assembles coordinators, policies, and signal kernel; routes every `track()` call through a deterministic staged pipeline                                                                                                                                                                          | `readonly` fields; never throws to the host; delegates all feature logic to policies and coordinators                                                    |
+| **BloomFilter**                                      | Probabilistic set membership for `hasSeen()`                                                                                                                                                                                                                                                                                   | Fixed-size `Uint8Array`; O(k) per operation regardless of state count                                                                                    |
+| **MarkovGraph**                                      | Sparse first-order Markov chain; learns transition counts in real time                                                                                                                                                                                                                                                         | State labels interned to `uint16` indices; max 65 535 states                                                                                             |
+| **SignalEngine**                                     | Pure evaluation kernel — `evaluateEntropy()`, `evaluateTrajectory()`, `evaluateDwellTime()` return typed `AnomalyDecision` objects; no I/O or event emission; only internal statistical state updates in these methods                                                                                                         | Owns `EntropyGuard`; all side-effects applied by `AnomalyDispatcher.dispatch()`                                                                          |
+| **AnomalyDispatcher**                                | Single side-effect point for all anomaly events — applies cooldown gate, holdout suppression, telemetry counting, drift accounting, and hesitation correlation                                                                                                                                                                 | All decision side-effects here and only here; `assertNever` enforces exhaustive handling of new decision kinds at compile time                           |
+| **EntropyGuard**                                     | Bot / automation detector based on inter-call timing                                                                                                                                                                                                                                                                           | Fixed-size circular buffer; zero heap allocations in hot path                                                                                            |
+| **PersistenceCoordinator**                           | Owns all write/read/retry orchestration — throttle gate, dirty-flag short-circuit, sync vs. async strategy selection, and write-failure retry                                                                                                                                                                                  | Fires typed `PassiveIntentError` codes (`RESTORE_PARSE`, `STORAGE_WRITE`, `QUOTA_EXCEEDED`) via `onError`                                                |
+| **LifecycleCoordinator**                             | Owns pause/resume handling — adjusts `previousStateEnteredAt` on tab hide/show; emits `session_stale` when hidden duration exceeds `MAX_PLAUSIBLE_DWELL_MS`; emits `attention_return` for comparison-shopper detection (≥ 15 s hide); tracks user interactions and emits `user_idle` / `user_resumed` for idle-state detection | SSR-safe; accepts `null` adapter to disable entirely; conditionally owns or borrows the `LifecycleAdapter` based on whether one was injected via config  |
+| **DwellTimePolicy** (`EnginePolicy`)                 | Measures dwell time in `onTrackContext()` and passes a `DwellDecision` to `SignalEngine.dispatch()`                                                                                                                                                                                                                            | Session-scoped Welford accumulators; intentionally not persisted to avoid cross-session timing fingerprints                                              |
+| **BigramPolicy** (`EnginePolicy`)                    | Records second-order (`A→B→C`) Markov transitions in `onTransition()`                                                                                                                                                                                                                                                          | Frequency-gated via `bigramFrequencyThreshold`; shares graph and LFU pruning budget with unigrams                                                        |
+| **DriftProtectionPolicy** (`EnginePolicy`)           | Maintains rolling-window `trajectory_anomaly` / `track()` ratio; sets `isDrifted` when `maxAnomalyRate` is exceeded                                                                                                                                                                                                            | `recordAnomaly()` called by `AnomalyDispatcher` _before_ the cooldown check so all raw signals — even rate-limited ones — count against the drift window |
+| **CrossTabSyncPolicy** (`EnginePolicy`)              | Propagates transitions and counter increments across tabs via `BroadcastChannel`                                                                                                                                                                                                                                               | Validates payload version byte and length before deserializing; attacker-controlled XSS in one tab cannot inflate the graph in sibling tabs              |
+| **EventEmitter**                                     | Typed mini event bus                                                                                                                                                                                                                                                                                                           | ~20 lines; no `EventTarget` dependency for SSR safety                                                                                                    |
+| **BenchmarkRecorder**                                | Optional per-operation p95/p99 latency sampler                                                                                                                                                                                                                                                                                 | Disabled by default; ring-buffer avoids unbounded growth                                                                                                 |
+| **StorageAdapter / TimerAdapter / LifecycleAdapter** | Isomorphic interfaces for storage, timers, and page-visibility                                                                                                                                                                                                                                                                 | Swap all three for test doubles without mocking any browser global                                                                                       |
 
 ---
 
@@ -1893,7 +1917,7 @@ intent.track('/next-page');
 ### LifecycleAdapter (Isomorphic)
 
 The `LifecycleAdapter` interface is the public contract for page-visibility / app-lifecycle
-events. It contains three methods:
+events. It contains four methods:
 
 ```ts
 export interface LifecycleAdapter {
@@ -1903,6 +1927,12 @@ export interface LifecycleAdapter {
   /** Called with a callback to invoke when the environment becomes active again.
    *  Returns an unsubscribe function that removes only this callback. */
   onResume(callback: () => void): () => void;
+  /** Optional: register a callback to be invoked on any user interaction
+   *  (mouse, keyboard, scroll, touch).  Used by the idle-state detector.
+   *  Returns an unsubscribe function, or `null` when the environment cannot
+   *  deliver interaction events (e.g. SSR, Node.js tests).
+   *  Backward-compatible — adapters that omit this method disable idle detection. */
+  onInteraction?(callback: () => void): (() => void) | null;
   /** Remove all event listeners and release resources. Called by the owner; IntentManager.destroy() calls this only for adapters it creates internally. */
   destroy(): void;
 }
@@ -2032,6 +2062,128 @@ intent.on('session_stale', ({ reason, measuredMs }) => {
 ```
 
 This event is diagnostic only. It has no effect on the Markov graph, Bloom filter, or any anomaly-detection signal.
+
+---
+
+### Comparison Shopper Detection (attention_return)
+
+When a user switches away from your application to compare prices, read reviews, or check a competitor's offering, there is a brief window of opportunity when they return. PassiveIntent detects this **"comparison shopper"** pattern and emits an `attention_return` event the moment the tab becomes visible again — before the user has even scrolled.
+
+**How it works:**
+
+1. When the tab is hidden (`onPause`), `LifecycleCoordinator` records `tabHiddenAt = timer.now()`.
+2. When the tab becomes visible again (`onResume`), it computes `hiddenDuration = timer.now() - tabHiddenAt`.
+3. If `hiddenDuration >= ATTENTION_RETURN_THRESHOLD_MS` (15 seconds) **and** the user was viewing a known state (`previousState !== null`), the coordinator emits `attention_return`.
+
+**`ATTENTION_RETURN_THRESHOLD_MS`** is `15_000` (15 seconds). This threshold is long enough to filter out quick alt-tab or notification glances, while short enough to capture users who navigated to a competitor's product page.
+
+```ts
+import { ATTENTION_RETURN_THRESHOLD_MS } from '@passiveintent/core';
+// 15_000
+```
+
+**`AttentionReturnPayload`**:
+
+```ts
+export interface AttentionReturnPayload {
+  /** The state the user was viewing before they tabbed away. */
+  state: string;
+  /** How long the tab was hidden, in milliseconds. */
+  hiddenDuration: number;
+}
+```
+
+**Usage — Welcome Back Discount:**
+
+```ts
+intent.on('attention_return', ({ state, hiddenDuration }) => {
+  if (state === '/product' || state === '/pricing') {
+    UI.showModal({
+      title: 'Welcome back!',
+      message: `Still comparing? Here's 10% off for the next 15 minutes.`,
+      coupon: 'WELCOMEBACK10',
+    });
+  }
+});
+```
+
+**Independence from other events:**
+
+- `attention_return` fires for **any** hide ≥ 15 seconds, regardless of `dwellTime.enabled`.
+- `session_stale` fires only when `dwellTime.enabled` is `true` and the gap exceeds 30 minutes.
+- Both events can co-fire on the same resume when the hidden duration exceeds both thresholds.
+
+---
+
+### Idle-State Detector (user_idle / user_resumed)
+
+Users walk away from their devices. They leave a tab open while grabbing coffee, answering the phone, or attending a meeting. Without an idle detector, the dwell-time accumulator treats this entire absence as "time spent viewing the current page" — inflating the Welford mean and distorting anomaly detection for that state.
+
+PassiveIntent's idle-state detector solves this by monitoring real user interactions (mouse moves, keyboard presses, scroll events, and touch events) through the `LifecycleAdapter.onInteraction()` method. When no interaction is detected for `USER_IDLE_THRESHOLD_MS` (2 minutes), the engine emits `user_idle`. When the user resumes interacting, `user_resumed` fires and the dwell-time baseline is adjusted to exclude the idle duration.
+
+**How it works:**
+
+1. On construction, `LifecycleCoordinator` calls `adapter.onInteraction(callback)` if the adapter implements it.
+2. Every interaction updates `lastInteractionAt = timer.now()`.
+3. A background polling timer fires every `IDLE_CHECK_INTERVAL_MS` (5 seconds). On each tick:
+   - If `!isIdle && hasPreviousState() && now - lastInteractionAt >= USER_IDLE_THRESHOLD_MS` → transition to idle, emit `user_idle`.
+4. When the next interaction arrives after an idle period:
+   - Transition out of idle.
+   - Adjust the dwell baseline by calling `onAdjustBaseline(idleMs)` to exclude the idle gap.
+   - Emit `user_resumed` with the total idle duration.
+
+**Constants:**
+
+```ts
+import { USER_IDLE_THRESHOLD_MS, IDLE_CHECK_INTERVAL_MS } from '@passiveintent/core';
+// USER_IDLE_THRESHOLD_MS  = 120_000  (2 minutes)
+// IDLE_CHECK_INTERVAL_MS  =   5_000  (5 seconds)
+```
+
+**Event Payloads:**
+
+```ts
+export interface UserIdlePayload {
+  /** The state the user was viewing when they became idle. */
+  state: string;
+  /** Duration of inactivity in milliseconds at the time the event fired. */
+  idleMs: number;
+}
+
+export interface UserResumedPayload {
+  /** The state the user was viewing when they resumed interaction. */
+  state: string;
+  /** Total idle duration in milliseconds before the user resumed. */
+  idleMs: number;
+}
+```
+
+**Usage — Dim Overlay on Idle:**
+
+```ts
+intent.on('user_idle', ({ state, idleMs }) => {
+  UI.showIdleOverlay({ message: 'Still there? Your session is open.' });
+  Analytics.track('user_went_idle', { state });
+});
+
+intent.on('user_resumed', ({ state, idleMs }) => {
+  UI.hideIdleOverlay();
+  if (idleMs > 300_000) {
+    // Gone for > 5 minutes — refresh stale content
+    refreshPageData();
+  }
+});
+```
+
+**`BrowserLifecycleAdapter.onInteraction()`:**
+
+The default browser implementation listens for `mousemove`, `scroll`, `touchstart`, and `keydown` on `window` with `{ passive: true }`. Events are throttled to at most once per 1 000 ms to avoid flooding the engine with high-frequency callbacks. DOM listeners are lazily attached on the first subscription and torn down when the last subscriber unsubscribes or on `destroy()`.
+
+In SSR or Node.js environments where `window.addEventListener` is not available, `onInteraction()` returns `null` and idle detection is silently disabled.
+
+**Backward compatibility:**
+
+Custom `LifecycleAdapter` implementations that do not implement `onInteraction` continue to work unchanged. The coordinator checks `typeof adapter.onInteraction === 'function'` before attempting to subscribe.
 
 ---
 

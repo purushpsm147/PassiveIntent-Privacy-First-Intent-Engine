@@ -50,3 +50,30 @@ export const MIN_SAMPLE_TRANSITIONS = 10;
  *   3. Emits a `session_stale` diagnostic event for host-app observability.
  */
 export const MAX_PLAUSIBLE_DWELL_MS = 1_800_000; // 30 minutes
+
+/**
+ * Minimum tab-hidden duration before the engine considers the user a
+ * "comparison shopper" and emits an `attention_return` event on resume.
+ *
+ * 15 seconds is long enough to filter out quick alt-tab / notification
+ * glances while capturing users who navigated to a competitor tab.
+ */
+export const ATTENTION_RETURN_THRESHOLD_MS = 15_000; // 15 seconds
+
+/**
+ * Duration of user inactivity (no mouse, keyboard, scroll, or touch events)
+ * before the engine considers the user idle and emits a `user_idle` event.
+ *
+ * 2 minutes is a conservative default that avoids false positives from short
+ * pauses (reading long content, watching embedded video) while still catching
+ * users who genuinely walked away from their device.
+ */
+export const USER_IDLE_THRESHOLD_MS = 120_000; // 2 minutes
+
+/**
+ * Interval between successive idle-state checks inside the LifecycleCoordinator.
+ *
+ * A 5-second polling cadence keeps CPU overhead negligible while ensuring the
+ * `user_idle` event fires within 5 seconds of the actual threshold crossing.
+ */
+export const IDLE_CHECK_INTERVAL_MS = 5_000; // 5 seconds

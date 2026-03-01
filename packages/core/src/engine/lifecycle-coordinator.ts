@@ -6,10 +6,15 @@
  */
 
 import { BrowserLifecycleAdapter } from '../adapters.js';
-import type { LifecycleAdapter, TimerAdapter } from '../adapters.js';
+import type { LifecycleAdapter, TimerAdapter, TimerHandle } from '../adapters.js';
 import { EventEmitter } from './event-emitter.js';
 import type { IntentEventMap } from '../types/events.js';
-import { MAX_PLAUSIBLE_DWELL_MS } from './constants.js';
+import {
+  ATTENTION_RETURN_THRESHOLD_MS,
+  IDLE_CHECK_INTERVAL_MS,
+  MAX_PLAUSIBLE_DWELL_MS,
+  USER_IDLE_THRESHOLD_MS,
+} from './constants.js';
 
 /**
  * Configuration for LifecycleCoordinator.
@@ -45,6 +50,11 @@ export interface LifecycleCoordinatorConfig {
    * Translates to `previousState !== null` in IntentManager.
    */
   hasPreviousState: () => boolean;
+  /**
+   * Returns the current state the user is viewing, or `null` when no state
+   * has been entered yet.  Used by the comparison-shopper detection path.
+   */
+  getPreviousState: () => string | null;
 }
 
 /**
@@ -61,6 +71,11 @@ export interface LifecycleCoordinatorConfig {
  *       calls `onResetBaseline()` and emits `session_stale`
  *     - Both paths are skipped when `dwellTimeEnabled` is `false`
  *   - `destroy()`: deregisters callbacks and (conditionally) tears down the adapter
+ *   - Idle detection (when the adapter supports `onInteraction`):
+ *     - Tracks `lastInteractionAt` and polls every `IDLE_CHECK_INTERVAL_MS`
+ *     - Emits `user_idle` when inactivity exceeds `USER_IDLE_THRESHOLD_MS`
+ *     - Emits `user_resumed` on the first interaction after an idle period
+ *     - Adjusts the dwell baseline to exclude idle duration
  */
 export class LifecycleCoordinator {
   private readonly timer: TimerAdapter;
@@ -69,6 +84,7 @@ export class LifecycleCoordinator {
   private readonly onAdjustBaseline: (delta: number) => void;
   private readonly onResetBaseline: () => void;
   private readonly hasPreviousState: () => boolean;
+  private readonly getPreviousState: () => string | null;
 
   private lifecycleAdapter: LifecycleAdapter | null;
   private ownsLifecycleAdapter: boolean;
@@ -78,6 +94,13 @@ export class LifecycleCoordinator {
   /** Timestamp when the tab last became hidden; `null` while visible. */
   private tabHiddenAt: number | null = null;
 
+  /* ── Idle-state detection ───────────────────────────────────────────── */
+  private lastInteractionAt: number;
+  private idleStartedAt: number = 0;
+  private isIdle: boolean = false;
+  private idleCheckTimer: TimerHandle | null = null;
+  private interactionUnsub: (() => void) | null = null;
+
   constructor(config: LifecycleCoordinatorConfig) {
     this.timer = config.timer;
     this.dwellTimeEnabled = config.dwellTimeEnabled;
@@ -85,6 +108,8 @@ export class LifecycleCoordinator {
     this.onAdjustBaseline = config.onAdjustBaseline;
     this.onResetBaseline = config.onResetBaseline;
     this.hasPreviousState = config.hasPreviousState;
+    this.getPreviousState = config.getPreviousState;
+    this.lastInteractionAt = this.timer.now();
 
     // Preserve the exact undefined-vs-null semantics from the original constructor:
     //   - undefined → create a BrowserLifecycleAdapter (owned by this coordinator)
@@ -113,6 +138,7 @@ export class LifecycleCoordinator {
     this.pauseUnsub = null;
     this.resumeUnsub?.();
     this.resumeUnsub = null;
+    this.stopIdleTracking();
 
     if (!adapter) return;
 
@@ -124,6 +150,20 @@ export class LifecycleCoordinator {
       if (this.tabHiddenAt === null) return;
       const hiddenDuration = this.timer.now() - this.tabHiddenAt;
       this.tabHiddenAt = null;
+
+      // ── Comparison-shopper detection (attention_return) ─────────────────
+      // When the user returns after ≥15 s and was viewing a known state,
+      // emit an attention_return event so the host app can surface a
+      // "Welcome Back" experience (e.g. discount modal).
+      if (hiddenDuration >= ATTENTION_RETURN_THRESHOLD_MS) {
+        const currentState = this.getPreviousState();
+        if (currentState !== null) {
+          this.emitter.emit('attention_return', {
+            state: currentState,
+            hiddenDuration,
+          });
+        }
+      }
 
       // All resume-path operations are dwell-time bookkeeping.  When dwell-time
       // detection is disabled the caller has opted out of all dwell diagnostics.
@@ -148,6 +188,8 @@ export class LifecycleCoordinator {
         this.onAdjustBaseline(hiddenDuration);
       }
     });
+
+    this.startIdleTracking(adapter);
   }
 
   /**
@@ -167,6 +209,8 @@ export class LifecycleCoordinator {
     this.lifecycleAdapter = adapter;
     this.ownsLifecycleAdapter = owns;
     this.tabHiddenAt = null;
+    this.isIdle = false;
+    this.lastInteractionAt = this.timer.now();
     this.bindAdapter(adapter);
   }
 
@@ -178,12 +222,100 @@ export class LifecycleCoordinator {
    * `IntentManager` instances and must be torn down by their owner.
    */
   destroy(): void {
+    this.stopIdleTracking();
     this.pauseUnsub?.();
     this.pauseUnsub = null;
     this.resumeUnsub?.();
     this.resumeUnsub = null;
     if (this.ownsLifecycleAdapter) {
       this.lifecycleAdapter?.destroy();
+    }
+  }
+
+  /* ── Idle-state detection internals ────────────────────────────────── */
+
+  /**
+   * Set up the interaction subscription and recurring idle-check timer.
+   * Gracefully skips when the adapter does not implement `onInteraction`.
+   */
+  private startIdleTracking(adapter: LifecycleAdapter | null): void {
+    if (!adapter || typeof adapter.onInteraction !== 'function') return;
+
+    const unsub = adapter.onInteraction(() => {
+      this.lastInteractionAt = this.timer.now();
+
+      if (this.isIdle) {
+        const idleMs = this.timer.now() - this.idleStartedAt;
+        this.isIdle = false;
+
+        // Exclude the idle period from the dwell clock.
+        if (this.dwellTimeEnabled && this.hasPreviousState()) {
+          this.onAdjustBaseline(idleMs);
+        }
+
+        const currentState = this.getPreviousState();
+        if (currentState !== null) {
+          this.emitter.emit('user_resumed', {
+            state: currentState,
+            idleMs,
+          });
+        }
+      }
+    });
+
+    // The adapter returned null — it cannot deliver interaction events
+    // (e.g. SSR / Node.js with a stubbed window).  Skip idle tracking.
+    if (!unsub) return;
+
+    this.interactionUnsub = unsub;
+    this.scheduleIdleCheck();
+  }
+
+  /** Tear down the interaction listener and idle-check timer. */
+  private stopIdleTracking(): void {
+    this.interactionUnsub?.();
+    this.interactionUnsub = null;
+    if (this.idleCheckTimer !== null) {
+      this.timer.clearTimeout(this.idleCheckTimer);
+      this.idleCheckTimer = null;
+    }
+  }
+
+  /** Schedule the next idle-check tick using the TimerAdapter. */
+  private scheduleIdleCheck(): void {
+    this.idleCheckTimer = this.timer.setTimeout(() => {
+      this.idleCheckTick();
+    }, IDLE_CHECK_INTERVAL_MS);
+  }
+
+  /** Single idle-check iteration; re-arms the timer when done. */
+  private idleCheckTick(): void {
+    this.idleCheckTimer = null; // consumed
+
+    const now = this.timer.now();
+    if (
+      !this.isIdle &&
+      this.hasPreviousState() &&
+      now - this.lastInteractionAt >= USER_IDLE_THRESHOLD_MS
+    ) {
+      this.isIdle = true;
+      this.idleStartedAt = this.lastInteractionAt + USER_IDLE_THRESHOLD_MS;
+
+      const currentState = this.getPreviousState();
+      if (currentState !== null) {
+        this.emitter.emit('user_idle', {
+          state: currentState,
+          idleMs: now - this.idleStartedAt,
+        });
+      }
+    }
+
+    // Re-arm for next tick — but only when idle tracking is still active.
+    // If destroy() was called from inside a user_idle / user_resumed handler
+    // above, stopIdleTracking() will have nulled interactionUnsub; skipping
+    // scheduleIdleCheck() here prevents a leaked timer after destruction.
+    if (this.interactionUnsub !== null) {
+      this.scheduleIdleCheck();
     }
   }
 }

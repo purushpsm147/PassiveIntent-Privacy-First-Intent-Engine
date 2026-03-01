@@ -191,6 +191,7 @@ export class IntentManager {
         this.previousStateEnteredAt = this.timer.now();
       },
       hasPreviousState: () => this.previousState !== null,
+      getPreviousState: () => this.previousState,
     });
 
     // ── Pipeline stages ───────────────────────────────────────────────────────
@@ -386,6 +387,14 @@ export class IntentManager {
     // The dirty-flag short-circuit keeps this a no-op when nothing changed.
     this.persistenceCoordinator.persist();
   };
+
+  /**
+   * @internal Test-only accessor for the dwell-clock baseline.
+   * Not part of the stable public API — prefixed with `_` to signal that.
+   */
+  get _previousStateEnteredAt(): number {
+    return this.previousStateEnteredAt;
+  }
 
   hasSeen(state: string): boolean {
     const start = this.benchmark.now();

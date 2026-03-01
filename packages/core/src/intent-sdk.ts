@@ -30,7 +30,13 @@ export { MarkovGraph } from './core/markov.js';
 export { IntentManager } from './engine/intent-manager.js';
 export { BroadcastSync, MAX_STATE_LENGTH } from './sync/broadcast-sync.js';
 export { normalizeRouteState } from './utils/route-normalizer.js';
-export { MAX_PLAUSIBLE_DWELL_MS, SMOOTHING_EPSILON } from './engine/constants.js';
+export {
+  ATTENTION_RETURN_THRESHOLD_MS,
+  IDLE_CHECK_INTERVAL_MS,
+  MAX_PLAUSIBLE_DWELL_MS,
+  SMOOTHING_EPSILON,
+  USER_IDLE_THRESHOLD_MS,
+} from './engine/constants.js';
 export { AnomalyDispatcher } from './engine/anomaly-dispatcher.js';
 export { SignalEngine } from './engine/signal-engine.js';
 export { EventEmitter } from './engine/event-emitter.js';
@@ -61,6 +67,9 @@ export type {
   BotDetectedPayload,
   HesitationDetectedPayload,
   SessionStalePayload,
+  AttentionReturnPayload,
+  UserIdlePayload,
+  UserResumedPayload,
   ConversionPayload,
   PassiveIntentTelemetry,
   BloomFilterConfig,

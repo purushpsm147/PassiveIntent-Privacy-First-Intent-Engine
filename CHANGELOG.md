@@ -16,6 +16,25 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 _Branch: `codex/convert-to-npm-workspaces-monorepo` — included in v1.0.0 initial release to enable future ecosystem extensions without breaking changes_
 
+### Comparison Shopper — `attention_return` Event
+
+- **`attention_return` event** — new event emitted by `LifecycleCoordinator` when the user returns to the tab after being hidden for ≥ 15 seconds. Designed for "Welcome Back" experiences — show a discount modal, refresh content, or surface a comparison offer the moment a user returns from price-shopping on a competitor tab.
+- **`ATTENTION_RETURN_THRESHOLD_MS` constant (`15_000` ms / 15 seconds)** — exported from `@passiveintent/core`. Defines the minimum tab-hidden duration before the event fires. Short enough to catch genuine comparison shopping; long enough to filter out quick alt-tab / notification glances.
+- **`AttentionReturnPayload`** — includes `state` (the route the user was viewing before switching away) and `hiddenDuration` (the exact hidden gap in milliseconds). Exported as a public type.
+- **Independent of `session_stale`** — `attention_return` fires for any hide ≥ 15 s regardless of dwell-time configuration, while `session_stale` fires only when `dwellTime.enabled` is `true` and the gap exceeds 30 minutes. Both can fire on the same resume if the hidden duration exceeds both thresholds.
+- **E2E coverage** — 7 Cypress E2E tests in `cypress/e2e/idle-attention.cy.ts` (Tests AL–AP, AW–AX) covering threshold gating, no-state guard, multi-cycle, session_stale co-firing, and Amazon demo integration.
+
+### Idle-State Detector — `user_idle` / `user_resumed` Events
+
+- **`user_idle` event** — emitted by `LifecycleCoordinator` after 2 minutes of user inactivity (no mouse, keyboard, scroll, or touch events). Fires at most once per idle period. Useful for pausing expensive UI, dimming overlays, or logging engagement drop-off.
+- **`user_resumed` event** — emitted on the first user interaction after an idle period. Includes the total idle duration in `idleMs`. The dwell-time baseline is automatically adjusted to exclude the idle gap so downstream dwell-time anomaly detection is not distorted.
+- **`USER_IDLE_THRESHOLD_MS` constant (`120_000` ms / 2 minutes)** — minimum inactivity before `user_idle` fires. Exported from `@passiveintent/core`.
+- **`IDLE_CHECK_INTERVAL_MS` constant (`5_000` ms / 5 seconds)** — polling cadence for idle checks. CPU overhead is negligible; `user_idle` fires within 5 seconds of the actual threshold crossing.
+- **`LifecycleAdapter.onInteraction()`** — new optional method on the adapter interface. `BrowserLifecycleAdapter` implements it with passive `mousemove`, `scroll`, `touchstart`, and `keydown` listeners throttled to 1 000 ms. Returns `null` in SSR / Node.js environments where `window.addEventListener` is unavailable, gracefully disabling idle detection.
+- **Backward-compatible** — adapters that do not implement `onInteraction` are silently skipped. Existing custom `LifecycleAdapter` implementations continue to work unchanged.
+- **`UserIdlePayload` / `UserResumedPayload`** — new event payload types. Both include `state` (the current state label) and `idleMs` (duration in milliseconds). Exported as public types.
+- **E2E coverage** — 6 Cypress E2E tests in `cypress/e2e/idle-attention.cy.ts` (Tests AQ–AV) covering threshold firing, active-interaction prevention, resume detection, no-state guard, destroy cleanup, and feature independence from `attention_return`.
+
 ### Engine Modularisation (PRs #55 – #57)
 
 The internal engine has been substantially refactored for separation of concerns.

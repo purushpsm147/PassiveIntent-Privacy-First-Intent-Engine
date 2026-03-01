@@ -25,6 +25,8 @@ _(Under the hood, it uses a highly-optimized sparse Markov graph and Bloom filte
 - **Bot & Scraper Resilient:** Built-in `EntropyGuard` automatically detects impossibly fast or robotic click cadences, preventing bots from triggering your interventions.
 - **Zero Performance Hit:** Capped at 500 tracked states, compiles to a tiny 6 kB footprint, and uses dirty-flag persistence to skip unnecessary writes.
 - **SPA-Ready Lifecycle:** SSR-safe adapters and a clean `destroy()` API make it drop-in compatible with Next.js, Vue, Angular, and React Router.
+- **Comparison Shopper Awareness:** Automatically detects users who leave and return after ≥ 15 seconds, firing an `attention_return` event so you can greet them with a personalized welcome-back offer.
+- **Idle-State Detection:** Tracks interaction silence with a lightweight polling loop and fires `user_idle` / `user_resumed` events, letting you dim overlays or pause expensive animations without any extra timers.
 
 ## What can you build?
 
@@ -61,6 +63,39 @@ Learn what the normal conversion path looks like and fire an event the moment a 
 intent.on('trajectory_anomaly', (signal) => {
   if (signal.zScore > 2.5) {
     Analytics.track('checkout_path_abandoned', { zScore: signal.zScore });
+  }
+});
+```
+
+**4. The Comparison Shopper — Welcome Back Discount**
+
+Detect when a user tabs away (likely to compare prices) and show a "Welcome Back" offer instantly on return.
+
+```ts
+intent.on('attention_return', ({ state, hiddenDuration }) => {
+  if (state === '/product' || state === '/pricing') {
+    UI.showModal({
+      title: 'Welcome back!',
+      message: `Still comparing? Here's 10% off for the next 15 minutes.`,
+      coupon: 'WELCOMEBACK10',
+    });
+  }
+});
+```
+
+**5. The Idle-State Overlay**
+
+Detect when a user walks away from their device and dim the UI; refresh stale content when they return.
+
+```ts
+intent.on('user_idle', ({ state }) => {
+  UI.showIdleOverlay({ message: 'Still there? Your session is open.' });
+});
+
+intent.on('user_resumed', ({ state, idleMs }) => {
+  UI.hideIdleOverlay();
+  if (idleMs > 300_000) {
+    refreshPageData(); // content may be stale after 5+ min
   }
 });
 ```
@@ -306,6 +341,9 @@ Inject `IntentService` in your root `AppComponent` (or import it in the root mod
 | `bot_detected`        | `BotDetectedPayload`        | `botScore` reaches 5 — EntropyGuard flags the session.                                                                                                                                                                                                                                                     |
 | `hesitation_detected` | `HesitationDetectedPayload` | A `trajectory_anomaly` and positive `dwell_time_anomaly` occur within `hesitationCorrelationWindowMs`.                                                                                                                                                                                                     |
 | `session_stale`       | `SessionStalePayload`       | **Only emitted when `dwellTime.enabled` is `true`.** A time delta (hidden-duration from `LifecycleAdapter`, or dwell measured at `track()` time) exceeded `MAX_PLAUSIBLE_DWELL_MS` (30 min), indicating CPU suspend or OS sleep. The inflated measurement is discarded to protect the Welford accumulator. |
+| `attention_return`    | `AttentionReturnPayload`    | User returns to the tab after being hidden for ≥ `ATTENTION_RETURN_THRESHOLD_MS` (15 s). Fires independently of `dwellTime.enabled`. Use for "Welcome Back" discount modals after comparison shopping.                                                                                                     |
+| `user_idle`           | `UserIdlePayload`           | No user interaction (mouse, keyboard, scroll, touch) for `USER_IDLE_THRESHOLD_MS` (2 min). Fires at most once per idle period. Requires the `LifecycleAdapter` to implement `onInteraction()`.                                                                                                             |
+| `user_resumed`        | `UserResumedPayload`        | First interaction after an idle period. Includes total `idleMs`. The dwell-time baseline is adjusted to exclude the idle gap automatically.                                                                                                                                                                |
 | `conversion`          | `ConversionPayload`         | `trackConversion()` was called.                                                                                                                                                                                                                                                                            |
 
 **`onError` callback** (in `IntentManagerConfig`)
@@ -374,12 +412,15 @@ All fields are optional. Pass them to `new IntentManager(config)` or `IntentMana
 
 ### Utilities
 
-| Export                   | Signature                                                                                       | Description                                                                                                                                                                                                                       |
-| ------------------------ | ----------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `computeBloomConfig`     | `(expectedItems: number, falsePositiveRate: number) => { bitSize, hashCount, estimatedFpRate }` | Pure math helper — compute Bloom parameters without instantiating `BloomFilter`. Tree-shakeable.                                                                                                                                  |
-| `normalizeRouteState`    | `(url: string) => string`                                                                       | Strips query strings/hash fragments, removes trailing slashes, and replaces UUID v4 / MongoDB ObjectID segments with `:id` — call this before `track()` to keep the state space compact.                                          |
-| `MAX_STATE_LENGTH`       | `256` (constant)                                                                                | Hard upper bound on state label length accepted by `BroadcastSync`. Payloads exceeding this are silently dropped.                                                                                                                 |
-| `MAX_PLAUSIBLE_DWELL_MS` | `1_800_000` (constant, 30 min)                                                                  | Threshold above which a dwell-time or tab-hidden duration is considered implausible (CPU suspend / OS sleep). Measurements exceeding this are discarded and trigger a `session_stale` event (when `dwellTime.enabled` is `true`). |
+| Export                          | Signature                                                                                       | Description                                                                                                                                                                                                                       |
+| ------------------------------- | ----------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `computeBloomConfig`            | `(expectedItems: number, falsePositiveRate: number) => { bitSize, hashCount, estimatedFpRate }` | Pure math helper — compute Bloom parameters without instantiating `BloomFilter`. Tree-shakeable.                                                                                                                                  |
+| `normalizeRouteState`           | `(url: string) => string`                                                                       | Strips query strings/hash fragments, removes trailing slashes, and replaces UUID v4 / MongoDB ObjectID segments with `:id` — call this before `track()` to keep the state space compact.                                          |
+| `MAX_STATE_LENGTH`              | `256` (constant)                                                                                | Hard upper bound on state label length accepted by `BroadcastSync`. Payloads exceeding this are silently dropped.                                                                                                                 |
+| `MAX_PLAUSIBLE_DWELL_MS`        | `1_800_000` (constant, 30 min)                                                                  | Threshold above which a dwell-time or tab-hidden duration is considered implausible (CPU suspend / OS sleep). Measurements exceeding this are discarded and trigger a `session_stale` event (when `dwellTime.enabled` is `true`). |
+| `ATTENTION_RETURN_THRESHOLD_MS` | `15_000` (constant, 15 s)                                                                       | Minimum tab-hidden duration before `attention_return` fires. Long enough to filter quick alt-tab glances; short enough to catch comparison shopping.                                                                              |
+| `USER_IDLE_THRESHOLD_MS`        | `120_000` (constant, 2 min)                                                                     | Duration of user inactivity before `user_idle` fires. Conservative default that avoids false positives from reading or watching embedded video.                                                                                   |
+| `IDLE_CHECK_INTERVAL_MS`        | `5_000` (constant, 5 s)                                                                         | Polling interval for idle-state checks. The `user_idle` event fires within 5 seconds of the actual threshold crossing. CPU overhead is negligible.                                                                                |
 
 ### Performance types
 
