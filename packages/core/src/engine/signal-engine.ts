@@ -16,7 +16,6 @@ import type { AnomalyEventEmitter, DriftProtectionPolicyLike } from './anomaly-d
 import type { IntentEventMap } from '../types/events.js';
 import { MIN_SAMPLE_TRANSITIONS, MIN_WINDOW_LENGTH, MAX_WINDOW_LENGTH } from './constants.js';
 import type { PassiveIntentTelemetry } from '../types/events.js';
-import type { DriftProtectionPolicy } from './policies/drift-protection-policy.js';
 import { AnomalyDispatcher } from './anomaly-dispatcher.js';
 import type {
   AnomalyDecision,
