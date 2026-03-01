@@ -307,8 +307,8 @@ test('AsyncPersistStrategy: writes payload and clears dirty flag on success', as
   const strategy = new AsyncPersistStrategy(ctx);
   strategy.persist();
 
-  // Wait for micro-task queue to drain
-  await new Promise((r) => setTimeout(r, 10));
+  // Wait for microtasks scheduled by persist() to run
+  await Promise.resolve();
 
   assert.equal(writes.length, 1, 'asyncStorage.setItem must be called once');
   const payload = JSON.parse(writes[0]);
