@@ -59,6 +59,28 @@ _Branch: `codex/convert-to-npm-workspaces-monorepo` — included in v1.0.0 initi
 - **Trajectory smoothing correctness** — runtime trajectory scoring now honors `graph.smoothingEpsilon` with defensive fallback to the default `0.01` for invalid values.
 - **Compatibility note** — all changes above are non-breaking and preserve default runtime behavior when custom `smoothingEpsilon` is not provided.
 
+### Lifecycle Adapter Abstraction
+
+- **`LifecycleAdapter` interface** — new `onPause(callback)`, `onResume(callback)`, and `destroy()` interface exported from `@passiveintent/core`. Decouples all page-visibility logic from the core engine, enabling safe usage in React Native, Electron, and SSR environments where `document` is unavailable.
+- **`BrowserLifecycleAdapter` class** — concrete implementation backed by the Page Visibility API (`document.visibilitychange`). Guards every `document` access with `typeof document !== 'undefined'` checks so the class can be imported in Node.js / SSR without throwing.
+- **`IntentManager` refactored** — removed all hardcoded `document.addEventListener` calls from `IntentManager`. The constructor now accepts an optional `lifecycleAdapter?: LifecycleAdapter` config field, falling back to `new BrowserLifecycleAdapter()` in browser contexts and `null` in non-browser contexts. `destroy()` delegates cleanup to `lifecycleAdapter.destroy()`.
+- **`IntentManagerConfig.lifecycleAdapter`** — new optional field. Pass a custom implementation to support React Native, test environments without a DOM, or any host that has its own app-lifecycle events.
+
+### CPU / OS Suspend Guard (`session_stale`)
+
+- **`MAX_PLAUSIBLE_DWELL_MS` constant (`1_800_000` ms / 30 minutes)** — added to `constants.ts`. Any time delta exceeding this threshold is considered caused by CPU suspend, laptop sleep, or OS hibernation rather than genuine user behaviour.
+- **`session_stale` event** — new event emitted on two code paths:
+  - `reason: 'hidden_duration_exceeded'` — fired from the `onResume` callback when the tab-hidden gap exceeds the threshold. `previousStateEnteredAt` is reset to the current timestamp so the next `track()` begins a clean dwell epoch.
+  - `reason: 'dwell_exceeded'` — fired from `runTransitionContextStage` when `dwellMs > MAX_PLAUSIBLE_DWELL_MS` is detected at `track()` time (fallback for environments without a Page Visibility API). The implausible measurement is discarded; `evaluateDwellTime` is never called with it.
+- **Welford accumulator protection** — a sleep-inflated dwell is never fed into the per-state Welford accumulator. The statistical baseline is preserved; anomaly detection resumes cleanly on the next normal transition.
+- **`SessionStalePayload`** — includes `reason`, `measuredMs`, and `thresholdMs` fields. Exported as a public type from `@passiveintent/core`.
+
+### Crash-Safe Persist
+
+- **Aggressive synchronous persist** — `runEmitAndPersistStage` now calls `persist()` directly instead of `schedulePersist()`. Every `track()` call flushes the compressed binary payload to the `StorageAdapter` synchronously (for `localStorage`-backed adapters) or fires the async promise immediately (for async backends). This eliminates the up-to-2-second crash window where unbuffered transitions could be lost to a sudden OS process kill (iOS swipe-up, Android OOM reaper, Chrome tab discard) before the debounce timer fired.
+- **Dirty-flag short-circuit preserved** — the `isDirty` guard in `persist()` ensures back-to-back `track()` calls with no new behavioral data incur zero serialization overhead.
+- **`schedulePersist()` retained** — still used as the retry mechanism after a failed async `setItem` write (the `.catch()` path), where debouncing is correct behaviour.
+
 ---
 
 ## 1.0.0 – Initial Release

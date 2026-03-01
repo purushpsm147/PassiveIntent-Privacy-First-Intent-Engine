@@ -134,3 +134,78 @@ export class MemoryStorageAdapter implements StorageAdapter {
     this.store.set(key, value);
   }
 }
+
+/* ------------------------------------------------------------------ */
+/*  Lifecycle Adapter                                                  */
+/* ------------------------------------------------------------------ */
+
+/**
+ * Abstracts browser DOM lifecycle events (page visibility) out of the core
+ * engine so that the SDK can be used safely in React Native, Electron, and
+ * server-side / SSR environments where `document` is absent.
+ *
+ * Implementations should call registered callbacks when the host environment
+ * transitions between an active ("resumed") and an inactive ("paused") state.
+ */
+export interface LifecycleAdapter {
+  /** Register a callback to be invoked when the environment becomes inactive. */
+  onPause(callback: () => void): void;
+  /** Register a callback to be invoked when the environment becomes active. */
+  onResume(callback: () => void): void;
+  /** Remove all event listeners and release resources held by this adapter. */
+  destroy(): void;
+}
+
+/**
+ * Lifecycle adapter backed by the Page Visibility API
+ * (`document.visibilitychange`).
+ *
+ * Guards every `document` access with a `typeof document !== 'undefined'`
+ * check so the class can be imported in SSR / Node.js / React Native
+ * environments without throwing.
+ *
+ * Usage:
+ * ```ts
+ * const lifecycle = new BrowserLifecycleAdapter();
+ * lifecycle.onPause(() => manager.flush());
+ * lifecycle.onResume(() => manager.resume());
+ * // later…
+ * lifecycle.destroy();
+ * ```
+ */
+export class BrowserLifecycleAdapter implements LifecycleAdapter {
+  private readonly pauseCallbacks: Array<() => void> = [];
+  private readonly resumeCallbacks: Array<() => void> = [];
+  private readonly handler: () => void;
+
+  constructor() {
+    this.handler = () => {
+      if (typeof document === 'undefined') return;
+      if (document.hidden) {
+        for (const cb of this.pauseCallbacks) cb();
+      } else {
+        for (const cb of this.resumeCallbacks) cb();
+      }
+    };
+
+    if (typeof document !== 'undefined') {
+      document.addEventListener('visibilitychange', this.handler);
+    }
+  }
+
+  onPause(callback: () => void): void {
+    this.pauseCallbacks.push(callback);
+  }
+
+  onResume(callback: () => void): void {
+    this.resumeCallbacks.push(callback);
+  }
+
+  destroy(): void {
+    if (typeof document !== 'undefined') {
+      document.removeEventListener('visibilitychange', this.handler);
+    }
+    this.pauseCallbacks.length = 0;
+    this.resumeCallbacks.length = 0;
+  }
+}

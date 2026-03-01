@@ -33,3 +33,20 @@ export const MAX_WINDOW_LENGTH = 32;
  * Higher values prevent spurious entropy triggers on small samples.
  */
 export const MIN_SAMPLE_TRANSITIONS = 10;
+
+/**
+ * Upper bound on any single dwell-time or hidden-duration measurement (30 minutes).
+ *
+ * CPU suspend, laptop sleep, and OS hibernation cause the monotonic clock to
+ * jump by hours while the Page Visibility API reports the tab as hidden.  Any
+ * raw delta that exceeds this threshold is almost certainly caused by the host
+ * machine being suspended rather than genuine user behaviour and must never be
+ * fed into the Welford variance accumulator or used to offset previousStateEnteredAt.
+ *
+ * When the threshold is breached the engine:
+ *   1. Discards the inflated measurement — does NOT update Welford stats.
+ *   2. Resets the dwell baseline to the current timestamp so the next
+ *      measurement starts from a clean epoch.
+ *   3. Emits a `session_stale` diagnostic event for host-app observability.
+ */
+export const MAX_PLAUSIBLE_DWELL_MS = 1_800_000; // 30 minutes

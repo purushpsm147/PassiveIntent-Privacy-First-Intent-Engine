@@ -291,15 +291,16 @@ Inject `IntentService` in your root `AppComponent` (or import it in the root mod
 
 **Events emitted** (`on(event, handler)`)
 
-| Event                 | Payload type                | Fired when                                                                                             |
-| --------------------- | --------------------------- | ------------------------------------------------------------------------------------------------------ |
-| `state_change`        | `StateChangePayload`        | Every `track()` call that records a new transition.                                                    |
-| `high_entropy`        | `HighEntropyPayload`        | Outgoing-transition distribution exceeds `highEntropyThreshold`.                                       |
-| `trajectory_anomaly`  | `TrajectoryAnomalyPayload`  | Log-likelihood window diverges from baseline beyond `divergenceThreshold`.                             |
-| `dwell_time_anomaly`  | `DwellTimeAnomalyPayload`   | Time on previous state deviates beyond z-score threshold (Welford's algorithm).                        |
-| `bot_detected`        | `BotDetectedPayload`        | `botScore` reaches 5 — EntropyGuard flags the session.                                                 |
-| `hesitation_detected` | `HesitationDetectedPayload` | A `trajectory_anomaly` and positive `dwell_time_anomaly` occur within `hesitationCorrelationWindowMs`. |
-| `conversion`          | `ConversionPayload`         | `trackConversion()` was called.                                                                        |
+| Event                 | Payload type                | Fired when                                                                                                                                                                                        |
+| --------------------- | --------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `state_change`        | `StateChangePayload`        | Every `track()` call that records a new transition.                                                                                                                                               |
+| `high_entropy`        | `HighEntropyPayload`        | Outgoing-transition distribution exceeds `highEntropyThreshold`.                                                                                                                                  |
+| `trajectory_anomaly`  | `TrajectoryAnomalyPayload`  | Log-likelihood window diverges from baseline beyond `divergenceThreshold`.                                                                                                                        |
+| `dwell_time_anomaly`  | `DwellTimeAnomalyPayload`   | Time on previous state deviates beyond z-score threshold (Welford's algorithm).                                                                                                                   |
+| `bot_detected`        | `BotDetectedPayload`        | `botScore` reaches 5 — EntropyGuard flags the session.                                                                                                                                            |
+| `hesitation_detected` | `HesitationDetectedPayload` | A `trajectory_anomaly` and positive `dwell_time_anomaly` occur within `hesitationCorrelationWindowMs`.                                                                                            |
+| `session_stale`       | `SessionStalePayload`       | A time delta (hidden-duration or dwell) exceeded `MAX_PLAUSIBLE_DWELL_MS` (30 min), indicating CPU suspend or OS sleep. The inflated measurement is discarded to protect the Welford accumulator. |
+| `conversion`          | `ConversionPayload`         | `trackConversion()` was called.                                                                                                                                                                   |
 
 **`onError` callback** (in `IntentManagerConfig`)
 
@@ -316,14 +317,16 @@ new IntentManager({
 
 ### Adapters
 
-| Export                  | Kind      | Description                                                                             |
-| ----------------------- | --------- | --------------------------------------------------------------------------------------- |
-| `BrowserStorageAdapter` | class     | Wraps `localStorage`. Use in any browser context.                                       |
-| `BrowserTimerAdapter`   | class     | Wraps `setTimeout` / `clearTimeout`.                                                    |
-| `MemoryStorageAdapter`  | class     | In-memory fallback — no persistence. Useful for SSR, tests, or ephemeral sessions.      |
-| `StorageAdapter`        | interface | Implement to provide a custom storage backend (IndexedDB, Capacitor Preferences, etc.). |
-| `TimerAdapter`          | interface | Implement to provide a custom timer backend (e.g. Node.js timers in tests).             |
-| `TimerHandle`           | type      | Opaque handle returned by `TimerAdapter.setTimeout`.                                    |
+| Export                    | Kind      | Description                                                                                                                                                                                         |
+| ------------------------- | --------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `BrowserStorageAdapter`   | class     | Wraps `localStorage`. Use in any browser context.                                                                                                                                                   |
+| `BrowserTimerAdapter`     | class     | Wraps `setTimeout` / `clearTimeout`.                                                                                                                                                                |
+| `MemoryStorageAdapter`    | class     | In-memory fallback — no persistence. Useful for SSR, tests, or ephemeral sessions.                                                                                                                  |
+| `BrowserLifecycleAdapter` | class     | Page Visibility API adapter. Registers a `visibilitychange` listener and dispatches `onPause` / `onResume` callbacks. All `document` accesses are guarded so it is safe to import in SSR.           |
+| `StorageAdapter`          | interface | Implement to provide a custom storage backend (IndexedDB, Capacitor Preferences, etc.).                                                                                                             |
+| `TimerAdapter`            | interface | Implement to provide a custom timer backend (e.g. Node.js timers in tests).                                                                                                                         |
+| `LifecycleAdapter`        | interface | Implement to provide a custom page-visibility / app-lifecycle backend for React Native, Electron, or environments where `document` is unavailable. Pass via `IntentManagerConfig.lifecycleAdapter`. |
+| `TimerHandle`             | type      | Opaque handle returned by `TimerAdapter.setTimeout`.                                                                                                                                                |
 
 ### Utilities
 
@@ -432,15 +435,18 @@ On each `track(state)`:
 7. Evaluate entropy signal (skipped if bot suspected, or below minimum sample gate).
 8. Evaluate trajectory anomaly (skipped if bot suspected, or below minimum window gate, or no baseline).
 9. Emit `state_change` (always emitted — cooldown applies only to anomaly channels).
-10. Schedule debounced persistence.
+10. **Persist synchronously** (crash-safe write on every `track()` call).
 
 During persistence:
 
-1. Return immediately if `isDirty` is `false` (no-op).
-2. Prune graph if state count exceeds limit.
-3. Serialize graph to binary.
-4. Encode binary to base64 and store alongside Bloom snapshot.
-5. Reset `isDirty` to `false`.
+1. Return immediately if `isDirty` is `false` (no-op — nothing changed).
+2. For async backends: return immediately (setting a pending-write flag) if a write is already in-flight; avoids redundant prune + serialize work.
+3. Prune graph if state count exceeds limit.
+4. Serialize graph to binary.
+5. Encode binary to base64 and store alongside Bloom snapshot.
+6. Reset `isDirty` to `false`.
+
+> **`persistDebounceMs`** no longer controls write frequency for normal flow. Since v1.1 every `track()` calls `persist()` synchronously. The debounce value is only consulted by the async-error retry path and `flushNow()` timer cancellation.
 
 ## Run tests
 

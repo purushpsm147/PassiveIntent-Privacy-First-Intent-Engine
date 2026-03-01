@@ -7,7 +7,12 @@
 
 import type { BenchmarkConfig } from '../performance-instrumentation.js';
 import type { SerializedMarkovGraph } from '../core/markov.js';
-import type { AsyncStorageAdapter, StorageAdapter, TimerAdapter } from '../adapters.js';
+import type {
+  AsyncStorageAdapter,
+  LifecycleAdapter,
+  StorageAdapter,
+  TimerAdapter,
+} from '../adapters.js';
 
 export type IntentEventName =
   | 'high_entropy'
@@ -16,7 +21,8 @@ export type IntentEventName =
   | 'dwell_time_anomaly'
   | 'conversion'
   | 'bot_detected'
-  | 'hesitation_detected';
+  | 'hesitation_detected'
+  | 'session_stale';
 
 export interface ConversionPayload {
   type: string;
@@ -71,6 +77,38 @@ export interface HesitationDetectedPayload {
   dwellZScore: number;
 }
 
+/**
+ * Emitted when a measured time delta (dwell time or tab-hidden duration) exceeds
+ * `MAX_PLAUSIBLE_DWELL_MS`, indicating that the host machine was likely suspended
+ * or the user was genuinely absent for an implausible length of time.
+ *
+ * The inflated measurement is **discarded** — it is never entered into the Welford
+ * accumulator and never used to offset `previousStateEnteredAt`.  The engine
+ * resets its dwell baseline to the current timestamp so the next transition
+ * measurement starts from a clean epoch.
+ *
+ * This is a diagnostic / observability event only.  It does not affect the
+ * Markov graph, Bloom filter, or any anomaly-detection signals.
+ *
+ * **Precondition**: both `'hidden_duration_exceeded'` and `'dwell_exceeded'`
+ * are only emitted when `dwellTime.enabled` is `true`.  Callers who opt out of
+ * dwell-time detection will never receive this event.
+ */
+export interface SessionStalePayload {
+  /**
+   * What triggered the stale-session guard:
+   * - `'hidden_duration_exceeded'` — the tab-hidden gap from the LifecycleAdapter
+   *   exceeded the plausible threshold when the tab resumed.
+   * - `'dwell_exceeded'` — the computed dwell time for the previous state exceeded
+   *   the plausible threshold at `track()` time.
+   */
+  reason: 'hidden_duration_exceeded' | 'dwell_exceeded';
+  /** The raw (uncapped) duration in milliseconds that triggered the guard. */
+  measuredMs: number;
+  /** The threshold in milliseconds that was exceeded (`MAX_PLAUSIBLE_DWELL_MS`). */
+  thresholdMs: number;
+}
+
 export interface IntentEventMap {
   high_entropy: HighEntropyPayload;
   trajectory_anomaly: TrajectoryAnomalyPayload;
@@ -79,6 +117,7 @@ export interface IntentEventMap {
   conversion: ConversionPayload;
   bot_detected: BotDetectedPayload;
   hesitation_detected: HesitationDetectedPayload;
+  session_stale: SessionStalePayload;
 }
 
 export interface DwellTimeConfig {
@@ -224,7 +263,23 @@ export interface IntentManagerConfig {
   smoothingAlpha?: number;
   /** localStorage key used to persist the Bloom filter and Markov graph. Default: `'passive-intent'`. */
   storageKey?: string;
-  /** Debounce delay in ms before writing to storage after a `track()` call. Default: 2000. */
+  /**
+   * Delay in ms used for the **async retry / coalescing path** only. Default: `2000`.
+   *
+   * Since v1.1, `track()` calls `persist()` synchronously on every invocation
+   * (crash-safe writes — no data is lost on sudden process kill).  This field
+   * no longer controls write frequency for the primary persist flow.
+   *
+   * It still governs two narrower scenarios:
+   * - **Async storage retry**: when an async `setItem` fails, one retry pass is
+   *   scheduled after `persistDebounceMs` so the host app has time to surface
+   *   the error before the next attempt.
+   * - **`flushNow()`**: cancels any pending retry timer and forces an immediate
+   *   write; reducing this value has no observable effect on normal operation.
+   *
+   * If your async backend cannot handle burst writes, consider wrapping it in a
+   * throttled `AsyncStorageAdapter` instead of tuning this value.
+   */
   persistDebounceMs?: number;
   /**
    * Pre-trained baseline graph (from `MarkovGraph.toJSON()`) representing
@@ -253,6 +308,15 @@ export interface IntentManagerConfig {
   asyncStorage?: AsyncStorageAdapter;
   /** Override the timer backend (useful for deterministic tests). */
   timer?: TimerAdapter;
+  /**
+   * Override the lifecycle (page-visibility) adapter.
+   *
+   * Provide a custom implementation to support React Native, Electron, or any
+   * SSR environment where `document` is unavailable.  When omitted the engine
+   * falls back to `BrowserLifecycleAdapter` in browser contexts and does
+   * nothing in non-browser contexts.
+   */
+  lifecycleAdapter?: LifecycleAdapter;
   /**
    * Non-fatal error callback — surfaces storage errors, quota exhaustion, parse
    * failures, and invalid API calls without ever throwing to the host application.

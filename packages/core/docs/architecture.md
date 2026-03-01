@@ -54,6 +54,8 @@ PassiveIntent takes the opposite approach. It is a tiny, tree-shakeable TypeScri
 - [EntropyGuard — Bot & Anti-Gaming Protection](#entropyguard--bot--anti-gaming-protection)
 - [Dwell-Time Anomaly Detection](#dwell-time-anomaly-detection)
 - [Tab-Visibility Dwell-Time Correction](#tab-visibility-dwell-time-correction)
+- [LifecycleAdapter (Isomorphic)](#lifecycleadapter-isomorphic)
+- [CPU / OS Suspend Guard](#cpu--os-suspend-guard)
 - [Baseline Drift Auto-Killswitch](#baseline-drift-auto-killswitch)
 - [Selective Bigram Markov Transitions](#selective-bigram-markov-transitions)
 - [Event Cooldown](#event-cooldown)
@@ -162,7 +164,8 @@ All of this happens inside the user’s browser. No analytics endpoint. No finge
 | **Dwell-time anomaly**        | O(1) Welford’s online z-score per state — fires `dwell_time_anomaly` when a user lingers or rushes through a page anomalously.                                                                                                                                                                                                 |
 | **Selective bigrams**         | Optional second-order Markov transitions, frequency-gated and LFU-pruned. Only 18 bytes additional graph overhead at 50 states.                                                                                                                                                                                                |
 | **Event cooldown**            | Per-channel cooldown gating (`eventCooldownMs`) prevents event flooding without losing detection fidelity.                                                                                                                                                                                                                     |
-| **Tab-visibility correction** | Dwell timer is automatically paused while `document.hidden === true`. Tabs switched away for 30 seconds do not produce a 30-second dwell reading. No configuration required.                                                                                                                                                   |
+| **Tab-visibility correction** | Dwell timer is automatically paused via `LifecycleAdapter` while the tab or app is hidden. Tabs switched away for 30 seconds do not produce a 30-second dwell reading. No configuration required; `BrowserLifecycleAdapter` is the default in browser contexts.                                                                |
+| **CPU / OS suspend guard**    | Any dwell-time or hidden-duration measurement exceeding `MAX_PLAUSIBLE_DWELL_MS` (30 minutes) is discarded to protect the Welford accumulator from laptop-sleep / OS-hibernate artifacts. A `session_stale` diagnostic event is emitted so host apps can observe the guard activating.                                         |
 | **Drift auto-killswitch**     | A rolling-window guard monitors the `trajectory_anomaly`/`track()` ratio. When it exceeds `driftProtection.maxAnomalyRate`, trajectory evaluation is silently disabled so a stale baseline can never flood your UI with false positives. `getTelemetry().baselineStatus` reflects `'drifted'` when the killswitch has engaged. |
 | **Deterministic counters**    | `incrementCounter(key)` / `getCounter(key)` / `resetCounter(key)` — exact integer counters, zero false positives, session-scoped. Use for business metrics like “articles read” where the Bloom filter’s probabilistic nature is unacceptable.                                                                                 |
 | **Route normalization**       | `track()` auto-normalizes raw URLs: strips `?query`, `#hash`, trailing slashes, and replaces UUIDs / MongoDB ObjectIDs with `:id`. Pass `window.location.href` directly — the engine always receives a stable state label.                                                                                                     |
@@ -1808,43 +1811,164 @@ When a user switches to another browser tab, the monotonic timer keeps running. 
 
 **How it works:**
 
-`IntentManager` registers a single `visibilitychange` listener in the constructor (browser-only; the listener is `null` in SSR environments). The correction is applied in two steps:
+`IntentManager` wires the correction through the `LifecycleAdapter` (see [LifecycleAdapter (Isomorphic)](#lifecycleadapter-isomorphic)) rather than touching `document` directly. The `onPause` and `onResume` callbacks are registered in the constructor:
 
-1. **Tab becomes hidden** (`document.hidden === true`): `tabHiddenAt = timer.now()` is snapshotted.
-2. **Tab becomes visible again** (`document.hidden === false`): `hiddenDuration = timer.now() - tabHiddenAt` is computed, and `previousStateEnteredAt += hiddenDuration`. This shifts the dwell baseline forward by the exact gap so the next `track()` call sees only the visible dwell time.
+1. **onPause fires** (tab becomes hidden): `tabHiddenAt = timer.now()` is snapshotted.
+2. **onResume fires** (tab becomes visible): `hiddenDuration = timer.now() - tabHiddenAt` is computed, and `previousStateEnteredAt += hiddenDuration`. This shifts the dwell baseline forward by the exact gap so the next `track()` call sees only the visible dwell time.
 
 If no state has been entered yet (`previousState === null`), the adjustment is skipped — there is nothing accumulating.
 
-The listener is removed by `destroy()` using the exact same function reference, preventing memory leaks in SPA teardown paths.
+The `LifecycleAdapter` is cleaned up by `lifecycleAdapter.destroy()` inside `IntentManager.destroy()`, preventing memory leaks in SPA teardown paths.
 
-**No configuration is required.** The correction is automatic in all browser environments.
+**No configuration is required.** `BrowserLifecycleAdapter` is the default in browser contexts (when `typeof window !== 'undefined'`). In SSR and non-browser environments the adapter is `null` and the correction is simply skipped.
 
 ```ts
-// Verify it is working — simulate tab switch in a test:
-let mockHidden = false;
-let listener = null;
-globalThis.document = {
-  get hidden() {
-    return mockHidden;
+// Inject a fully controllable fake adapter for unit tests —
+// no document mock required:
+let onPauseCallback = null;
+let onResumeCallback = null;
+const fakeLifecycle = {
+  onPause(cb) {
+    onPauseCallback = cb;
   },
-  addEventListener(_e, fn) {
-    listener = fn;
+  onResume(cb) {
+    onResumeCallback = cb;
   },
-  removeEventListener() {},
+  destroy() {},
 };
 
-const intent = new IntentManager({ botProtection: false, dwellTime: { enabled: true } });
+const intent = new IntentManager({
+  botProtection: false,
+  dwellTime: { enabled: true },
+  lifecycleAdapter: fakeLifecycle,
+});
 // ... track some states to build baseline ...
 
-mockHidden = true;
-listener(); // tab hidden
-// ... 30 seconds pass ...
-mockHidden = false;
-listener(); // tab visible again
+onPauseCallback(); // tab hidden
+// ... 30 seconds pass in the mock timer ...
+onResumeCallback(); // tab visible again
 
 // Next track() will NOT see a 30 s dwell on the previous state
 intent.track('/next-page');
 ```
+
+---
+
+### LifecycleAdapter (Isomorphic)
+
+The `LifecycleAdapter` interface is the public contract for page-visibility / app-lifecycle
+events. It contains three methods:
+
+```ts
+export interface LifecycleAdapter {
+  /** Called with a callback to invoke when the environment becomes inactive (tab hidden, app backgrounded). */
+  onPause(callback: () => void): void;
+  /** Called with a callback to invoke when the environment becomes active again. */
+  onResume(callback: () => void): void;
+  /** Remove all event listeners and release resources. Called by IntentManager.destroy(). */
+  destroy(): void;
+}
+```
+
+**Why an interface?**
+
+`document.visibilitychange` is browser-only. By routing all page-visibility logic through an injected adapter:
+
+- **React Native** apps can implement `LifecycleAdapter` using the `AppState` API.
+- **Electron** apps can use the `app` `'browser-window-blur'` / `'browser-window-focus'` events.
+- **SSR** environments can pass a no-op adapter (`{ onPause(){}, onResume(){}, destroy(){} }`) to avoid any DOM access at import time.
+- **Unit tests** can inject a fully controllable fake without mocking `globalThis.document`.
+
+**`BrowserLifecycleAdapter`** is the built-in browser implementation:
+
+```ts
+import { BrowserLifecycleAdapter } from '@passiveintent/core';
+
+// This is the default used by IntentManager in browser contexts.
+// You only need to construct it directly if you want to share one instance
+// across multiple managers or hook into pause/resume outside IntentManager.
+const lifecycle = new BrowserLifecycleAdapter();
+lifecycle.onPause(() => console.log('app hidden'));
+lifecycle.onResume(() => console.log('app visible'));
+// later...
+lifecycle.destroy();
+```
+
+`BrowserLifecycleAdapter` guards every `document` access with `typeof document !== 'undefined'` so the class can be safely imported and instantiated in any environment.
+
+**`IntentManagerConfig.lifecycleAdapter`** is the injection point:
+
+```ts
+const intent = new IntentManager({
+  lifecycleAdapter: myCustomAdapter, // overrides BrowserLifecycleAdapter
+});
+```
+
+When `lifecycleAdapter` is omitted, the engine falls back to
+`typeof window !== 'undefined' ? new BrowserLifecycleAdapter() : null`.
+
+---
+
+### CPU / OS Suspend Guard
+
+Laptop sleep, OS hibernation, iOS swipe-up, and Chrome tab discard all share a common failure mode: the `VisibilityChange` / `onPause` event may never fire before the process is killed, and when the process resumes the monotonic clock has jumped by hours. Without a guard, any dwell-time measurement computed across a sleep boundary would be astronomically large and would poison the Welford variance accumulator for that state permanently.
+
+**The guard operates at two levels:**
+
+#### Level 1 — `onResume` path (LifecycleAdapter)
+
+When the `onResume` callback fires after `onPause`, the engine computes:
+
+```
+hiddenDuration = timer.now() - tabHiddenAt
+```
+
+If `hiddenDuration > MAX_PLAUSIBLE_DWELL_MS` (30 minutes):
+
+- The `hiddenDuration` is **discarded**. It is never added to `previousStateEnteredAt`.
+- `previousStateEnteredAt` is reset to `timer.now()` to begin a clean dwell epoch.
+- A `session_stale` event is emitted with `reason: 'hidden_duration_exceeded'`.
+
+#### Level 2 — `track()` path (fallback)
+
+If the `LifecycleAdapter` was not active (no-op adapter, SSR environment, or an OS suspend that bypassed the Visibility API), the guard activates at `track()` time inside `runTransitionContextStage`:
+
+```
+dwellMs = ctx.now - previousStateEnteredAt
+```
+
+If `dwellMs > MAX_PLAUSIBLE_DWELL_MS`:
+
+- `evaluateDwellTime()` is **not called**. The Welford accumulator for the previous state is untouched.
+- A `session_stale` event is emitted with `reason: 'dwell_exceeded'`.
+- `previousStateEnteredAt` resets to `ctx.now` via the normal end-of-stage assignment.
+
+**`MAX_PLAUSIBLE_DWELL_MS`** is `1_800_000` (30 minutes) and is exported as a named constant from `constants.ts`. It represents the upper bound on any dwell that could plausibly come from genuine in-app interaction rather than the host machine being asleep.
+
+**`SessionStalePayload`**:
+
+```ts
+export interface SessionStalePayload {
+  reason: 'hidden_duration_exceeded' | 'dwell_exceeded';
+  /** Raw uncapped duration in milliseconds. */
+  measuredMs: number;
+  /** The threshold that was exceeded (MAX_PLAUSIBLE_DWELL_MS). */
+  thresholdMs: number;
+}
+```
+
+**Usage:**
+
+```ts
+intent.on('session_stale', ({ reason, measuredMs }) => {
+  console.warn(
+    `[PassiveIntent] session_stale (${reason}): ${(measuredMs / 60_000).toFixed(1)} min gap detected.`,
+    'Dwell baseline has been reset.',
+  );
+});
+```
+
+This event is diagnostic only. It has no effect on the Markov graph, Bloom filter, or any anomaly-detection signal.
 
 ---
 

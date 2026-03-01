@@ -33,6 +33,7 @@ export type {
   StateChangePayload,
   BotDetectedPayload,
   HesitationDetectedPayload,
+  SessionStalePayload,
   ConversionPayload,
   PassiveIntentTelemetry,
   BloomFilterConfig,
@@ -44,9 +45,20 @@ export type {
 } from './intent-sdk.js';
 
 /* ---- Adapters ---- */
-export { BrowserStorageAdapter, BrowserTimerAdapter, MemoryStorageAdapter } from './adapters.js';
+export {
+  BrowserStorageAdapter,
+  BrowserTimerAdapter,
+  MemoryStorageAdapter,
+  BrowserLifecycleAdapter,
+} from './adapters.js';
 
-export type { StorageAdapter, AsyncStorageAdapter, TimerAdapter, TimerHandle } from './adapters.js';
+export type {
+  StorageAdapter,
+  AsyncStorageAdapter,
+  TimerAdapter,
+  TimerHandle,
+  LifecycleAdapter,
+} from './adapters.js';
 
 /* ---- Performance Instrumentation ---- */
 export type {
