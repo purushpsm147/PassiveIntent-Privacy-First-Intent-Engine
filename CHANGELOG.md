@@ -23,10 +23,10 @@ The internal engine has been substantially refactored for separation of concerns
 
 #### `SignalEngine` — Pure Evaluation Kernel
 
-- **`SignalEngine` class extracted** — contains three pure evaluator methods that return typed decision objects with zero side-effects:
+- **`SignalEngine` class extracted** — contains three evaluator methods that return typed decision objects with no external side-effects (no event emission, no I/O, no timer scheduling). Note: `evaluateDwellTime` intentionally mutates the per-state Welford accumulator as a statistical side-effect so that successive calls converge on accurate mean/std estimates:
   - `evaluateEntropy(state)` → `EntropyDecision | null`
   - `evaluateTrajectory(from, to, trajectory)` → `TrajectoryDecision | null`
-  - `evaluateDwellTime(state, dwellMs)` → `DwellDecision | null`
+  - `evaluateDwellTime(state, dwellMs)` → `DwellDecision | null` _(updates internal Welford accumulator)_
 - The `AnomalyDecision` discriminated union is the typed contract between evaluators and the dispatcher; compile-time exhaustiveness is enforced via `assertNever`.
 - `SignalEngine` owns `EntropyGuard` (bot detection) and per-state Welford dwell accumulators. `AnomalyDispatcher` is composed internally.
 
