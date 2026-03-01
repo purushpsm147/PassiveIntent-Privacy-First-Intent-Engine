@@ -1818,7 +1818,7 @@ When a user switches to another browser tab, the monotonic timer keeps running. 
 
 If no state has been entered yet (`previousState === null`), the adjustment is skipped — there is nothing accumulating.
 
-The `LifecycleAdapter` is cleaned up by `lifecycleAdapter.destroy()` inside `IntentManager.destroy()`, preventing memory leaks in SPA teardown paths.
+The `LifecycleAdapter` is cleaned up conditionally on teardown. When `IntentManager` creates the adapter internally (i.e. no `lifecycleAdapter` was supplied in config), it owns the adapter and calls `lifecycleAdapter.destroy()` inside `IntentManager.destroy()`, preventing memory leaks in SPA teardown paths. When an adapter is **injected via config**, `IntentManager.destroy()` intentionally leaves it alive — the caller owns it and may share it across multiple instances. In that case you are responsible for calling `adapter.destroy()` yourself once all consumers are done with it.
 
 **No configuration is required.** `BrowserLifecycleAdapter` is the default in browser contexts (when `typeof window !== 'undefined'`). In SSR and non-browser environments the adapter is `null` and the correction is simply skipped.
 

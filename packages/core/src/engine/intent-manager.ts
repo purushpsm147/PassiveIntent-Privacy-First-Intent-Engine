@@ -389,16 +389,21 @@ export class IntentManager {
 
         if (hiddenDuration > MAX_PLAUSIBLE_DWELL_MS) {
           // The host machine was almost certainly suspended (sleep, hibernate,
-          // lid close, etc.).  Adding this massive gap to previousStateEnteredAt
-          // would push the baseline far into the past and corrupt every
-          // subsequent dwell-time measurement.  Instead: reset the baseline to
-          // now so the next track() call begins a clean dwell epoch.
-          this.previousStateEnteredAt = this.timer.now();
-          this.emitter.emit('session_stale', {
-            reason: 'hidden_duration_exceeded',
-            measuredMs: hiddenDuration,
-            thresholdMs: MAX_PLAUSIBLE_DWELL_MS,
-          });
+          // lid close, etc.).  Only act when we have an active dwell epoch
+          // (previousState !== null) — if the user hasn't navigated anywhere
+          // yet there is nothing to measure or report.
+          if (this.previousState !== null) {
+            // Adding this massive gap to previousStateEnteredAt would push the
+            // baseline far into the past and corrupt every subsequent dwell-time
+            // measurement.  Instead: reset the baseline to now so the next
+            // track() call begins a clean dwell epoch.
+            this.previousStateEnteredAt = this.timer.now();
+            this.emitter.emit('session_stale', {
+              reason: 'hidden_duration_exceeded',
+              measuredMs: hiddenDuration,
+              thresholdMs: MAX_PLAUSIBLE_DWELL_MS,
+            });
+          }
           return;
         }
 

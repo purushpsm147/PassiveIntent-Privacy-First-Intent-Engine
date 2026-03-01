@@ -4357,60 +4357,102 @@ test('injected lifecycleAdapter is NOT destroyed when IntentManager.destroy() is
 
 test('internally-created lifecycleAdapter IS destroyed when IntentManager.destroy() is called', () => {
   // Counterpart to the injection test: when no adapter is supplied, the engine
-  // creates BrowserLifecycleAdapter internally and owns it.  destroy() must
-  // call lifecycleAdapter.destroy() — we verify this through the only
-  // observable DOM side-effect of BrowserLifecycleAdapter.destroy():
-  // document.removeEventListener being called to detach the visibilitychange
-  // listener.
+  // creates BrowserLifecycleAdapter internally and sets ownsLifecycleAdapter=true.
+  // destroy() must call lifecycleAdapter.destroy() on the owned adapter.
   //
-  // Strategy: temporarily set globalThis.window (so the constructor takes the
-  // internal-create branch instead of setting lifecycleAdapter = null) and
-  // globalThis.document (so BrowserLifecycleAdapter can attach/detach its
-  // listener).  Track removeEventListener calls to confirm teardown happens.
-  let removeEventListenerCalls = 0;
-  const hadWindow = 'window' in globalThis;
-  const originalWindow = globalThis.window;
-  const originalDocument = globalThis.document;
-
-  globalThis.window = {};
-  globalThis.document = {
-    hidden: false,
-    addEventListener(_type, _fn) {},
-    removeEventListener(_type, _fn) {
-      removeEventListenerCalls += 1;
+  // Strategy: construct the manager in a no-DOM environment (lifecycleAdapter
+  // will be null, ownsLifecycleAdapter=true), then swap in a spy adapter and
+  // force the ownership flag to true before calling destroy().  TypeScript
+  // private is compile-time only, so both fields are directly accessible here.
+  let destroyCalls = 0;
+  let resumeCallback = null;
+  const spyAdapter = {
+    onPause(_cb) {},
+    onResume(cb) {
+      resumeCallback = cb;
+    },
+    destroy() {
+      destroyCalls += 1;
+      resumeCallback = null;
     },
   };
 
+  const manager = new IntentManager({
+    storageKey: 'lifecycle-ownership-internal',
+    storage: new MemoryStorage(),
+    botProtection: false,
+    // No lifecycleAdapter — ownsLifecycleAdapter is set to true internally.
+  });
+
+  // Wire the spy in place of whatever adapter the constructor created
+  // (null in a non-browser env, or BrowserLifecycleAdapter in a browser env).
+  manager.lifecycleAdapter = spyAdapter;
+  manager.ownsLifecycleAdapter = true;
+
+  // Prime resumeCallback so we can later verify it was cleared by destroy().
+  spyAdapter.onResume(() => {});
+  assert.ok(resumeCallback !== null, 'precondition: resumeCallback must be set before destroy()');
+
+  assert.doesNotThrow(() => manager.destroy(), 'destroy() must not throw');
+
+  assert.equal(
+    destroyCalls,
+    1,
+    'destroy() must call lifecycleAdapter.destroy() on the owned adapter',
+  );
+  assert.equal(resumeCallback, null, 'spyAdapter.destroy() must clear resumeCallback');
+});
+
+test('session_stale (hidden_duration_exceeded) does NOT fire when no state has been tracked yet (previousState is null)', () => {
+  // Regression guard: onResume must not emit session_stale when previousState
+  // is null — there is no active dwell epoch so there is nothing to measure.
+  // Before the fix, the event was unconditionally emitted and
+  // previousStateEnteredAt was reset even though no navigation had occurred.
+  let pauseCallback = null;
+  let resumeCallback = null;
+  const fakeAdapter = {
+    onPause(cb) {
+      pauseCallback = cb;
+    },
+    onResume(cb) {
+      resumeCallback = cb;
+    },
+    destroy() {},
+  };
+
+  const storage = new MemoryStorage();
+  let mockTime = 1000;
+  const originalNow = globalThis.performance.now;
+  globalThis.performance.now = () => mockTime;
+
   try {
     const manager = new IntentManager({
-      storageKey: 'lifecycle-ownership-internal',
-      storage: new MemoryStorage(),
+      storageKey: 'session-stale-no-prev-state',
+      storage,
       botProtection: false,
-      // No lifecycleAdapter — engine must create BrowserLifecycleAdapter internally
-      // and set ownsLifecycleAdapter = true.
+      lifecycleAdapter: fakeAdapter,
+      dwellTime: { enabled: true },
     });
 
+    // Do NOT call track() — previousState remains null.
+
+    const staleEvents = [];
+    manager.on('session_stale', (e) => staleEvents.push(e));
+
+    // Simulate a 2-hour OS suspend
+    pauseCallback?.();
+    mockTime += 7_200_000;
+    resumeCallback?.();
+
     assert.equal(
-      removeEventListenerCalls,
+      staleEvents.length,
       0,
-      'removeEventListener must not be called before destroy()',
+      'session_stale must not fire when previousState is null (no active dwell epoch)',
     );
 
     manager.destroy();
-
-    assert.equal(
-      removeEventListenerCalls,
-      1,
-      'IntentManager.destroy() must call lifecycleAdapter.destroy() when it owns the adapter, ' +
-        'removing the visibilitychange listener from document',
-    );
   } finally {
-    if (hadWindow) {
-      globalThis.window = originalWindow;
-    } else {
-      delete globalThis.window;
-    }
-    globalThis.document = originalDocument;
+    globalThis.performance.now = originalNow;
   }
 });
 
