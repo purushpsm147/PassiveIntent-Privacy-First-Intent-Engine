@@ -825,7 +825,7 @@ describe('Cross-Tab Sync (BroadcastSync)', () => {
       const mgr = new IntentManager({
         storageKey: 'e2e-dwell-exceeded-test',
         botProtection: false,
-        // No lifecycleAdapter — sleep bypasses the Visibility API
+        // Explicit no-op lifecycleAdapter to prevent the default BrowserLifecycleAdapter from intercepting the gap
         lifecycleAdapter: { onPause: () => {}, onResume: () => {}, destroy: () => {} },
         dwellTime: { enabled: true },
       });
