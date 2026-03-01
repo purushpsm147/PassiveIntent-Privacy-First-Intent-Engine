@@ -304,7 +304,9 @@ test('getTelemetry() engineHealth transitions to quota_exceeded on QuotaExceeded
 });
 
 test('binary codec v2 golden fixture remains backward compatible', () => {
-  const fixture = JSON.parse(readFileSync('tests/fixtures/markov-binary-v2-golden.json', 'utf8'));
+  const fixture = JSON.parse(
+    readFileSync(new URL('./fixtures/markov-binary-v2-golden.json', import.meta.url), 'utf8'),
+  );
 
   const binary = Buffer.from(fixture.binaryBase64, 'base64');
   const fromBinary = MarkovGraph.fromBinary(new Uint8Array(binary), fixture.config);

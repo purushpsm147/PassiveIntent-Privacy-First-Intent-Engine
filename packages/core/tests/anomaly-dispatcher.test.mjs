@@ -417,36 +417,41 @@ test('dispatcher: hesitation pair is consumed (does not fire twice for the same 
 /* ======================================================================== */
 
 /**
- * Build a scripted anomaly scenario using structured IntentManager config,
- * replay the same input sequence, and return all captured event records.
- *
- * Two independent runs on the same seed must produce identical output —
- * this guards against any accidental divergence introduced by the refactor.
+ * Build a deterministic baseline graph where A→B→C→D→A is the only
+ * navigational pattern (trained with many repetitions so smoothing noise is
+ * negligible).  Returns the serialised JSON consumed by IntentManager.
  */
 function makeAnomalyScenario() {
-  // Construct a baseline that represents "normal" navigations: A→B→C in a loop.
-  const baselineGraph = new MarkovGraph({ smoothingAlpha: 0.01 });
-  const normalStates = ['A', 'B', 'C'];
-  for (let repeat = 0; repeat < 50; repeat += 1) {
-    for (let i = 0; i < normalStates.length; i += 1) {
-      baselineGraph.incrementTransition(
-        normalStates[i],
-        normalStates[(i + 1) % normalStates.length],
-      );
+  const baselineGraph = new MarkovGraph({ smoothingAlpha: 0 });
+  const normal = ['A', 'B', 'C', 'D'];
+  // 200 complete cycles — probabilities converge to 1.0 per edge.
+  for (let r = 0; r < 200; r += 1) {
+    for (let i = 0; i < normal.length; i += 1) {
+      baselineGraph.incrementTransition(normal[i], normal[(i + 1) % normal.length]);
     }
   }
-
   return baselineGraph.toJSON();
 }
 
+/**
+ * Build a full scenario sequence and run it through an IntentManager.
+ *
+ * Layout:
+ *   - 40 baseline transitions (A→B→C→D loop × 10) to warm the online graph
+ *   - 40 adversarial transitions (X→Y→Z→W→V loop × 8) to saturate the window
+ *
+ * The adversarial block ensures the trajectory window (MIN_WINDOW_LENGTH=16)
+ * is filled with states the baseline has never seen, reliably triggering
+ * trajectory anomaly events at every applicable step.
+ */
 function runScenario(baselineJSON, storage) {
   const manager = new IntentManager({
     storageKey: 'anomaly-equiv-test',
     storage,
     baseline: baselineJSON,
     botProtection: false,
-    eventCooldownMs: 0, // no cooldown — every anomaly fires
-    dwellTime: { enabled: false }, // dwell off to simplify; we test dwell in isolation
+    eventCooldownMs: 0,
+    dwellTime: { enabled: false },
   });
 
   const captured = [];
@@ -457,32 +462,10 @@ function runScenario(baselineJSON, storage) {
     captured.push({ event: 'trajectory_anomaly', payload: p }),
   );
 
-  // Drive through a truly anomalous trajectory: random zigzag deviating from A→B→C.
-  const anomalousSequence = [
-    'A',
-    'X',
-    'Y',
-    'Z',
-    'X',
-    'Y',
-    'Z',
-    'X',
-    'Y',
-    'Z',
-    'X',
-    'Y',
-    'Z',
-    'X',
-    'Y',
-    'Z',
-    'X',
-    'Y',
-    'Z',
-    'A',
-  ];
-  for (const s of anomalousSequence) {
-    manager.track(s);
-  }
+  const baselineStates = ['A', 'B', 'C', 'D'];
+  const adversarialStates = ['X', 'Y', 'Z', 'W', 'V'];
+  for (let r = 0; r < 10; r += 1) for (const s of baselineStates) manager.track(s);
+  for (let r = 0; r < 8; r += 1) for (const s of adversarialStates) manager.track(s);
 
   const telemetry = manager.getTelemetry();
   off1();
@@ -499,6 +482,12 @@ test('event stream is identical across two independent replays of the same scena
 
   const runA = runScenario(baselineJSON, storageA);
   const runB = runScenario(baselineJSON, storageB);
+
+  // The scenario must actually fire some events to be meaningful.
+  assert.ok(
+    runA.captured.length > 0,
+    `expected at least one anomaly event; got ${runA.captured.length}`,
+  );
 
   // Both runs must produce the same number of events.
   assert.equal(
@@ -528,28 +517,16 @@ test('event stream is identical across two independent replays of the same scena
 
 test('control group produces identical anomaliesFired but zero emissions for same scenario', () => {
   const baselineJSON = makeAnomalyScenario();
-  const anomalousSequence = [
-    'A',
-    'X',
-    'Y',
-    'Z',
-    'X',
-    'Y',
-    'Z',
-    'X',
-    'Y',
-    'Z',
-    'X',
-    'Y',
-    'Z',
-    'X',
-    'Y',
-    'Z',
-    'X',
-    'Y',
-    'Z',
-    'A',
-  ];
+  const baselineStates = ['A', 'B', 'C', 'D'];
+  const adversarialStates = ['X', 'Y', 'Z', 'W', 'V'];
+
+  // Build the same full sequence used in runScenario.
+  function buildSeq() {
+    const s = [];
+    for (let r = 0; r < 10; r += 1) for (const x of baselineStates) s.push(x);
+    for (let r = 0; r < 8; r += 1) for (const x of adversarialStates) s.push(x);
+    return s;
+  }
 
   // Treatment run — captures events.
   const treatmentManager = new IntentManager({
@@ -559,11 +536,11 @@ test('control group produces identical anomaliesFired but zero emissions for sam
     botProtection: false,
     eventCooldownMs: 0,
     dwellTime: { enabled: false },
-    holdoutPercent: 0, // force treatment group
+    holdoutConfig: { percentage: 0 }, // force treatment group
   });
   const treatmentEvents = [];
   const tOff = treatmentManager.on('trajectory_anomaly', (p) => treatmentEvents.push(p));
-  for (const s of anomalousSequence) treatmentManager.track(s);
+  for (const s of buildSeq()) treatmentManager.track(s);
   const treatmentTelemetry = treatmentManager.getTelemetry();
   tOff();
   treatmentManager.destroy();
@@ -576,15 +553,16 @@ test('control group produces identical anomaliesFired but zero emissions for sam
     botProtection: false,
     eventCooldownMs: 0,
     dwellTime: { enabled: false },
-    holdoutPercent: 100, // force control group
+    holdoutConfig: { percentage: 100 }, // force control group
   });
   const controlEvents = [];
   const cOff = controlManager.on('trajectory_anomaly', (p) => controlEvents.push(p));
-  for (const s of anomalousSequence) controlManager.track(s);
+  for (const s of buildSeq()) controlManager.track(s);
   const controlTelemetry = controlManager.getTelemetry();
   cOff();
   controlManager.destroy();
 
+  assert.ok(treatmentEvents.length > 0, 'treatment group must receive at least one event');
   assert.equal(controlEvents.length, 0, 'control group must emit zero events');
   assert.equal(
     controlTelemetry.anomaliesFired,
@@ -595,8 +573,17 @@ test('control group produces identical anomaliesFired but zero emissions for sam
 
 test('cooldown correctly caps event count for rapid anomaly sequence', () => {
   const baselineJSON = makeAnomalyScenario();
+  const baselineStates = ['A', 'B', 'C', 'D'];
+  const adversarialStates = ['X', 'Y', 'Z', 'W', 'V'];
 
-  // With no cooldown, the anomalous sequence should fire multiple trajectory events.
+  function buildSeq() {
+    const s = [];
+    for (let r = 0; r < 10; r += 1) for (const x of baselineStates) s.push(x);
+    for (let r = 0; r < 8; r += 1) for (const x of adversarialStates) s.push(x);
+    return s;
+  }
+
+  // With no cooldown, the adversarial block should fire multiple trajectory events.
   const noCooldownManager = new IntentManager({
     storageKey: 'cooldown-none',
     storage: new MemoryStorage(),
@@ -609,8 +596,7 @@ test('cooldown correctly caps event count for rapid anomaly sequence', () => {
   const offNC = noCooldownManager.on('trajectory_anomaly', () => {
     noCooldownFires += 1;
   });
-  const seq = ['A', 'X', 'Y', 'Z', 'X', 'Y', 'Z', 'X', 'Y', 'Z', 'X', 'Y', 'Z'];
-  for (const s of seq) noCooldownManager.track(s);
+  for (const s of buildSeq()) noCooldownManager.track(s);
   offNC();
   noCooldownManager.destroy();
 
@@ -627,10 +613,14 @@ test('cooldown correctly caps event count for rapid anomaly sequence', () => {
   const offHC = heavyCooldownManager.on('trajectory_anomaly', () => {
     heavyCooldownFires += 1;
   });
-  for (const s of seq) heavyCooldownManager.track(s);
+  for (const s of buildSeq()) heavyCooldownManager.track(s);
   offHC();
   heavyCooldownManager.destroy();
 
+  assert.ok(
+    noCooldownFires > 0,
+    `no-cooldown manager must fire at least once (got ${noCooldownFires})`,
+  );
   assert.ok(
     noCooldownFires > heavyCooldownFires,
     `no-cooldown should fire more events (got ${noCooldownFires} vs ${heavyCooldownFires})`,
