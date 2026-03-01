@@ -286,8 +286,13 @@ export interface IntentManagerConfig {
    *   (via `onError`) before the retry fires.  If the retry also fails, no
    *   further automatic retry is scheduled — the dirty flag is preserved and
    *   the next `track()` or `flushNow()` call will trigger a fresh attempt.
-   * - **`flushNow()`**: cancels any pending retry timer and forces an immediate
-   *   write; reducing this value has no observable effect on normal operation.
+   * - **`flushNow()`**: cancels any pending throttle and retry timers and
+   *   requests an immediate write.  With a sync `StorageAdapter` the write
+   *   completes before `flushNow()` returns.  With `asyncStorage`, if a write
+   *   is already in-flight the actual flush is deferred until that write
+   *   settles — `flushNow()` cannot interrupt an in-progress async `setItem`
+   *   call.  Reducing `persistDebounceMs` has no observable effect on this
+   *   behaviour.
    *
    * If your async backend cannot handle burst writes, consider wrapping it in a
    * throttled `AsyncStorageAdapter` instead of tuning this value.
