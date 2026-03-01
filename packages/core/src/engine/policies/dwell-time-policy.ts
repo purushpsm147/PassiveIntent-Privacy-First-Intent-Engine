@@ -60,7 +60,13 @@ export class DwellTimePolicy implements EnginePolicy {
     if (dwellMs > MAX_PLAUSIBLE_DWELL_MS) {
       // Implausibly large dwell — CPU suspend or OS hibernation slipped past
       // the LifecycleAdapter.  Discard the measurement and emit a diagnostic
-      // event; IntentManager resets the baseline to ctx.now after this hook.
+      // event.
+      //
+      // CONTRACT: IntentManager.runTransitionContextStage unconditionally sets
+      // `previousStateEnteredAt = ctx.now` immediately after all onTrackContext
+      // hooks complete (including this one), so the stale baseline is always
+      // cleared regardless of which branch executes here.  If that ordering
+      // ever changes, this branch must perform the reset explicitly.
       this.emitter.emit('session_stale', {
         reason: 'dwell_exceeded',
         measuredMs: dwellMs,

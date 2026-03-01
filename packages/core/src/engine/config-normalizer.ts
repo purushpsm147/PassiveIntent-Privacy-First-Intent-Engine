@@ -18,6 +18,9 @@ import { SMOOTHING_EPSILON } from './constants.js';
  * pure pass-through (e.g. `timer`, `storage`, `benchmark`, `onError`,
  * `baseline`, `lifecycleAdapter`, `asyncStorage`) are intentionally omitted
  * because they carry no defaulting or merging logic of their own.
+ *
+ * @internal Not part of the public package API.  Field names and defaults may
+ * change across any release without a semver-major bump.
  */
 export interface ResolvedIntentManagerOptions {
   /* ── Scalar flags ──────────────────────────────────────────────────────── */
@@ -71,6 +74,8 @@ export interface ResolvedIntentManagerOptions {
  * - `holdoutConfig.percentage` is clamped to [0, 100].
  * - `graphConfig.smoothingEpsilon` must be a finite positive number; otherwise
  *   the compile-time constant `SMOOTHING_EPSILON` is used.
+ *
+ * @internal Not part of the public package API.
  */
 export function buildIntentManagerOptions(
   config: IntentManagerConfig = {},

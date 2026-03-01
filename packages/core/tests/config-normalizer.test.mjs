@@ -8,7 +8,8 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 
-import { buildIntentManagerOptions, SMOOTHING_EPSILON } from '../dist/src/intent-sdk.js';
+import { buildIntentManagerOptions } from '../dist/src/engine/config-normalizer.js';
+import { SMOOTHING_EPSILON } from '../dist/src/engine/constants.js';
 
 // ─── Default values ──────────────────────────────────────────────────────────
 
@@ -180,11 +181,10 @@ test('holdoutPercent boundary: 100 passes through', () => {
   assert.equal(opts.holdoutPercent, 100);
 });
 
-test('holdoutPercent passes through NaN unchanged', () => {
+test('holdoutPercent defaults to 0 for NaN input', () => {
   const opts = buildIntentManagerOptions({ holdoutConfig: { percentage: NaN } });
-  // config.holdoutConfig?.percentage ?? 0 does not coalesce NaN,
-  // so NaN is passed through to holdoutPercent.
-  assert.ok(Number.isNaN(opts.holdoutPercent));
+  // Number.isFinite(NaN) is false, so the guard falls through to the default of 0.
+  assert.equal(opts.holdoutPercent, 0);
 });
 
 // ─── debounce / throttle defaults ────────────────────────────────────────────

@@ -240,7 +240,9 @@ export class IntentManager {
     if (!config.asyncStorage) {
       throw new Error('IntentManager.createAsync() requires config.asyncStorage');
     }
-    const storageKey = config.storageKey ?? 'passive-intent';
+    // Use the normalized key from buildIntentManagerOptions so any future
+    // normalization/clamping applied there is respected during the preload.
+    const { storageKey } = buildIntentManagerOptions(config);
     // Await the single I/O call up-front so the constructor stays synchronous.
     const raw = await config.asyncStorage.getItem(storageKey);
 
@@ -335,6 +337,10 @@ export class IntentManager {
     // Dwell-time measurement — delegated to DwellTimePolicy when enabled.
     for (let i = 0; i < this.policies.length; i += 1) this.policies[i].onTrackContext?.(ctx);
 
+    // CONTRACT: this reset MUST remain unconditional and MUST happen after all
+    // onTrackContext hooks.  DwellTimePolicy reads previousStateEnteredAt inside
+    // its hook and relies on this line to clear any stale baseline afterwards —
+    // including the session_stale (dwell_exceeded) code path.
     this.previousStateEnteredAt = ctx.now;
 
     this.recentTrajectory.push(ctx.state);
