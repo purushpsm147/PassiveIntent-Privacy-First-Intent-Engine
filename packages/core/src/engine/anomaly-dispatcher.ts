@@ -37,22 +37,44 @@ import type { TimerAdapter } from '../adapters.js';
 import type { DriftProtectionPolicy } from './policies/drift-protection-policy.js';
 import type { AnomalyDecision } from './anomaly-decisions.js';
 
+/**
+ * Structural view of the event emitter used by the dispatcher.
+ *
+ * This is intentionally minimal so that external consumers do not need access
+ * to the concrete EventEmitter class, only to an object with the required
+ * methods.
+ */
+export interface AnomalyEventEmitter {
+  emit: EventEmitter<IntentEventMap>['emit'];
+  on: EventEmitter<IntentEventMap>['on'];
+  removeAll: EventEmitter<IntentEventMap>['removeAll'];
+}
+
+/**
+ * Structural view of the drift-protection policy required by the dispatcher.
+ */
+export interface DriftProtectionPolicyLike {
+  recordAnomaly: DriftProtectionPolicy['recordAnomaly'];
+  readonly isDrifted: DriftProtectionPolicy['isDrifted'];
+  readonly baselineStatus: DriftProtectionPolicy['baselineStatus'];
+}
+
 export interface AnomalyDispatcherConfig {
-  emitter: EventEmitter<IntentEventMap>;
+  emitter: AnomalyEventEmitter;
   timer: TimerAdapter;
   assignmentGroup: 'treatment' | 'control';
   eventCooldownMs: number;
   hesitationCorrelationWindowMs: number;
-  driftPolicy: DriftProtectionPolicy;
+  driftPolicy: DriftProtectionPolicyLike;
 }
 
 export class AnomalyDispatcher {
-  private readonly emitter: EventEmitter<IntentEventMap>;
+  private readonly emitter: AnomalyEventEmitter;
   private readonly timer: TimerAdapter;
   private readonly assignmentGroup: 'treatment' | 'control';
   private readonly eventCooldownMs: number;
   private readonly hesitationCorrelationWindowMs: number;
-  private readonly driftPolicy: DriftProtectionPolicy;
+  private readonly driftPolicy: DriftProtectionPolicyLike;
 
   /* Cooldown gating per event type */
   private readonly lastEmittedAt: Record<
