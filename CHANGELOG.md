@@ -63,8 +63,8 @@ _Branch: `codex/convert-to-npm-workspaces-monorepo` — included in v1.0.0 initi
 
 - **`LifecycleAdapter` interface** — new `onPause(callback)`, `onResume(callback)`, and `destroy()` interface exported from `@passiveintent/core`. Decouples all page-visibility logic from the core engine, enabling safe usage in React Native, Electron, and SSR environments where `document` is unavailable.
 - **`BrowserLifecycleAdapter` class** — concrete implementation backed by the Page Visibility API (`document.visibilitychange`). Guards every `document` access with `typeof document !== 'undefined'` checks so the class can be imported in Node.js / SSR without throwing.
-- **`IntentManager` refactored** — removed all hardcoded `document.addEventListener` calls from `IntentManager`. The constructor now accepts an optional `lifecycleAdapter?: LifecycleAdapter` config field, falling back to `new BrowserLifecycleAdapter()` in browser contexts and `null` in non-browser contexts. `destroy()` delegates cleanup to `lifecycleAdapter.destroy()`.
-- **`IntentManagerConfig.lifecycleAdapter`** — new optional field. Pass a custom implementation to support React Native, test environments without a DOM, or any host that has its own app-lifecycle events.
+- **`IntentManager` refactored** — removed all hardcoded `document.addEventListener` calls from `IntentManager`. The constructor now accepts an optional `lifecycleAdapter?: LifecycleAdapter` config field, falling back to `new BrowserLifecycleAdapter()` in browser contexts and `null` in non-browser contexts. When it creates the adapter internally, `destroy()` will call `lifecycleAdapter.destroy()`; for injected adapters it only unsubscribes its own callbacks.
+- **`IntentManagerConfig.lifecycleAdapter`** — new optional field. Pass a custom implementation to support React Native, test environments without a DOM, or any host that has its own app-lifecycle events. Ownership remains with the caller; `IntentManager.destroy()` will not destroy injected adapters.
 
 ### CPU / OS Suspend Guard (`session_stale`)
 

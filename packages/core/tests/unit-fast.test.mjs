@@ -3462,7 +3462,6 @@ test('async setItem failure always schedules a retry even without hasPendingAsyn
     },
   };
 
-  let timerFired = false;
   const fakeTimers = [];
   const fakeTimer = {
     now: () => 0,

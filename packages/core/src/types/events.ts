@@ -275,10 +275,11 @@ export interface IntentManagerConfig {
    * throttled: writes are skipped for calls that fall within the throttle
    * window, relaxing the per-track crash-safety guarantee (up to
    * `persistThrottleMs` ms of recent navigation data can be lost in a hard
-   * crash).  This field still governs the trailing-flush timer that fires
-   * after the throttle window expires to flush any accumulated dirty state.
+   * crash). In this mode, the trailing-flush timer that fires after the
+   * throttle window expires is governed by `persistThrottleMs`, not this
+   * debounce value.
    *
-   * It also governs two narrower scenarios regardless of `persistThrottleMs`:
+   * This value governs two narrower scenarios regardless of `persistThrottleMs`:
    * - **Async storage retry**: when an async `setItem` fails for the first time
    *   in a consecutive sequence, one retry pass is scheduled after
    *   `persistDebounceMs`.  This gives the host app time to surface the error
