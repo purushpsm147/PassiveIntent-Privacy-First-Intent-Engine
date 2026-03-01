@@ -12,7 +12,6 @@ import type { AsyncStorageAdapter, StorageAdapter, TimerAdapter } from '../adapt
 import { BloomFilter } from '../core/bloom.js';
 import { MarkovGraph } from '../core/markov.js';
 import { normalizeRouteState } from '../utils/route-normalizer.js';
-import { BroadcastSync } from '../sync/broadcast-sync.js';
 import type { SerializedMarkovGraph } from '../core/markov.js';
 import type {
   ConversionPayload,
@@ -20,13 +19,18 @@ import type {
   PassiveIntentTelemetry,
   IntentEventMap,
   IntentManagerConfig,
-  MarkovGraphConfig,
 } from '../types/events.js';
-import { SMOOTHING_EPSILON, MAX_WINDOW_LENGTH, MAX_PLAUSIBLE_DWELL_MS } from './constants.js';
+import { MAX_WINDOW_LENGTH } from './constants.js';
+import { buildIntentManagerOptions } from './config-normalizer.js';
 import { EventEmitter } from './event-emitter.js';
 import { SignalEngine } from './signal-engine.js';
 import { PersistenceCoordinator } from './persistence-coordinator.js';
 import { LifecycleCoordinator } from './lifecycle-coordinator.js';
+import type { EnginePolicy } from './policies/engine-policy.js';
+import { DwellTimePolicy } from './policies/dwell-time-policy.js';
+import { BigramPolicy } from './policies/bigram-policy.js';
+import { DriftProtectionPolicy } from './policies/drift-protection-policy.js';
+import { CrossTabSyncPolicy } from './policies/cross-tab-sync-policy.js';
 
 /**
  * Shared mutable context passed through each `trackStages` pipeline function.
@@ -51,10 +55,9 @@ export class IntentManager {
   private readonly timer: TimerAdapter;
   private readonly onError?: (error: PassiveIntentError) => void;
   private readonly botProtection: boolean;
-  private readonly dwellTimeEnabled: boolean;
 
-  /* Cross-tab synchronization */
-  private readonly broadcastSync: BroadcastSync | null;
+  /* Pluggable feature policies (deterministic order) */
+  private readonly policies: EnginePolicy[];
 
   /* Collaborators */
   private readonly signalEngine: SignalEngine;
@@ -76,11 +79,13 @@ export class IntentManager {
   private readonly trackStages: Array<(ctx: TrackContext) => void>;
 
   constructor(config: IntentManagerConfig = {}) {
+    // ── Normalize all config precedence, defaults, and clamping ────────────
+    const opts = buildIntentManagerOptions(config);
+
     this.benchmark = new BenchmarkRecorder(config.benchmark);
     this.timer = config.timer ?? new BrowserTimerAdapter();
     this.onError = config.onError;
-    this.botProtection = config.botProtection ?? true;
-    this.dwellTimeEnabled = config.dwellTime?.enabled ?? false;
+    this.botProtection = opts.botProtection;
 
     // Session ID — local-only, never transmitted.
     this.sessionId =
@@ -89,32 +94,13 @@ export class IntentManager {
         : Math.random().toString(36).slice(2) + Math.random().toString(36).slice(2);
 
     // A/B holdout assignment: randomly place the session in 'control' or 'treatment'.
-    // Percentage is clamped to [0, 100] to guard against invalid config values.
-    const holdoutPct = Math.min(100, Math.max(0, config.holdoutConfig?.percentage ?? 0));
-    this.assignmentGroup = Math.random() * 100 < holdoutPct ? 'control' : 'treatment';
-
-    // Merge top-level convenience aliases into the nested graph config.
-    // Top-level fields take precedence when both are supplied — see
-    // IntentManagerConfig in types/events.ts for the full rationale.
-    const graphConfig: MarkovGraphConfig = {
-      ...config.graph,
-      baselineMeanLL: config.baselineMeanLL ?? config.graph?.baselineMeanLL,
-      baselineStdLL: config.baselineStdLL ?? config.graph?.baselineStdLL,
-      smoothingAlpha: config.smoothingAlpha ?? config.graph?.smoothingAlpha,
-    };
-    const configuredSmoothing = graphConfig.smoothingEpsilon;
-    const trajectorySmoothingEpsilon =
-      typeof configuredSmoothing === 'number' &&
-      Number.isFinite(configuredSmoothing) &&
-      configuredSmoothing > 0
-        ? configuredSmoothing
-        : SMOOTHING_EPSILON;
+    this.assignmentGroup = Math.random() * 100 < opts.holdoutPercent ? 'control' : 'treatment';
 
     // ── PersistenceCoordinator (restore on construction) ──────────────────────
     const persistenceCoordinator = new PersistenceCoordinator({
-      storageKey: config.storageKey ?? 'passive-intent',
-      persistDebounceMs: config.persistDebounceMs ?? 2000,
-      persistThrottleMs: config.persistThrottleMs ?? 0,
+      storageKey: opts.storageKey,
+      persistDebounceMs: opts.persistDebounceMs,
+      persistThrottleMs: opts.persistThrottleMs,
       storage: config.storage ?? new BrowserStorageAdapter(),
       asyncStorage: config.asyncStorage ?? null,
       timer: this.timer,
@@ -122,27 +108,25 @@ export class IntentManager {
     });
     this.persistenceCoordinator = persistenceCoordinator;
 
-    const restored = persistenceCoordinator.restore(graphConfig);
+    const restored = persistenceCoordinator.restore(opts.graphConfig);
 
     this.bloom = restored?.bloom ?? new BloomFilter(config.bloom);
-    this.graph = restored?.graph ?? new MarkovGraph(graphConfig);
-    this.baseline = config.baseline ? MarkovGraph.fromJSON(config.baseline, graphConfig) : null;
+    this.graph = restored?.graph ?? new MarkovGraph(opts.graphConfig);
+    this.baseline = config.baseline
+      ? MarkovGraph.fromJSON(config.baseline, opts.graphConfig)
+      : null;
 
     // Attach the live graph + bloom so the coordinator can serialise them.
     persistenceCoordinator.attach(this.graph, this.bloom);
 
-    // ── Cross-tab sync ────────────────────────────────────────────────────────
-    // Channel name derives from storageKey so independent IntentManager instances
-    // (different storageKeys) never share messages.
-    this.broadcastSync =
-      config.crossTabSync === true
-        ? new BroadcastSync(
-            `passiveintent-sync:${config.storageKey ?? 'passive-intent'}`,
-            this.graph,
-            this.bloom,
-            this.counters,
-          )
-        : null;
+    // ── Policies (deterministic order) ─────────────────────────────────────────
+    // Each policy is only instantiated when its feature flag is enabled.
+    // Policies are called in array order at each hook point.
+    const driftPolicy = new DriftProtectionPolicy(
+      opts.driftMaxAnomalyRate,
+      opts.driftEvaluationWindowMs,
+    );
+    const policies: EnginePolicy[] = [driftPolicy];
 
     // ── SignalEngine ──────────────────────────────────────────────────────────
     this.signalEngine = new SignalEngine({
@@ -152,23 +136,52 @@ export class IntentManager {
       benchmark: this.benchmark,
       emitter: this.emitter,
       assignmentGroup: this.assignmentGroup,
-      eventCooldownMs: config.eventCooldownMs ?? 0,
-      dwellTimeEnabled: config.dwellTime?.enabled ?? false,
-      dwellTimeMinSamples: config.dwellTime?.minSamples ?? 10,
-      dwellTimeZScoreThreshold: config.dwellTime?.zScoreThreshold ?? 2.5,
-      enableBigrams: config.enableBigrams ?? false,
-      bigramFrequencyThreshold: config.bigramFrequencyThreshold ?? 5,
-      driftMaxAnomalyRate: config.driftProtection?.maxAnomalyRate ?? 0.4,
-      driftEvaluationWindowMs: config.driftProtection?.evaluationWindowMs ?? 300_000,
-      hesitationCorrelationWindowMs: config.hesitationCorrelationWindowMs ?? 30_000,
-      trajectorySmoothingEpsilon,
+      eventCooldownMs: opts.eventCooldownMs,
+      dwellTimeMinSamples: opts.dwellTimeMinSamples,
+      dwellTimeZScoreThreshold: opts.dwellTimeZScoreThreshold,
+      hesitationCorrelationWindowMs: opts.hesitationCorrelationWindowMs,
+      trajectorySmoothingEpsilon: opts.trajectorySmoothingEpsilon,
+      driftPolicy,
     });
+
+    // DwellTimePolicy — only when dwell detection is enabled.
+    if (opts.dwellTimeEnabled) {
+      policies.push(
+        new DwellTimePolicy({
+          isSuspected: () => this.signalEngine.suspected,
+          evaluateDwellTime: (state, dwellMs) =>
+            this.signalEngine.evaluateDwellTime(state, dwellMs),
+          getPreviousStateEnteredAt: () => this.previousStateEnteredAt,
+          emitter: this.emitter,
+        }),
+      );
+    }
+
+    // BigramPolicy — only when second-order transitions are enabled.
+    if (opts.enableBigrams) {
+      policies.push(new BigramPolicy(this.graph, opts.bigramFrequencyThreshold));
+    }
+
+    // CrossTabSyncPolicy — only when cross-tab sync is enabled.
+    if (opts.crossTabSync) {
+      policies.push(
+        new CrossTabSyncPolicy({
+          channelName: `passiveintent-sync:${opts.storageKey}`,
+          graph: this.graph,
+          bloom: this.bloom,
+          counters: this.counters,
+          isSuspected: () => this.signalEngine.suspected,
+        }),
+      );
+    }
+
+    this.policies = policies;
 
     // ── LifecycleCoordinator ──────────────────────────────────────────────────
     this.lifecycleCoordinator = new LifecycleCoordinator({
       lifecycleAdapter: config.lifecycleAdapter,
       timer: this.timer,
-      dwellTimeEnabled: config.dwellTime?.enabled ?? false,
+      dwellTimeEnabled: opts.dwellTimeEnabled,
       emitter: this.emitter,
       onAdjustBaseline: (delta: number) => {
         this.previousStateEnteredAt += delta;
@@ -282,8 +295,8 @@ export class IntentManager {
     const now = this.timer.now();
     const trackStart = this.benchmark.now();
 
-    // Advance drift-protection rolling window (O(1), no allocations)
-    this.signalEngine.advanceDriftWindow(now);
+    // Advance drift-protection rolling window via policy hooks (O(1), no allocations)
+    for (let i = 0; i < this.policies.length; i += 1) this.policies[i].onTrackStart?.(now);
 
     const ctx: TrackContext = {
       state,
@@ -319,22 +332,9 @@ export class IntentManager {
     ctx.from = this.previousState;
     this.previousState = ctx.state;
 
-    if (this.dwellTimeEnabled && ctx.from && !this.signalEngine.suspected) {
-      const dwellMs = ctx.now - this.previousStateEnteredAt;
-      if (dwellMs > MAX_PLAUSIBLE_DWELL_MS) {
-        // Implausibly large dwell — CPU suspend or OS hibernation slipped past
-        // the LifecycleAdapter (e.g. no visibility API in this host environment).
-        // Discard the measurement to protect the Welford accumulator and emit a
-        // diagnostic event; the baseline resets to ctx.now below.
-        this.emitter.emit('session_stale', {
-          reason: 'dwell_exceeded',
-          measuredMs: dwellMs,
-          thresholdMs: MAX_PLAUSIBLE_DWELL_MS,
-        });
-      } else {
-        this.signalEngine.evaluateDwellTime(ctx.from, dwellMs);
-      }
-    }
+    // Dwell-time measurement — delegated to DwellTimePolicy when enabled.
+    for (let i = 0; i < this.policies.length; i += 1) this.policies[i].onTrackContext?.(ctx);
+
     this.previousStateEnteredAt = ctx.now;
 
     this.recentTrajectory.push(ctx.state);
@@ -347,17 +347,20 @@ export class IntentManager {
       this.graph.incrementTransition(ctx.from, ctx.state);
       this.benchmark.record('incrementTransition', incrementStart);
 
-      // Delegate bigram accounting and transitionsEvaluated increment to SignalEngine
+      // Increment transition counter in SignalEngine
       this.signalEngine.recordTransition(ctx.from, ctx.state, this.recentTrajectory);
+
+      // Bigram accounting — delegated to BigramPolicy when enabled.
+      for (let i = 0; i < this.policies.length; i += 1)
+        this.policies[i].onTransition?.(ctx.from, ctx.state, this.recentTrajectory);
 
       this.persistenceCoordinator.markDirty();
       this.signalEngine.evaluateEntropy(ctx.state);
       this.signalEngine.evaluateTrajectory(ctx.from, ctx.state, this.recentTrajectory);
 
-      // Broadcast only when not a suspected bot (prevents bot-amplification across tabs)
-      if (this.broadcastSync && !this.signalEngine.suspected) {
-        this.broadcastSync.broadcast(ctx.from, ctx.state);
-      }
+      // Cross-tab broadcast — delegated to CrossTabSyncPolicy when enabled.
+      for (let i = 0; i < this.policies.length; i += 1)
+        this.policies[i].onAfterEvaluation?.(ctx.from, ctx.state);
 
       return;
     }
@@ -461,7 +464,7 @@ export class IntentManager {
     this.persistenceCoordinator.close(); // prevent post-destroy timer re-arm
     this.emitter.removeAll();
     this.lifecycleCoordinator.destroy();
-    this.broadcastSync?.close();
+    for (let i = 0; i < this.policies.length; i += 1) this.policies[i].destroy?.();
   }
 
   /**
@@ -555,11 +558,9 @@ export class IntentManager {
     }
     const next = (this.counters.get(key) ?? 0) + by;
     this.counters.set(key, next);
-    // Broadcast the increment to other tabs when cross-tab sync is enabled,
-    // applying the same bot-containment guard used for Markov transitions.
-    if (this.broadcastSync && !this.signalEngine.suspected) {
-      this.broadcastSync.broadcastCounter(key, by);
-    }
+    // Broadcast the increment to other tabs via CrossTabSyncPolicy.
+    for (let i = 0; i < this.policies.length; i += 1)
+      this.policies[i].onCounterIncrement?.(key, by);
     return next;
   }
 

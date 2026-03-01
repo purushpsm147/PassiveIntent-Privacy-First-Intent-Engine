@@ -15,6 +15,7 @@ import { EventEmitter } from './event-emitter.js';
 import type { IntentEventMap } from '../types/events.js';
 import { MIN_SAMPLE_TRANSITIONS, MIN_WINDOW_LENGTH, MAX_WINDOW_LENGTH } from './constants.js';
 import type { PassiveIntentTelemetry } from '../types/events.js';
+import type { DriftProtectionPolicy } from './policies/drift-protection-policy.js';
 
 /**
  * Configuration surface for SignalEngine.
@@ -28,15 +29,12 @@ export interface SignalEngineConfig {
   emitter: EventEmitter<IntentEventMap>;
   assignmentGroup: 'treatment' | 'control';
   eventCooldownMs: number;
-  dwellTimeEnabled: boolean;
   dwellTimeMinSamples: number;
   dwellTimeZScoreThreshold: number;
-  enableBigrams: boolean;
-  bigramFrequencyThreshold: number;
-  driftMaxAnomalyRate: number;
-  driftEvaluationWindowMs: number;
   hesitationCorrelationWindowMs: number;
   trajectorySmoothingEpsilon: number;
+  /** Drift protection policy — owns the rolling evaluation window and drifted flag. */
+  driftPolicy: DriftProtectionPolicy;
 }
 
 /**
@@ -62,15 +60,11 @@ export class SignalEngine {
   private readonly emitter: EventEmitter<IntentEventMap>;
   private readonly assignmentGroup: 'treatment' | 'control';
   private readonly eventCooldownMs: number;
-  private readonly dwellTimeEnabled: boolean;
   private readonly dwellTimeMinSamples: number;
   private readonly dwellTimeZScoreThreshold: number;
-  private readonly enableBigrams: boolean;
-  private readonly bigramFrequencyThreshold: number;
-  private readonly driftMaxAnomalyRate: number;
-  private readonly driftEvaluationWindowMs: number;
   private readonly hesitationCorrelationWindowMs: number;
   private readonly trajectorySmoothingEpsilon: number;
+  private readonly driftPolicy: DriftProtectionPolicy;
 
   /* Bot detection */
   private readonly entropyGuard = new EntropyGuard();
@@ -95,12 +89,6 @@ export class SignalEngine {
   private lastDwellAnomalyZScore = 0;
   private lastDwellAnomalyState = '';
 
-  /* Drift protection rolling window */
-  private isBaselineDriftedInternal = false;
-  private driftWindowStart = 0;
-  private driftWindowTrackCount = 0;
-  private driftWindowAnomalyCount = 0;
-
   /* Session-scoped telemetry counters */
   private transitionsEvaluatedInternal = 0;
   private anomaliesFiredInternal = 0;
@@ -113,15 +101,11 @@ export class SignalEngine {
     this.emitter = config.emitter;
     this.assignmentGroup = config.assignmentGroup;
     this.eventCooldownMs = config.eventCooldownMs;
-    this.dwellTimeEnabled = config.dwellTimeEnabled;
     this.dwellTimeMinSamples = config.dwellTimeMinSamples;
     this.dwellTimeZScoreThreshold = config.dwellTimeZScoreThreshold;
-    this.enableBigrams = config.enableBigrams;
-    this.bigramFrequencyThreshold = config.bigramFrequencyThreshold;
-    this.driftMaxAnomalyRate = config.driftMaxAnomalyRate;
-    this.driftEvaluationWindowMs = config.driftEvaluationWindowMs;
     this.hesitationCorrelationWindowMs = config.hesitationCorrelationWindowMs;
     this.trajectorySmoothingEpsilon = config.trajectorySmoothingEpsilon;
+    this.driftPolicy = config.driftPolicy;
   }
 
   /* ================================================================== */
@@ -141,28 +125,11 @@ export class SignalEngine {
   }
 
   get isBaselineDrifted(): boolean {
-    return this.isBaselineDriftedInternal;
+    return this.driftPolicy.isDrifted;
   }
 
   get baselineStatus(): PassiveIntentTelemetry['baselineStatus'] {
-    return this.isBaselineDriftedInternal ? 'drifted' : 'active';
-  }
-
-  /* ================================================================== */
-  /*  Drift Window                                                        */
-  /* ================================================================== */
-
-  /**
-   * Advance the rolling drift-protection window.
-   * Called once per `track()` invocation, before any pipeline stage.
-   */
-  advanceDriftWindow(now: number): void {
-    if (now - this.driftWindowStart >= this.driftEvaluationWindowMs) {
-      this.driftWindowStart = now;
-      this.driftWindowTrackCount = 0;
-      this.driftWindowAnomalyCount = 0;
-    }
-    this.driftWindowTrackCount += 1;
+    return this.driftPolicy.baselineStatus;
   }
 
   /* ================================================================== */
@@ -189,19 +156,9 @@ export class SignalEngine {
    * @param to             Arriving state.
    * @param trajectory     Snapshot of `recentTrajectory` at time of call.
    */
-  recordTransition(from: string, to: string, trajectory: readonly string[]): void {
+  recordTransition(_from: string, _to: string, _trajectory: readonly string[]): void {
     this.transitionsEvaluatedInternal += 1;
-
-    if (this.enableBigrams && trajectory.length >= 3) {
-      const prev2 = trajectory[trajectory.length - 3];
-      const bigramFrom = `${prev2}\u2192${from}`;
-      const bigramTo = `${from}\u2192${to}`;
-      // U+2192 (→) is the collision-resistant bigram join key — unlikely to
-      // appear in real URL-based state labels.
-      if (this.graph.rowTotal(from) >= this.bigramFrequencyThreshold) {
-        this.graph.incrementTransition(bigramFrom, bigramTo);
-      }
-    }
+    // Bigram accounting is now handled by BigramPolicy.onTransition().
   }
 
   /* ================================================================== */
@@ -256,7 +213,7 @@ export class SignalEngine {
   evaluateTrajectory(from: string, to: string, trajectory: readonly string[]): void {
     const start = this.benchmark.now();
 
-    if (this.isBaselineDriftedInternal) {
+    if (this.driftPolicy.isDrifted) {
       this.benchmark.record('divergenceComputation', start);
       return;
     }
@@ -311,13 +268,7 @@ export class SignalEngine {
     if (shouldEmit) {
       // Count every anomaly toward drift protection, regardless of cooldown.
       // Drift is a property of the underlying signal, not of how often we emit.
-      this.driftWindowAnomalyCount += 1;
-      if (
-        this.driftWindowTrackCount > 0 &&
-        this.driftWindowAnomalyCount / this.driftWindowTrackCount > this.driftMaxAnomalyRate
-      ) {
-        this.isBaselineDriftedInternal = true;
-      }
+      this.driftPolicy.recordAnomaly();
 
       const now = this.timer.now();
       if (
@@ -353,7 +304,9 @@ export class SignalEngine {
    * Fires `dwell_time_anomaly` when the z-score exceeds the configured threshold.
    */
   evaluateDwellTime(state: string, dwellMs: number): void {
-    if (!this.dwellTimeEnabled) return;
+    // Gating (dwellTimeEnabled) is handled by DwellTimePolicy; this method
+    // is only called when the policy exists and has decided dwell should be
+    // evaluated for this transition.
     if (dwellMs <= 0) return;
 
     const updated = updateDwellStats(this.dwellStats.get(state), dwellMs);
