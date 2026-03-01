@@ -310,7 +310,12 @@ export class LifecycleCoordinator {
       }
     }
 
-    // Re-arm for next tick.
-    this.scheduleIdleCheck();
+    // Re-arm for next tick — but only when idle tracking is still active.
+    // If destroy() was called from inside a user_idle / user_resumed handler
+    // above, stopIdleTracking() will have nulled interactionUnsub; skipping
+    // scheduleIdleCheck() here prevents a leaked timer after destruction.
+    if (this.interactionUnsub !== null) {
+      this.scheduleIdleCheck();
+    }
   }
 }
