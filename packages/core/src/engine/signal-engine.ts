@@ -309,6 +309,16 @@ export class SignalEngine {
     const shouldEmit = hasCalibratedBaseline ? zScore <= threshold : expectedAvg <= threshold;
 
     if (shouldEmit) {
+      // Count every anomaly toward drift protection, regardless of cooldown.
+      // Drift is a property of the underlying signal, not of how often we emit.
+      this.driftWindowAnomalyCount += 1;
+      if (
+        this.driftWindowTrackCount > 0 &&
+        this.driftWindowAnomalyCount / this.driftWindowTrackCount > this.driftMaxAnomalyRate
+      ) {
+        this.isBaselineDriftedInternal = true;
+      }
+
       const now = this.timer.now();
       if (
         this.eventCooldownMs <= 0 ||
@@ -328,14 +338,6 @@ export class SignalEngine {
         this.lastTrajectoryAnomalyAt = now;
         this.lastTrajectoryAnomalyZScore = zScore;
         this.maybeEmitHesitation();
-
-        this.driftWindowAnomalyCount += 1;
-        if (
-          this.driftWindowTrackCount > 0 &&
-          this.driftWindowAnomalyCount / this.driftWindowTrackCount > this.driftMaxAnomalyRate
-        ) {
-          this.isBaselineDriftedInternal = true;
-        }
       }
     }
 

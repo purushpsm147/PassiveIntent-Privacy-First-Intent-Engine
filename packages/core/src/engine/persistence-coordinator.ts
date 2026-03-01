@@ -187,7 +187,7 @@ export class PersistenceCoordinator {
       const now = this.timer.now();
       const elapsed = now - this.lastPersistedAt;
       if (elapsed < this.persistThrottleMs) {
-        if (this.throttleTimer === null) {
+        if (!this.isClosed && this.throttleTimer === null) {
           const remainingMs = this.persistThrottleMs - elapsed;
           this.throttleTimer = this.timer.setTimeout(() => {
             this.throttleTimer = null;
@@ -312,10 +312,12 @@ export class PersistenceCoordinator {
    * Mark this coordinator as permanently closed.
    *
    * After this call:
-   *   - `persist()` and `schedulePersist()` become no-ops.
-   *   - Any in-flight async `setItem` that rejects can no longer re-arm
-   *     timers or trigger a retry.
+   *   - No new throttle or retry timers will be scheduled.
+   *   - Any in-flight async `setItem` that rejects cannot re-arm a retry timer.
    *   - Pending throttle/retry timers are cancelled immediately.
+   *   - `persist()` itself remains callable — an in-flight async write's `.then()`
+   *     may still invoke it to flush dirty state queued during the write.  What is
+   *     prevented is any *timer-driven* follow-up after teardown.
    *
    * Call this from `IntentManager.destroy()` *after* `flushNow()` so the
    * best-effort final write is still attempted, but its failure cannot

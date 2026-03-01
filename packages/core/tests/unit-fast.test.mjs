@@ -745,6 +745,11 @@ test('eventCooldownMs: trajectory_anomaly respects cooldown independently', () =
       },
       botProtection: false,
       eventCooldownMs: 3000,
+      // Disable drift protection so it doesn't interfere with cooldown assertions.
+      // With the corrected drift counting (all anomalies counted, not just emitted
+      // ones), a highly anomalous walk would exceed the default 40% rate and silence
+      // evaluateTrajectory before the second assertion batch runs.
+      driftProtection: { maxAnomalyRate: 1.0, evaluationWindowMs: 300_000 },
     });
 
     let anomalyCount = 0;
