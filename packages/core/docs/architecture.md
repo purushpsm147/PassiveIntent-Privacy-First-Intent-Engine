@@ -1825,14 +1825,20 @@ The `LifecycleAdapter` is cleaned up conditionally on teardown. When `IntentMana
 ```ts
 // Inject a fully controllable fake adapter for unit tests —
 // no document mock required:
-let onPauseCallback = null;
-let onResumeCallback = null;
+let onPauseCallback: (() => void) | null = null;
+let onResumeCallback: (() => void) | null = null;
 const fakeLifecycle = {
-  onPause(cb) {
+  onPause(cb: () => void): () => void {
     onPauseCallback = cb;
+    return () => {
+      onPauseCallback = null;
+    };
   },
-  onResume(cb) {
+  onResume(cb: () => void): () => void {
     onResumeCallback = cb;
+    return () => {
+      onResumeCallback = null;
+    };
   },
   destroy() {},
 };
@@ -1844,9 +1850,9 @@ const intent = new IntentManager({
 });
 // ... track some states to build baseline ...
 
-onPauseCallback(); // tab hidden
+onPauseCallback?.(); // tab hidden
 // ... 30 seconds pass in the mock timer ...
-onResumeCallback(); // tab visible again
+onResumeCallback?.(); // tab visible again
 
 // Next track() will NOT see a 30 s dwell on the previous state
 intent.track('/next-page');
@@ -1861,10 +1867,12 @@ events. It contains three methods:
 
 ```ts
 export interface LifecycleAdapter {
-  /** Called with a callback to invoke when the environment becomes inactive (tab hidden, app backgrounded). */
-  onPause(callback: () => void): void;
-  /** Called with a callback to invoke when the environment becomes active again. */
-  onResume(callback: () => void): void;
+  /** Called with a callback to invoke when the environment becomes inactive (tab hidden, app backgrounded).
+   *  Returns an unsubscribe function that removes only this callback. */
+  onPause(callback: () => void): () => void;
+  /** Called with a callback to invoke when the environment becomes active again.
+   *  Returns an unsubscribe function that removes only this callback. */
+  onResume(callback: () => void): () => void;
   /** Remove all event listeners and release resources. Called by the owner; IntentManager.destroy() calls this only for adapters it creates internally. */
   destroy(): void;
 }

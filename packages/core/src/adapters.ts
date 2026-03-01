@@ -148,10 +148,18 @@ export class MemoryStorageAdapter implements StorageAdapter {
  * transitions between an active ("resumed") and an inactive ("paused") state.
  */
 export interface LifecycleAdapter {
-  /** Register a callback to be invoked when the environment becomes inactive. */
-  onPause(callback: () => void): void;
-  /** Register a callback to be invoked when the environment becomes active. */
-  onResume(callback: () => void): void;
+  /**
+   * Register a callback to be invoked when the environment becomes inactive.
+   * Returns an unsubscribe function that removes only this callback, leaving
+   * any other registered callbacks untouched.
+   */
+  onPause(callback: () => void): () => void;
+  /**
+   * Register a callback to be invoked when the environment becomes active.
+   * Returns an unsubscribe function that removes only this callback, leaving
+   * any other registered callbacks untouched.
+   */
+  onResume(callback: () => void): () => void;
   /** Remove all event listeners and release resources held by this adapter. */
   destroy(): void;
 }
@@ -197,12 +205,20 @@ export class BrowserLifecycleAdapter implements LifecycleAdapter {
     }
   }
 
-  onPause(callback: () => void): void {
+  onPause(callback: () => void): () => void {
     this.pauseCallbacks.push(callback);
+    return () => {
+      const idx = this.pauseCallbacks.indexOf(callback);
+      if (idx !== -1) this.pauseCallbacks.splice(idx, 1);
+    };
   }
 
-  onResume(callback: () => void): void {
+  onResume(callback: () => void): () => void {
     this.resumeCallbacks.push(callback);
+    return () => {
+      const idx = this.resumeCallbacks.indexOf(callback);
+      if (idx !== -1) this.resumeCallbacks.splice(idx, 1);
+    };
   }
 
   destroy(): void {

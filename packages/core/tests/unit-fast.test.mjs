@@ -4159,8 +4159,12 @@ test('IntentManager: injected lifecycleAdapter.destroy() is NOT called from Inte
   // and must not be torn down by the manager (the adapter may be shared).
   let destroyed = false;
   const fakeAdapter = {
-    onPause() {},
-    onResume() {},
+    onPause() {
+      return () => {};
+    },
+    onResume() {
+      return () => {};
+    },
     destroy() {
       destroyed = true;
     },
@@ -4188,9 +4192,15 @@ test('IntentManager: tab-hidden gap is excluded from dwell measurement via custo
   const fakeAdapter = {
     onPause(cb) {
       pauseCallback = cb;
+      return () => {
+        pauseCallback = null;
+      };
     },
     onResume(cb) {
       resumeCallback = cb;
+      return () => {
+        resumeCallback = null;
+      };
     },
     destroy() {},
   };
@@ -4256,9 +4266,15 @@ test('session_stale does NOT fire when dwellTime.enabled is false (hidden_durati
   const fakeAdapter = {
     onPause(cb) {
       pauseCallback = cb;
+      return () => {
+        pauseCallback = null;
+      };
     },
     onResume(cb) {
       resumeCallback = cb;
+      return () => {
+        resumeCallback = null;
+      };
     },
     destroy() {},
   };
@@ -4319,8 +4335,12 @@ test('injected lifecycleAdapter is NOT destroyed when IntentManager.destroy() is
   // remove lifecycle listeners from all other managers using the same adapter.
   let destroyCalls = 0;
   const sharedAdapter = {
-    onPause(_cb) {},
-    onResume(_cb) {},
+    onPause(_cb) {
+      return () => {};
+    },
+    onResume(_cb) {
+      return () => {};
+    },
     destroy() {
       destroyCalls += 1;
     },
@@ -4367,9 +4387,14 @@ test('internally-created lifecycleAdapter IS destroyed when IntentManager.destro
   let destroyCalls = 0;
   let resumeCallback = null;
   const spyAdapter = {
-    onPause(_cb) {},
+    onPause(_cb) {
+      return () => {};
+    },
     onResume(cb) {
       resumeCallback = cb;
+      return () => {
+        resumeCallback = null;
+      };
     },
     destroy() {
       destroyCalls += 1;
@@ -4413,9 +4438,15 @@ test('session_stale (hidden_duration_exceeded) does NOT fire when no state has b
   const fakeAdapter = {
     onPause(cb) {
       pauseCallback = cb;
+      return () => {
+        pauseCallback = null;
+      };
     },
     onResume(cb) {
       resumeCallback = cb;
+      return () => {
+        resumeCallback = null;
+      };
     },
     destroy() {},
   };
@@ -4462,9 +4493,15 @@ test('session_stale fires with hidden_duration_exceeded when hidden gap > MAX_PL
   const fakeAdapter = {
     onPause(cb) {
       pauseCallback = cb;
+      return () => {
+        pauseCallback = null;
+      };
     },
     onResume(cb) {
       resumeCallback = cb;
+      return () => {
+        resumeCallback = null;
+      };
     },
     destroy() {},
   };
@@ -4512,9 +4549,15 @@ test('session_stale does NOT fire for a normal short tab-hide (< MAX_PLAUSIBLE_D
   const fakeAdapter = {
     onPause(cb) {
       pauseCallback = cb;
+      return () => {
+        pauseCallback = null;
+      };
     },
     onResume(cb) {
       resumeCallback = cb;
+      return () => {
+        resumeCallback = null;
+      };
     },
     destroy() {},
   };
@@ -4562,7 +4605,15 @@ test('session_stale fires with dwell_exceeded when track() gap > MAX_PLAUSIBLE_D
       storageKey: 'session-stale-dwell-test',
       storage,
       botProtection: false,
-      lifecycleAdapter: { onPause() {}, onResume() {}, destroy() {} },
+      lifecycleAdapter: {
+        onPause() {
+          return () => {};
+        },
+        onResume() {
+          return () => {};
+        },
+        destroy() {},
+      },
       dwellTime: { enabled: true, minSamples: 2, zScoreThreshold: 1.5 },
     });
 
@@ -4613,7 +4664,15 @@ test('Welford accumulator not corrupted after session_stale: subsequent normal a
       storageKey: 'welford-no-corrupt-test',
       storage,
       botProtection: false,
-      lifecycleAdapter: { onPause() {}, onResume() {}, destroy() {} },
+      lifecycleAdapter: {
+        onPause() {
+          return () => {};
+        },
+        onResume() {
+          return () => {};
+        },
+        destroy() {},
+      },
       dwellTime: { enabled: true, minSamples: 5, zScoreThreshold: 2.0 },
     });
 
@@ -4666,9 +4725,15 @@ test('session_stale: previousStateEnteredAt resets cleanly so next dwell epoch i
   const fakeAdapter = {
     onPause(cb) {
       pauseCallback = cb;
+      return () => {
+        pauseCallback = null;
+      };
     },
     onResume(cb) {
       resumeCallback = cb;
+      return () => {
+        resumeCallback = null;
+      };
     },
     destroy() {},
   };
@@ -4740,7 +4805,15 @@ test('persist is called synchronously on every track(): storage written immediat
       setItem: (_k, v) => writeLog.push(v),
     },
     botProtection: false,
-    lifecycleAdapter: { onPause() {}, onResume() {}, destroy() {} },
+    lifecycleAdapter: {
+      onPause() {
+        return () => {};
+      },
+      onResume() {
+        return () => {};
+      },
+      destroy() {},
+    },
   });
 
   assert.equal(writeLog.length, 0, 'No write before any track() call');
@@ -4767,7 +4840,15 @@ test('persist respects dirty-flag: no write if nothing changed between track() c
       setItem: (_k, v) => writeLog.push(v),
     },
     botProtection: false,
-    lifecycleAdapter: { onPause() {}, onResume() {}, destroy() {} },
+    lifecycleAdapter: {
+      onPause() {
+        return () => {};
+      },
+      onResume() {
+        return () => {};
+      },
+      destroy() {},
+    },
   });
 
   manager.track('/a');

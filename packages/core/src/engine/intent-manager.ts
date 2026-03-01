@@ -165,6 +165,14 @@ export class IntentManager {
    * IntentManager instances and must not be torn down by any one of them.
    */
   private readonly ownsLifecycleAdapter: boolean;
+  /**
+   * Unsubscribe handles returned by `lifecycleAdapter.onPause/onResume`.
+   * Called in `destroy()` to remove this instance's specific callbacks from
+   * the adapter without tearing down the adapter itself — which is essential
+   * for shared (injected) adapters that may still be used by other managers.
+   */
+  private pauseUnsub: (() => void) | null = null;
+  private resumeUnsub: (() => void) | null = null;
 
   /* ================================================================== */
   /*  Failsafe Killswitch — Baseline Drift Protection                   */
@@ -371,10 +379,10 @@ export class IntentManager {
     }
 
     if (this.lifecycleAdapter) {
-      this.lifecycleAdapter.onPause(() => {
+      this.pauseUnsub = this.lifecycleAdapter.onPause(() => {
         this.tabHiddenAt = this.timer.now();
       });
-      this.lifecycleAdapter.onResume(() => {
+      this.resumeUnsub = this.lifecycleAdapter.onResume(() => {
         if (this.tabHiddenAt === null) return;
         const hiddenDuration = this.timer.now() - this.tabHiddenAt;
         this.tabHiddenAt = null;
@@ -728,6 +736,14 @@ export class IntentManager {
   destroy(): void {
     this.flushNow();
     this.emitter.removeAll();
+    // Deregister this instance's specific pause/resume callbacks so the adapter
+    // no longer holds closure references to this (now-destroyed) manager.
+    // For owned adapters this is superseded by adapter.destroy() below;
+    // for shared injected adapters it is the only teardown path.
+    this.pauseUnsub?.();
+    this.pauseUnsub = null;
+    this.resumeUnsub?.();
+    this.resumeUnsub = null;
     // Only destroy the adapter when this instance created it.  An injected
     // adapter may be shared by other IntentManager instances; destroying it
     // here would silently remove their lifecycle listeners too.

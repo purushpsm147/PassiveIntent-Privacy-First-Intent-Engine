@@ -266,11 +266,19 @@ export interface IntentManagerConfig {
   /**
    * Delay in ms used for the **async retry / coalescing path** only. Default: `2000`.
    *
-   * `track()` calls `persist()` synchronously on every invocation
-   * (crash-safe writes — no data is lost on sudden process kill).  This field
-   * no longer controls write frequency for the primary persist flow.
+   * When `persistThrottleMs` is `0` (the default), `track()` calls
+   * `persist()` synchronously on every invocation, giving full crash-safety —
+   * no navigation data is lost on a sudden process kill.  This field does not
+   * control write frequency in that mode.
    *
-   * It still governs two narrower scenarios:
+   * When `persistThrottleMs > 0`, the `persist()` call inside `track()` is
+   * throttled: writes are skipped for calls that fall within the throttle
+   * window, relaxing the per-track crash-safety guarantee (up to
+   * `persistThrottleMs` ms of recent navigation data can be lost in a hard
+   * crash).  This field still governs the trailing-flush timer that fires
+   * after the throttle window expires to flush any accumulated dirty state.
+   *
+   * It also governs two narrower scenarios regardless of `persistThrottleMs`:
    * - **Async storage retry**: when an async `setItem` fails for the first time
    *   in a consecutive sequence, one retry pass is scheduled after
    *   `persistDebounceMs`.  This gives the host app time to surface the error
