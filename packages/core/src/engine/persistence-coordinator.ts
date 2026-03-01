@@ -249,8 +249,16 @@ export class PersistenceCoordinator {
       this.hasPendingAsyncPersist = false;
       this.isDirty = false;
 
-      this.asyncStorage
-        .setItem(this.storageKey, JSON.stringify(payload))
+      let setItemPromise: Promise<void>;
+      try {
+        setItemPromise = this.asyncStorage.setItem(this.storageKey, JSON.stringify(payload));
+      } catch (err: unknown) {
+        // Synchronous throw from setItem — treat identically to a promise rejection.
+        this.handleAsyncWriteError(err);
+        return;
+      }
+
+      setItemPromise
         .then(() => {
           this.isAsyncWriting = false;
           this.asyncWriteFailCount = 0;
@@ -262,26 +270,7 @@ export class PersistenceCoordinator {
           }
         })
         .catch((err: unknown) => {
-          this.isAsyncWriting = false;
-          this.isDirty = true;
-          this.asyncWriteFailCount += 1;
-          const isQuota =
-            err instanceof Error &&
-            (err.name === 'QuotaExceededError' || err.message.toLowerCase().includes('quota'));
-          if (isQuota) {
-            this.engineHealthInternal = 'quota_exceeded';
-          }
-          if (this.onError) {
-            this.onError({
-              code: isQuota ? 'QUOTA_EXCEEDED' : 'STORAGE_WRITE',
-              message: err instanceof Error ? err.message : String(err),
-              originalError: err,
-            });
-          }
-          this.hasPendingAsyncPersist = false;
-          if (!this.isClosed && this.asyncWriteFailCount === 1) {
-            this.schedulePersist();
-          }
+          this.handleAsyncWriteError(err);
         });
     } else {
       try {
@@ -369,5 +358,32 @@ export class PersistenceCoordinator {
       this.retryTimer = null;
       this.persist();
     }, this.persistDebounceMs);
+  }
+
+  /**
+   * Shared error handler for both synchronous throws from `asyncStorage.setItem`
+   * and promise rejections.  Keeps the two paths in sync without duplication.
+   */
+  private handleAsyncWriteError(err: unknown): void {
+    this.isAsyncWriting = false;
+    this.isDirty = true;
+    this.asyncWriteFailCount += 1;
+    const isQuota =
+      err instanceof Error &&
+      (err.name === 'QuotaExceededError' || err.message.toLowerCase().includes('quota'));
+    if (isQuota) {
+      this.engineHealthInternal = 'quota_exceeded';
+    }
+    if (this.onError) {
+      this.onError({
+        code: isQuota ? 'QUOTA_EXCEEDED' : 'STORAGE_WRITE',
+        message: err instanceof Error ? err.message : String(err),
+        originalError: err,
+      });
+    }
+    this.hasPendingAsyncPersist = false;
+    if (!this.isClosed && this.asyncWriteFailCount === 1) {
+      this.schedulePersist();
+    }
   }
 }

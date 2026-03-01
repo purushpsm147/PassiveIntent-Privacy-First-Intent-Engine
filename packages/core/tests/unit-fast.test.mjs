@@ -3851,7 +3851,7 @@ test('onError: RESTORE_PARSE fires when stored graph is corrupt JSON', () => {
     `Expected 'RESTORE_PARSE', got: '${errors[0].code}'`,
   );
   assert.ok(typeof errors[0].message === 'string' && errors[0].message.length > 0);
-  // originalError must carry the raw payload for forensic debugging
+  // originalError carries payloadLength (byte size) for diagnostics; the raw payload is redacted
   assert.ok(
     errors[0].originalError != null && typeof errors[0].originalError === 'object',
     'originalError must be an object',

@@ -928,7 +928,7 @@ interface IntentManagerConfig {
       | 'SERIALIZE'
       | 'VALIDATION';
     message: string;
-    originalError?: unknown; // { cause, payload: string } for RESTORE_PARSE; raw Error otherwise
+    originalError?: unknown; // { cause, payloadLength: number } for RESTORE_PARSE (raw payload redacted); raw Error otherwise
   }) => void;
 
   // EntropyGuard bot detection (default: true)
@@ -1347,7 +1347,7 @@ flowchart TD
     style Q fill:#2d6a4f,color:#fff
 ```
 
-**Key behavior:** if the stored binary blob is absent, corrupt, or has an unrecognized version byte, the engine cold-starts with a fresh graph. A `RESTORE_PARSE` error is forwarded to the `onError` callback (if set) with `originalError: { cause, payload }` containing the raw stored string for diagnostics. A `STORAGE_READ` error is forwarded when `localStorage.getItem` itself throws (e.g., `SecurityError` in private browsing). In both cases the engine continues operating normally on a fresh graph — it never throws to the host application.
+**Key behavior:** if the stored binary blob is absent, corrupt, or has an unrecognized version byte, the engine cold-starts with a fresh graph. A `RESTORE_PARSE` error is forwarded to the `onError` callback (if set) with `originalError: { cause, payloadLength }` where `payloadLength` is the byte length of the string that failed to parse. The raw payload is intentionally omitted to avoid surfacing stored navigation data in error reports. A `STORAGE_READ` error is forwarded when `localStorage.getItem` itself throws (e.g., `SecurityError` in private browsing). In both cases the engine continues operating normally on a fresh graph — it never throws to the host application.
 
 ---
 
@@ -2106,23 +2106,24 @@ const intent = new IntentManager({
 
 **Error codes:**
 
-| Code             | Trigger                                                                              | Graceful fallback                                                                         |
-| ---------------- | ------------------------------------------------------------------------------------ | ----------------------------------------------------------------------------------------- |
-| `STORAGE_READ`   | `localStorage.getItem` threw (e.g., `SecurityError` in private browsing)             | Cold-start with fresh graph                                                               |
-| `RESTORE_PARSE`  | JSON or binary decode failed on the stored graph                                     | Cold-start with fresh graph; `originalError` contains `{ cause, payload: string }`        |
-| `QUOTA_EXCEEDED` | `localStorage.setItem` threw `QuotaExceededError`                                    | Skip this persist cycle; `isDirty` stays `true`; `engineHealth` set to `'quota_exceeded'` |
-| `STORAGE_WRITE`  | `localStorage.setItem` threw for a non-quota reason                                  | Skip this persist cycle; `isDirty` stays `true`                                           |
-| `SERIALIZE`      | `graph.toBinary()` or base64 encode threw                                            | Skip this persist cycle                                                                   |
-| `VALIDATION`     | Invalid argument passed to a public API method (`track('')`, `incrementCounter('')`) | No-op; return value is safe (e.g., `0`)                                                   |
+| Code             | Trigger                                                                              | Graceful fallback                                                                                                           |
+| ---------------- | ------------------------------------------------------------------------------------ | --------------------------------------------------------------------------------------------------------------------------- |
+| `STORAGE_READ`   | `localStorage.getItem` threw (e.g., `SecurityError` in private browsing)             | Cold-start with fresh graph                                                                                                 |
+| `RESTORE_PARSE`  | JSON or binary decode failed on the stored graph                                     | Cold-start with fresh graph; `originalError` contains `{ cause, payloadLength: number }` (raw payload redacted for privacy) |
+| `QUOTA_EXCEEDED` | `localStorage.setItem` threw `QuotaExceededError`                                    | Skip this persist cycle; `isDirty` stays `true`; `engineHealth` set to `'quota_exceeded'`                                   |
+| `STORAGE_WRITE`  | `localStorage.setItem` threw for a non-quota reason                                  | Skip this persist cycle; `isDirty` stays `true`                                                                             |
+| `SERIALIZE`      | `graph.toBinary()` or base64 encode threw                                            | Skip this persist cycle                                                                                                     |
+| `VALIDATION`     | Invalid argument passed to a public API method (`track('')`, `incrementCounter('')`) | No-op; return value is safe (e.g., `0`)                                                                                     |
 
 **`originalError` for `RESTORE_PARSE`:**
 
 ```ts
 onError({ code, originalError }) {
   if (code === 'RESTORE_PARSE') {
-    const { cause, payload } = originalError as { cause: unknown; payload: string };
-    // `payload` is the raw base64 string that failed to parse—paste into a debugger to inspect.
-    console.warn('Corrupt PassiveIntent storage. Raw payload:', payload.slice(0, 80));
+    const { cause, payloadLength } = originalError as { cause: unknown; payloadLength: number };
+    // The raw stored string is intentionally omitted to avoid surfacing navigation
+    // data in error reports. `payloadLength` (byte length) is provided for diagnostics.
+    console.warn(`Corrupt PassiveIntent storage. Payload was ${payloadLength} bytes.`, cause);
   }
 }
 ```

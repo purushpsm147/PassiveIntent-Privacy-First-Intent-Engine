@@ -98,40 +98,56 @@ export class LifecycleCoordinator {
       this.ownsLifecycleAdapter = true;
     }
 
-    if (this.lifecycleAdapter) {
-      this.pauseUnsub = this.lifecycleAdapter.onPause(() => {
-        this.tabHiddenAt = this.timer.now();
-      });
+    this.bindAdapter(this.lifecycleAdapter);
+  }
 
-      this.resumeUnsub = this.lifecycleAdapter.onResume(() => {
-        if (this.tabHiddenAt === null) return;
-        const hiddenDuration = this.timer.now() - this.tabHiddenAt;
-        this.tabHiddenAt = null;
+  /**
+   * Unsubscribe any existing pause/resume callbacks and re-register them on
+   * `adapter` (or leave them null when `adapter` is null).
+   *
+   * Single source of truth for handler registration — used by both the
+   * constructor and `setAdapterForTest`.
+   */
+  private bindAdapter(adapter: LifecycleAdapter | null): void {
+    this.pauseUnsub?.();
+    this.pauseUnsub = null;
+    this.resumeUnsub?.();
+    this.resumeUnsub = null;
 
-        // All resume-path operations are dwell-time bookkeeping.  When dwell-time
-        // detection is disabled the caller has opted out of all dwell diagnostics.
-        if (!this.dwellTimeEnabled) return;
+    if (!adapter) return;
 
-        if (hiddenDuration > MAX_PLAUSIBLE_DWELL_MS) {
-          // Almost certainly an OS suspend / hibernate event.  Only act when an
-          // active dwell epoch is in progress.
-          if (this.hasPreviousState()) {
-            this.onResetBaseline();
-            this.emitter.emit('session_stale', {
-              reason: 'hidden_duration_exceeded',
-              measuredMs: hiddenDuration,
-              thresholdMs: MAX_PLAUSIBLE_DWELL_MS,
-            });
-          }
-          return;
-        }
+    this.pauseUnsub = adapter.onPause(() => {
+      this.tabHiddenAt = this.timer.now();
+    });
 
-        // Offset the dwell baseline only when a state has been entered.
+    this.resumeUnsub = adapter.onResume(() => {
+      if (this.tabHiddenAt === null) return;
+      const hiddenDuration = this.timer.now() - this.tabHiddenAt;
+      this.tabHiddenAt = null;
+
+      // All resume-path operations are dwell-time bookkeeping.  When dwell-time
+      // detection is disabled the caller has opted out of all dwell diagnostics.
+      if (!this.dwellTimeEnabled) return;
+
+      if (hiddenDuration > MAX_PLAUSIBLE_DWELL_MS) {
+        // Almost certainly an OS suspend / hibernate event.  Only act when an
+        // active dwell epoch is in progress.
         if (this.hasPreviousState()) {
-          this.onAdjustBaseline(hiddenDuration);
+          this.onResetBaseline();
+          this.emitter.emit('session_stale', {
+            reason: 'hidden_duration_exceeded',
+            measuredMs: hiddenDuration,
+            thresholdMs: MAX_PLAUSIBLE_DWELL_MS,
+          });
         }
-      });
-    }
+        return;
+      }
+
+      // Offset the dwell baseline only when a state has been entered.
+      if (this.hasPreviousState()) {
+        this.onAdjustBaseline(hiddenDuration);
+      }
+    });
   }
 
   /**
@@ -145,40 +161,13 @@ export class LifecycleCoordinator {
    */
   /* @internal */
   setAdapterForTest(adapter: LifecycleAdapter | null, owns: boolean): void {
-    this.pauseUnsub?.();
-    this.pauseUnsub = null;
-    this.resumeUnsub?.();
-    this.resumeUnsub = null;
     if (this.ownsLifecycleAdapter) {
       this.lifecycleAdapter?.destroy();
     }
     this.lifecycleAdapter = adapter;
     this.ownsLifecycleAdapter = owns;
-    if (adapter) {
-      this.pauseUnsub = adapter.onPause(() => {
-        this.tabHiddenAt = this.timer.now();
-      });
-      this.resumeUnsub = adapter.onResume(() => {
-        if (this.tabHiddenAt === null) return;
-        const hiddenDuration = this.timer.now() - this.tabHiddenAt;
-        this.tabHiddenAt = null;
-        if (!this.dwellTimeEnabled) return;
-        if (hiddenDuration > MAX_PLAUSIBLE_DWELL_MS) {
-          if (this.hasPreviousState()) {
-            this.onResetBaseline();
-            this.emitter.emit('session_stale', {
-              reason: 'hidden_duration_exceeded',
-              measuredMs: hiddenDuration,
-              thresholdMs: MAX_PLAUSIBLE_DWELL_MS,
-            });
-          }
-          return;
-        }
-        if (this.hasPreviousState()) {
-          this.onAdjustBaseline(hiddenDuration);
-        }
-      });
-    }
+    this.tabHiddenAt = null;
+    this.bindAdapter(adapter);
   }
 
   /**
