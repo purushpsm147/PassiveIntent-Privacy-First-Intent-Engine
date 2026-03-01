@@ -86,9 +86,9 @@ export class IntentManager {
   private readonly storageKey: string;
   /**
    * Used exclusively for the async-error retry path (`schedulePersist`) and
-   * `flushNow()` timer cancellation.  Since v1.1 the primary persist is
-   * synchronous (called directly from `runEmitAndPersistStage`), so this value
-   * no longer controls write frequency for normal `track()` flow.
+   * `flushNow()` timer cancellation. The primary persist is synchronous
+   * (called directly from `runEmitAndPersistStage`), so this value no longer
+   * controls write frequency for normal `track()` flow.
    */
   private readonly persistDebounceMs: number;
   private readonly benchmark: BenchmarkRecorder;

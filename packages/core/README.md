@@ -446,7 +446,7 @@ During persistence:
 5. Encode binary to base64 and store alongside Bloom snapshot.
 6. Reset `isDirty` to `false`.
 
-> **`persistDebounceMs`** no longer controls write frequency for normal flow. Since v1.1 every `track()` calls `persist()` synchronously. The debounce value is only consulted by the async-error retry path and `flushNow()` timer cancellation.
+> **`persistDebounceMs`** no longer controls write frequency for normal flow. Every `track()` calls `persist()` synchronously. The debounce value is only consulted by the async-error retry path and `flushNow()` timer cancellation.
 
 ## Run tests
 

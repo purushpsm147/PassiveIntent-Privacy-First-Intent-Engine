@@ -167,8 +167,12 @@ export interface LifecycleAdapter {
  * Usage:
  * ```ts
  * const lifecycle = new BrowserLifecycleAdapter();
- * lifecycle.onPause(() => manager.flush());
- * lifecycle.onResume(() => manager.resume());
+ * lifecycle.onPause(() => {
+ *   // e.g. flush pending work or persist state
+ * });
+ * lifecycle.onResume(() => {
+ *   // e.g. restart timers or resume work
+ * });
  * // later…
  * lifecycle.destroy();
  * ```

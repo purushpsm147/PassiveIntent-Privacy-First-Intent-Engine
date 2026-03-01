@@ -266,7 +266,7 @@ export interface IntentManagerConfig {
   /**
    * Delay in ms used for the **async retry / coalescing path** only. Default: `2000`.
    *
-   * Since v1.1, `track()` calls `persist()` synchronously on every invocation
+   * `track()` calls `persist()` synchronously on every invocation
    * (crash-safe writes — no data is lost on sudden process kill).  This field
    * no longer controls write frequency for the primary persist flow.
    *
