@@ -55,7 +55,13 @@ const startHeap = process.memoryUsage?.().heapUsed ?? 0;
 
 const manager = new IntentManager({
   storageKey: 'perf-benchmark',
-  persistDebounceMs: 60_000,
+  // Use persistThrottleMs (not persistDebounceMs) to suppress serialization
+  // overhead during the benchmark.  persistDebounceMs is only consumed by the
+  // async retry path (AsyncPersistStrategy) and has no effect on the
+  // SyncPersistStrategy that runs in this Node.js test harness.
+  // A 60-second throttle window means the graph is serialized at most once
+  // across the entire 100 k-call run, keeping per-track timing clean.
+  persistThrottleMs: 60_000,
   benchmark: { enabled: true, maxSamples: TRACK_CALLS },
 });
 for (let i = 0; i < TRACK_CALLS; i += 1) {

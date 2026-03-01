@@ -1,9 +1,9 @@
 {
   "sdkVersion": "0.0.0",
   "nodeVersion": "v24.1.0",
-  "avgTrackMs": 0.028700031999999837,
-  "p95TrackMs": 0.04379999999991924,
-  "p99TrackMs": 0.07079999999996289,
-  "memoryUsageEstimate": 26139312,
+  "avgTrackMs": 0.0035803280000000354,
+  "p95TrackMs": 0.005700000000047112,
+  "p99TrackMs": 0.00830000000007658,
+  "memoryUsageEstimate": 21076624,
   "serializedGraphSizeBytes": 1409
 }

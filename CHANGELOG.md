@@ -16,6 +16,45 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 _Branch: `codex/convert-to-npm-workspaces-monorepo` — included in v1.0.0 initial release to enable future ecosystem extensions without breaking changes_
 
+### Engine Modularisation (PRs #55 – #57)
+
+The internal engine has been substantially refactored for separation of concerns.
+**All public APIs and event semantics remain unchanged** — these are internal structural improvements only.
+
+#### `SignalEngine` — Pure Evaluation Kernel
+
+- **`SignalEngine` class extracted** — contains three pure evaluator methods that return typed decision objects with zero side-effects:
+  - `evaluateEntropy(state)` → `EntropyDecision | null`
+  - `evaluateTrajectory(from, to, trajectory)` → `TrajectoryDecision | null`
+  - `evaluateDwellTime(state, dwellMs)` → `DwellDecision | null`
+- The `AnomalyDecision` discriminated union is the typed contract between evaluators and the dispatcher; compile-time exhaustiveness is enforced via `assertNever`.
+- `SignalEngine` owns `EntropyGuard` (bot detection) and per-state Welford dwell accumulators. `AnomalyDispatcher` is composed internally.
+
+#### `AnomalyDispatcher` — Centralized Side-Effect Point
+
+- **`AnomalyDispatcher` class** consolidates all anomaly emission logic previously scattered across `IntentManager`:
+  - **Cooldown gating** — per-event-name `lastEmittedAt` map; one gate applied once per `dispatch()` call
+  - **Holdout suppression** — control-group check applied in one place; counters still increment for A/B parity
+  - **Telemetry counting** — `anomaliesFired` incremented after each non-cooldown-blocked decision
+  - **Drift accounting** — `driftPolicy.recordAnomaly()` called for every `TrajectoryDecision` _before_ the cooldown check, preserving the original semantics
+  - **Hesitation correlation** — trajectory + dwell-time timestamp bookkeeping and `hesitation_detected` emission
+
+#### `EnginePolicy` Plugin Interface
+
+- **`EnginePolicy` interface** replaces scattered boolean feature-flags and inline conditionals with self-contained pluggable modules invoked in deterministic order during the `track()` pipeline:
+  `onTrackStart → onTrackContext → onTransition → onAfterEvaluation → onCounterIncrement → destroy`
+- **`DwellTimePolicy`** — owns dwell-time measurement and passes `DwellDecision` to the signal kernel via `onTrackContext()`.
+- **`BigramPolicy`** — owns second-order Markov recording via `onTransition()`; frequency-gated.
+- **`DriftProtectionPolicy`** — owns the rolling-window anomaly-rate killswitch; referenced by `AnomalyDispatcher` for per-decision drift accounting.
+- **`CrossTabSyncPolicy`** — owns `BroadcastChannel` propagation logic via `onTransition()` and `onCounterIncrement()`.
+
+#### `LifecycleCoordinator` and `PersistenceCoordinator`
+
+- **`LifecycleCoordinator`** extracts all page-visibility logic from `IntentManager`: tab-hide/show timestamp tracking, `previousStateEnteredAt` adjustment, `session_stale` emission, and unconditional adapter ownership/teardown semantics.
+- **`PersistenceCoordinator`** extracts all storage logic: `restore()` on startup, throttle gate, dirty-flag short-circuit, sync vs. async strategy selection (`SyncPersistStrategy` / `AsyncPersistStrategy`), and write-failure retry.
+
+---
+
 ### Repository Structure
 
 - **npm workspaces monorepo** — repository restructured from a single-package layout to a proper npm workspaces monorepo. `@passiveintent/core` is the first published package; `@passiveintent/adaptive-ui` and `@passiveintent/security` are reserved as future workspace package names for upcoming releases.

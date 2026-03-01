@@ -1,4 +1,4 @@
-<!--
+﻿<!--
   Copyright (c) 2026 Purushottam <purushpsm147@yahoo.co.in>
 
   This source code is licensed under the AGPL-3.0-only license found in the
@@ -1249,67 +1249,91 @@ flowchart LR
 
     subgraph SDK["PassiveIntent SDK"]
         direction TB
-        IM["IntentManager\n(Orchestrator)"]
+        IM["IntentManager\n(Public Orchestrator)\nstaged track() pipeline"]
 
-        subgraph CORE["Core Subsystems"]
+        subgraph COORDS["Coordinators"]
             direction LR
-            BF["BloomFilter\nFNV-1a double hashing\nUint8Array bitset\nO(k) add / check"]
-            MG["MarkovGraph\nSparse transition Map\nLFU pruning\nBinary serialization"]
-            EG["EntropyGuard\nCircular timestamp buffer\nWelford variance\nBot score gate"]
+            PC["PersistenceCoordinator\nthrottle · dirty-flag\nsync/async strategies"]
+            LC["LifecycleCoordinator\ntab-visibility · session_stale\nLifecycleAdapter"]
         end
 
-        subgraph INFRA["Infrastructure"]
-            direction LR
-            EE["EventEmitter\ntyped, zero-dep"]
-            BR["BenchmarkRecorder\nper-op p95/p99"]
-            PL["Persistence Layer\ndebounced + dirty-flag"]
+        subgraph ENGINE["Signal Kernel"]
+            direction TB
+            SE["SignalEngine\npure evaluators\nentropy · trajectory · dwell"]
+            AD["AnomalyDispatcher\ncooldown · holdout\ntelemetry · hesitation"]
+            EG["EntropyGuard\nbot detection"]
+            SE --> AD
+            SE --> EG
         end
 
-        IM --> BF
-        IM --> MG
-        IM --> EG
-        IM --> EE
-        IM --> BR
-        IM --> PL
+        subgraph POLICIES["EnginePolicy Plugins"]
+            direction LR
+            DTP["DwellTimePolicy\nWelford z-score"]
+            BP["BigramPolicy\n2nd-order Markov"]
+            DFP["DriftProtectionPolicy\nrolling-window killswitch"]
+            CTP["CrossTabSyncPolicy\nBroadcastChannel"]
+        end
+
+        subgraph DATA["Data Structures"]
+            direction LR
+            BF["BloomFilter\nFNV-1a · Uint8Array"]
+            MG["MarkovGraph\nSparse Map · LFU pruning"]
+        end
+
+        IM --> COORDS
+        IM --> ENGINE
+        IM --> POLICIES
+        IM --> DATA
     end
 
     subgraph EVENTS["Emitted Events"]
         direction TB
         E1["high_entropy"]
         E2["trajectory_anomaly"]
-        E3["state_change"]
+        E3["dwell_time_anomaly"]
+        E4["hesitation_detected"]
+        E5["bot_detected · state_change\nsession_stale · conversion"]
     end
 
     subgraph STORE["Browser Storage"]
-        LS["localStorage\nvia StorageAdapter"]
+        LS["localStorage / AsyncStorage\nvia StorageAdapter"]
     end
 
     APP -- "track(state)" --> IM
-    EE --> E1
-    EE --> E2
-    EE --> E3
-    PL -- "bloomBase64 + graphBinary" --> LS
+    AD -- "emits" --> E1
+    AD -- "emits" --> E2
+    AD -- "emits" --> E3
+    AD -- "emits" --> E4
+    IM -- "emits" --> E5
+    PC -- "bloomBase64 + graphBinary" --> LS
 
     style HOST fill:#1d3557,color:#fff,stroke:#457b9d
     style SDK fill:#2d6a4f,color:#fff,stroke:#52b788
-    style CORE fill:#1b4332,color:#fff,stroke:#52b788
-    style INFRA fill:#1b4332,color:#fff,stroke:#52b788
+    style COORDS fill:#1b4332,color:#fff,stroke:#52b788
+    style ENGINE fill:#1b4332,color:#fff,stroke:#52b788
+    style POLICIES fill:#1b4332,color:#fff,stroke:#52b788
+    style DATA fill:#1b4332,color:#fff,stroke:#52b788
     style EVENTS fill:#774936,color:#fff,stroke:#bc6c25
     style STORE fill:#3d405b,color:#fff,stroke:#81b29a
 ```
 
-| Component                         | Role                                                                                                                                                  | Key constraint                                                                                                                                                                                                        |
-| --------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| **IntentManager**                 | Single public orchestrator — routes every `track()` call through all subsystems                                                                       | `readonly` fields prevent accidental mutation; never throws                                                                                                                                                           |
-| **BloomFilter**                   | Probabilistic set membership for `hasSeen()`                                                                                                          | Fixed-size `Uint8Array`; O(k) per operation regardless of state count                                                                                                                                                 |
-| **MarkovGraph**                   | Sparse first-order Markov chain; learns transition counts in real time                                                                                | State labels interned to `uint16` indices; max 65 535 states                                                                                                                                                          |
-| **EntropyGuard**                  | Bot / automation detector based on inter-call timing                                                                                                  | Fixed-size circular buffer; zero heap allocations in hot path                                                                                                                                                         |
-| **DwellTimeDetector**             | Per-state dwell-time anomaly detection via Welford's online algorithm                                                                                 | O(1) per call; Map of `[count, mean, m2]` tuples                                                                                                                                                                      |
-| **Bigram Recorder**               | Selective second-order Markov transitions (`A→B` → `B→C`)                                                                                             | Frequency-gated; shares graph with LFU pruning under `maxStates`                                                                                                                                                      |
-| **EventEmitter**                  | Typed mini event bus: `high_entropy`, `trajectory_anomaly`, `dwell_time_anomaly`, `state_change`, `bot_detected`, `hesitation_detected`, `conversion` | ~20 lines; no `EventTarget` dependency for SSR safety; per-channel cooldown applies to anomaly events only (`high_entropy`, `trajectory_anomaly`, `dwell_time_anomaly`); `state_change` is always emitted immediately |
-| **BenchmarkRecorder**             | Optional per-operation p95/p99 latency sampler                                                                                                        | Disabled by default; ring-buffer avoids unbounded growth                                                                                                                                                              |
-| **Persistence Layer**             | Debounced, dirty-flag-gated `localStorage` write                                                                                                      | Writes only on actual state change; binary format, not JSON                                                                                                                                                           |
-| **StorageAdapter / TimerAdapter** | Isomorphic interfaces wrapping `localStorage` and `setTimeout`                                                                                        | Swap for `MemoryStorageAdapter` in SSR / tests                                                                                                                                                                        |
+| Component                                            | Role                                                                                                                                                                                            | Key constraint                                                                                                                                           |
+| ---------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **IntentManager**                                    | Single public orchestrator — assembles coordinators, policies, and signal kernel; routes every `track()` call through a deterministic staged pipeline                                           | `readonly` fields; never throws to the host; delegates all feature logic to policies and coordinators                                                    |
+| **BloomFilter**                                      | Probabilistic set membership for `hasSeen()`                                                                                                                                                    | Fixed-size `Uint8Array`; O(k) per operation regardless of state count                                                                                    |
+| **MarkovGraph**                                      | Sparse first-order Markov chain; learns transition counts in real time                                                                                                                          | State labels interned to `uint16` indices; max 65 535 states                                                                                             |
+| **SignalEngine**                                     | Pure evaluation kernel — `evaluateEntropy()`, `evaluateTrajectory()`, `evaluateDwellTime()` return typed `AnomalyDecision` objects; no emitter calls or shared-state mutations in these methods | Owns `EntropyGuard`; all side-effects applied by `AnomalyDispatcher.dispatch()`                                                                          |
+| **AnomalyDispatcher**                                | Single side-effect point for all anomaly events — applies cooldown gate, holdout suppression, telemetry counting, drift accounting, and hesitation correlation                                  | All decision side-effects here and only here; `assertNever` enforces exhaustive handling of new decision kinds at compile time                           |
+| **EntropyGuard**                                     | Bot / automation detector based on inter-call timing                                                                                                                                            | Fixed-size circular buffer; zero heap allocations in hot path                                                                                            |
+| **PersistenceCoordinator**                           | Owns all write/read/retry orchestration — throttle gate, dirty-flag short-circuit, sync vs. async strategy selection, and write-failure retry                                                   | Fires typed `PassiveIntentError` codes (`RESTORE_PARSE`, `STORAGE_WRITE`, `QUOTA_EXCEEDED`) via `onError`                                                |
+| **LifecycleCoordinator**                             | Owns pause/resume handling — adjusts `previousStateEnteredAt` on tab hide/show; emits `session_stale` when hidden duration exceeds `MAX_PLAUSIBLE_DWELL_MS`                                     | SSR-safe; accepts `null` adapter to disable entirely; conditionally owns or borrows the `LifecycleAdapter` based on whether one was injected via config  |
+| **DwellTimePolicy** (`EnginePolicy`)                 | Measures dwell time in `onTrackContext()` and passes a `DwellDecision` to `SignalEngine.dispatch()`                                                                                             | Session-scoped Welford accumulators; intentionally not persisted to avoid cross-session timing fingerprints                                              |
+| **BigramPolicy** (`EnginePolicy`)                    | Records second-order (`A→B→C`) Markov transitions in `onTransition()`                                                                                                                           | Frequency-gated via `bigramFrequencyThreshold`; shares graph and LFU pruning budget with unigrams                                                        |
+| **DriftProtectionPolicy** (`EnginePolicy`)           | Maintains rolling-window `trajectory_anomaly` / `track()` ratio; sets `isDrifted` when `maxAnomalyRate` is exceeded                                                                             | `recordAnomaly()` called by `AnomalyDispatcher` _before_ the cooldown check so all raw signals — even rate-limited ones — count against the drift window |
+| **CrossTabSyncPolicy** (`EnginePolicy`)              | Propagates transitions and counter increments across tabs via `BroadcastChannel`                                                                                                                | Validates payload version byte and length before deserializing; attacker-controlled XSS in one tab cannot inflate the graph in sibling tabs              |
+| **EventEmitter**                                     | Typed mini event bus                                                                                                                                                                            | ~20 lines; no `EventTarget` dependency for SSR safety                                                                                                    |
+| **BenchmarkRecorder**                                | Optional per-operation p95/p99 latency sampler                                                                                                                                                  | Disabled by default; ring-buffer avoids unbounded growth                                                                                                 |
+| **StorageAdapter / TimerAdapter / LifecycleAdapter** | Isomorphic interfaces for storage, timers, and page-visibility                                                                                                                                  | Swap all three for test doubles without mocking any browser global                                                                                       |
 
 ---
 
@@ -1677,27 +1701,28 @@ const intent = new IntentManager({
 
 `IntentManager` is the single orchestration class consumers interact with.
 
-| Concern                | Implementation                                                                                                                                                                                      |
-| ---------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------- |
-| State machine          | `previousState: string \| null` field; `recentTrajectory: string[]` sliding window                                                                                                                  |
-| Bloom                  | `BloomFilter` instance, hydrated from `localStorage` on construction                                                                                                                                |
-| Graph                  | `MarkovGraph` instance, hydrated from binary `localStorage` blob on construction                                                                                                                    |
-| Baseline               | Second `MarkovGraph` deserialized from `config.baseline` JSON at construction                                                                                                                       |
-| Events                 | Internal `EventEmitter<IntentEventMap>` — 20 lines, zero external deps                                                                                                                              |
-| Persistence            | Debounced write (2 s default), dirty-flag guards every write                                                                                                                                        |
-| Bot detection          | `EntropyGuard` circular buffer, synchronized to `timer.now()`                                                                                                                                       |
-| Dwell-time             | Welford’s online accumulator per state; z-score anomaly detection                                                                                                                                   |
-| Tab-visibility         | `visibilitychange` listener offsets `previousStateEnteredAt` by hidden duration; SSR-safe                                                                                                           |
-| Drift killswitch       | Rolling-window `trajectory_anomaly`/`track()` ratio; sets `isBaselineDrifted` flag when threshold exceeded                                                                                          |
-| Route normalization    | `normalizeRouteState()` called at the top of every `track()` call                                                                                                                                   |
-| Bigrams                | Selective second-order Markov transitions, frequency-gated                                                                                                                                          |
-| Event cooldown         | Per-channel cooldown gating via `eventCooldownMs`                                                                                                                                                   |
-| Deterministic counters | `incrementCounter` / `getCounter` / `resetCounter` — exact integer map, session-scoped                                                                                                              |
-| A/B holdout            | `assignmentGroup: 'treatment'                                                                                                                                                                       | 'control'` set at construction; control group skips event emissions |
-| Benchmarking           | `BenchmarkRecorder` with per-operation ring-buffer sample accumulators                                                                                                                              |
-| Error handling         | All `try/catch` blocks route to `onError?: (error: PassiveIntentError) => void`; never throws. Codes: `STORAGE_READ`, `STORAGE_WRITE`, `QUOTA_EXCEEDED`, `RESTORE_PARSE`, `SERIALIZE`, `VALIDATION` |
-| Telemetry              | `getTelemetry()` returns `PassiveIntentTelemetry` — aggregate counters only, no raw states or PII                                                                                                   |
-| Conversion tracking    | `trackConversion(payload)` emits a `conversion` event through the local event bus; nothing leaves the device                                                                                        |
+| Concern                | Implementation                                                                                                                                                                                                               |
+| ---------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| State machine          | `previousState: string \| null` field; `recentTrajectory: string[]` sliding window                                                                                                                                           |
+| Bloom                  | `BloomFilter` instance, hydrated from storage on construction                                                                                                                                                                |
+| Graph                  | `MarkovGraph` instance, hydrated from binary storage blob on construction                                                                                                                                                    |
+| Baseline               | Second `MarkovGraph` deserialized from `config.baseline` JSON at construction                                                                                                                                                |
+| Events                 | Internal `EventEmitter<IntentEventMap>` — 20 lines, zero external deps                                                                                                                                                       |
+| Persistence            | **Delegated to `PersistenceCoordinator`** — throttle gate, dirty-flag short-circuit, sync/async strategy selection (`SyncPersistStrategy` / `AsyncPersistStrategy`), and write-failure retry                                 |
+| Bot detection          | **Delegated to `SignalEngine.recordBotCheck()`** via `EntropyGuard` circular buffer, synchronized to `timer.now()`                                                                                                           |
+| Signal evaluation      | **Delegated to `SignalEngine`** — pure evaluators (`evaluateEntropy`, `evaluateTrajectory`, `evaluateDwellTime`) return typed `AnomalyDecision` objects; all emission side-effects applied by `AnomalyDispatcher.dispatch()` |
+| Dwell-time             | **Delegated to `DwellTimePolicy.onTrackContext()`** — measures dwell via Welford's online algorithm; passes `DwellDecision` to the signal kernel                                                                             |
+| Tab-visibility         | **Delegated to `LifecycleCoordinator`** — adjusts/resets `previousStateEnteredAt` via `onAdjustBaseline` / `onResetBaseline` callbacks; emits `session_stale` on OS-sleep detection; SSR-safe                                |
+| Drift killswitch       | **Delegated to `DriftProtectionPolicy`** — owns rolling anomaly-rate window; `AnomalyDispatcher` calls `driftPolicy.recordAnomaly()` for every `TrajectoryDecision` _before_ the cooldown check                              |
+| Route normalization    | `normalizeRouteState()` called at the top of every `track()` call                                                                                                                                                            |
+| Bigrams                | **Delegated to `BigramPolicy.onTransition()`** — frequency-gated second-order Markov transitions                                                                                                                             |
+| Event cooldown         | **Delegated to `AnomalyDispatcher`** — per-event-name `lastEmittedAt` map; checked once per decision in `dispatch()`                                                                                                         |
+| Deterministic counters | `incrementCounter` / `getCounter` / `resetCounter` — exact integer map, session-scoped                                                                                                                                       |
+| A/B holdout            | `assignmentGroup: 'treatment' \| 'control'` set at construction; holdout suppression applied by `AnomalyDispatcher` (control group: counters increment, emitter never called)                                                |
+| Benchmarking           | `BenchmarkRecorder` with per-operation ring-buffer sample accumulators                                                                                                                                                       |
+| Error handling         | All `try/catch` blocks route to `onError?: (error: PassiveIntentError) => void`; never throws. Codes: `STORAGE_READ`, `STORAGE_WRITE`, `QUOTA_EXCEEDED`, `RESTORE_PARSE`, `SERIALIZE`, `VALIDATION`                          |
+| Telemetry              | `getTelemetry()` returns `PassiveIntentTelemetry` — aggregate counters only, no raw states or PII                                                                                                                            |
+| Conversion tracking    | `trackConversion(payload)` emits a `conversion` event through the local event bus; nothing leaves the device                                                                                                                 |
 
 **Session reset:**
 
