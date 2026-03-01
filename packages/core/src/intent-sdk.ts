@@ -30,6 +30,8 @@ export { MarkovGraph } from './core/markov.js';
 export { IntentManager } from './engine/intent-manager.js';
 export { BroadcastSync, MAX_STATE_LENGTH } from './sync/broadcast-sync.js';
 export { normalizeRouteState } from './utils/route-normalizer.js';
+export { MAX_PLAUSIBLE_DWELL_MS } from './engine/constants.js';
+export { BrowserLifecycleAdapter } from './adapters.js';
 
 export type {
   IntentEventName,
@@ -40,6 +42,7 @@ export type {
   StateChangePayload,
   BotDetectedPayload,
   HesitationDetectedPayload,
+  SessionStalePayload,
   ConversionPayload,
   PassiveIntentTelemetry,
   BloomFilterConfig,
@@ -58,4 +61,4 @@ export type {
   PerformanceReport,
 } from './performance-instrumentation.js';
 
-export type { StorageAdapter, AsyncStorageAdapter } from './adapters.js';
+export type { StorageAdapter, AsyncStorageAdapter, LifecycleAdapter } from './adapters.js';

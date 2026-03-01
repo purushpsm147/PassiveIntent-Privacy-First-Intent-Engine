@@ -14,6 +14,7 @@ import {
   MarkovGraph,
   computeBloomConfig,
 } from '../dist/src/intent-sdk.js';
+import { BrowserLifecycleAdapter } from '../dist/src/adapters.js';
 import {
   BenchmarkSimulationEngine,
   evaluatePredictionMatrix,
@@ -3443,6 +3444,282 @@ test('IntentManager async persist: isDirty restored on error, onError is called'
 
   manager.destroy();
 });
+
+test('async setItem failure always schedules a retry even without hasPendingAsyncPersist', async () => {
+  // Regression guard for the doc/impl drift: a failed async write must
+  // schedule one retry via schedulePersist() unconditionally, not only when
+  // another persist() call was queued during the in-flight write.
+  let failOnce = true;
+  const writes = [];
+  const asyncStorage = {
+    getItem: async () => null,
+    setItem: async (_key, value) => {
+      if (failOnce) {
+        failOnce = false;
+        throw new Error('transient failure');
+      }
+      writes.push(value);
+    },
+  };
+
+  const fakeTimers = [];
+  const fakeTimer = {
+    now: () => 0,
+    setTimeout: (cb, _ms) => {
+      const id = { id: fakeTimers.length };
+      fakeTimers.push({ cb, id, fired: false });
+      return id;
+    },
+    clearTimeout: (handle) => {
+      const entry = fakeTimers.find((t) => t.id === handle);
+      if (entry) entry.fired = true; // mark cancelled
+    },
+  };
+
+  const manager = await IntentManager.createAsync({
+    storageKey: 'async-retry-unconditional',
+    asyncStorage,
+    botProtection: false,
+    persistDebounceMs: 10,
+    timer: fakeTimer,
+  });
+
+  manager.track('/home');
+  manager.track('/product');
+
+  // Wait for the first (failing) write to resolve
+  await new Promise((r) => setTimeout(r, 20));
+
+  // The retry timer must have been scheduled — one pending timer entry
+  const uncancelled = fakeTimers.filter((t) => !t.fired);
+  assert.equal(uncancelled.length, 1, 'exactly one retry timer must be scheduled after a failure');
+
+  // Fire the timer manually → should trigger persist() → successful write
+  uncancelled[0].cb();
+  await new Promise((r) => setTimeout(r, 20));
+
+  assert.equal(writes.length, 1, 'retry must produce one successful write');
+  manager.destroy();
+});
+
+test('consecutive async setItem failures do not schedule infinite retries', async () => {
+  // The second consecutive failure must NOT schedule another schedulePersist()
+  // (asyncWriteFailCount > 1 guard).  Without this guard, a persistently broken
+  // storage backend would produce an infinite retry loop.
+  let timerScheduleCount = 0;
+  const fakeTimers = [];
+  const fakeTimer = {
+    now: () => 0,
+    setTimeout: (cb, _ms) => {
+      timerScheduleCount += 1;
+      const id = { id: timerScheduleCount };
+      fakeTimers.push({ cb, id });
+      return id;
+    },
+    clearTimeout: () => {},
+  };
+
+  const asyncStorage = {
+    getItem: async () => null,
+    setItem: async () => {
+      throw new Error('persistent failure');
+    },
+  };
+
+  const manager = await IntentManager.createAsync({
+    storageKey: 'async-retry-no-loop',
+    asyncStorage,
+    botProtection: false,
+    persistDebounceMs: 10,
+    timer: fakeTimer,
+  });
+
+  manager.track('/home');
+  manager.track('/product');
+
+  // Wait for first write attempt to fail
+  await new Promise((r) => setTimeout(r, 20));
+
+  const afterFirstFail = timerScheduleCount;
+  assert.ok(afterFirstFail >= 1, 'at least one retry must be scheduled after first failure');
+
+  // Fire all pending timers to trigger the retry attempt (which also fails)
+  const pending = [...fakeTimers];
+  for (const t of pending) t.cb();
+  await new Promise((r) => setTimeout(r, 20));
+
+  // No additional timer must have been scheduled after the second failure
+  assert.equal(
+    timerScheduleCount,
+    afterFirstFail,
+    'second consecutive async failure must NOT schedule another retry timer',
+  );
+
+  manager.destroy();
+});
+
+// ─── persistThrottleMs — sync persist throttle ──────────────────────────────────
+
+test('persistThrottleMs: second write within window is skipped and trailing timer scheduled', () => {
+  let now = 0;
+  const writes = [];
+  const fakeTimers = [];
+  let timerSeq = 0;
+  const fakeTimer = {
+    now: () => now,
+    setTimeout: (cb, ms) => {
+      const id = { id: ++timerSeq };
+      fakeTimers.push({ cb, id, ms, cancelled: false });
+      return id;
+    },
+    clearTimeout: (handle) => {
+      const t = fakeTimers.find((e) => e.id === handle);
+      if (t) t.cancelled = true;
+    },
+  };
+  const storage = {
+    getItem: () => null,
+    setItem: (_key, value) => writes.push(value),
+  };
+
+  const manager = new IntentManager({
+    storageKey: 'throttle-skip-test',
+    storage,
+    botProtection: false,
+    persistThrottleMs: 100,
+    timer: fakeTimer,
+  });
+
+  // First track: lastPersistedAt = -Infinity, elapsed = Infinity >= 100 -> immediate write
+  now = 0;
+  manager.track('/home');
+  assert.equal(writes.length, 1, 'first write must execute immediately (leading edge)');
+  assert.equal(
+    fakeTimers.filter((t) => !t.cancelled).length,
+    0,
+    'no trailing timer after first write',
+  );
+
+  // Second track: elapsed = 50 < 100 -> skip write, schedule trailing timer
+  now = 50;
+  manager.track('/products');
+  assert.equal(writes.length, 1, 'second write within window must be skipped');
+  assert.equal(
+    fakeTimers.filter((t) => !t.cancelled).length,
+    1,
+    'trailing timer must be scheduled after skipped write',
+  );
+
+  // Third track within same window: timer already pending -> no duplicate timer
+  now = 70;
+  manager.track('/checkout');
+  assert.equal(writes.length, 1, 'third write within window must also be skipped');
+  assert.equal(
+    fakeTimers.filter((t) => !t.cancelled).length,
+    1,
+    'no duplicate trailing timer must be scheduled',
+  );
+
+  manager.destroy();
+});
+
+test('persistThrottleMs: trailing timer fires and produces a write', () => {
+  let now = 0;
+  const writes = [];
+  const fakeTimers = [];
+  let timerSeq = 0;
+  const fakeTimer = {
+    now: () => now,
+    setTimeout: (cb, _ms) => {
+      const id = { id: ++timerSeq };
+      fakeTimers.push({ cb, id, cancelled: false });
+      return id;
+    },
+    clearTimeout: (handle) => {
+      const t = fakeTimers.find((e) => e.id === handle);
+      if (t) t.cancelled = true;
+    },
+  };
+  const storage = {
+    getItem: () => null,
+    setItem: (_key, value) => writes.push(value),
+  };
+
+  const manager = new IntentManager({
+    storageKey: 'throttle-trailing-test',
+    storage,
+    botProtection: false,
+    persistThrottleMs: 100,
+    timer: fakeTimer,
+  });
+
+  // Leading-edge write
+  now = 0;
+  manager.track('/home');
+  assert.equal(writes.length, 1, 'leading-edge write must fire immediately');
+
+  // Skipped write — schedules trailing timer
+  now = 50;
+  manager.track('/products');
+  assert.equal(writes.length, 1, 'write must be throttled within window');
+  const pending = fakeTimers.filter((t) => !t.cancelled);
+  assert.equal(pending.length, 1, 'trailing timer must be scheduled');
+
+  // Advance time past throttle window and fire the trailing timer
+  now = 150;
+  pending[0].cb();
+  assert.equal(writes.length, 2, 'trailing timer must produce a second write');
+
+  manager.destroy();
+});
+
+test('persistThrottleMs: flushNow() bypasses throttle and writes immediately', () => {
+  let now = 0;
+  const writes = [];
+  const fakeTimers = [];
+  let timerSeq = 0;
+  const fakeTimer = {
+    now: () => now,
+    setTimeout: (cb, _ms) => {
+      const id = { id: ++timerSeq };
+      fakeTimers.push({ cb, id, cancelled: false });
+      return id;
+    },
+    clearTimeout: (handle) => {
+      const t = fakeTimers.find((e) => e.id === handle);
+      if (t) t.cancelled = true;
+    },
+  };
+  const storage = {
+    getItem: () => null,
+    setItem: (_key, value) => writes.push(value),
+  };
+
+  const manager = new IntentManager({
+    storageKey: 'throttle-flushnow-test',
+    storage,
+    botProtection: false,
+    persistThrottleMs: 100,
+    timer: fakeTimer,
+  });
+
+  // Leading-edge write
+  now = 0;
+  manager.track('/home');
+  assert.equal(writes.length, 1, 'leading-edge write must fire immediately');
+
+  // Second track within window — would normally be throttled
+  now = 50;
+  manager.track('/products');
+  assert.equal(writes.length, 1, 'write should be throttled within window');
+
+  // flushNow() must bypass throttle and write the pending dirty state
+  manager.flushNow();
+  assert.equal(writes.length, 2, 'flushNow() must write even within the throttle window');
+
+  manager.destroy();
+});
+
 // ─── onError — PassiveIntentError structured contract ───────────────────────────
 
 test('onError: sync persist emits QUOTA_EXCEEDED code on QuotaExceededError', () => {
@@ -3463,10 +3740,8 @@ test('onError: sync persist emits QUOTA_EXCEEDED code on QuotaExceededError', ()
     onError: (err) => errors.push(err),
   });
 
-  assert.doesNotThrow(() => {
-    manager.track('/home');
-    manager.flushNow();
-  });
+  // With aggressive sync persist, track() persists immediately — flushNow() is not needed.
+  assert.doesNotThrow(() => manager.track('/home'));
 
   assert.equal(errors.length, 1, 'onError must be called once');
   assert.equal(
@@ -3499,10 +3774,8 @@ test('onError: sync persist emits STORAGE_WRITE for generic write errors', () =>
     onError: (err) => errors.push(err),
   });
 
-  assert.doesNotThrow(() => {
-    manager.track('/home');
-    manager.flushNow();
-  });
+  // With aggressive sync persist, track() persists immediately — flushNow() is not needed.
+  assert.doesNotThrow(() => manager.track('/home'));
 
   assert.equal(errors.length, 1);
   assert.equal(
@@ -3651,11 +3924,12 @@ test('onError: SERIALIZE fires when toBinary() throws during persist', () => {
   };
 
   try {
-    assert.doesNotThrow(() => {
-      manager.track('/home');
-      manager.track('/products');
-      manager.flushNow();
-    }, 'SERIALIZE errors must never escape to the host');
+    // With sync persist, each track() triggers one persist(). Use a single track
+    // so exactly one SERIALIZE error is emitted.
+    assert.doesNotThrow(
+      () => manager.track('/home'),
+      'SERIALIZE errors must never escape to the host',
+    );
 
     assert.equal(errors.length, 1, 'onError must be called exactly once');
     assert.equal(errors[0].code, 'SERIALIZE', `Expected 'SERIALIZE', got: '${errors[0].code}'`);
@@ -3697,10 +3971,8 @@ test('onError: SERIALIZE fires when uint8ToBase64 throws during persist', () => 
   };
 
   try {
-    assert.doesNotThrow(() => {
-      manager.track('/about');
-      manager.flushNow();
-    });
+    // With sync persist, track() immediately triggers persist — no flushNow needed.
+    assert.doesNotThrow(() => manager.track('/about'));
 
     assert.equal(errors.length, 1);
     assert.equal(errors[0].code, 'SERIALIZE');
@@ -3727,25 +3999,868 @@ test('onError: SERIALIZE — isDirty remains true so next cycle retries', () => 
     onError: (err) => errors.push(err),
   });
 
-  manager.track('/home');
-
+  // Apply the monkeypatch BEFORE calling track() so the sync persist inside
+  // track() hits the broken toBinary, captures the SERIALIZE error, and leaves
+  // isDirty=true (persist never reached its isDirty=false assignment).
   const original = MarkovGraph.prototype.toBinary;
   MarkovGraph.prototype.toBinary = () => {
     throw new Error('transient failure');
   };
 
   try {
-    manager.flushNow(); // serialize fails, isDirty stays true
+    manager.track('/home'); // sync persist fires → serialize fails → isDirty stays true
     assert.equal(errors.length, 1, 'one SERIALIZE error expected');
     assert.equal(errors[0].code, 'SERIALIZE');
     assert.equal(setItemCalls, 0, 'storage must NOT be written when serialize fails');
   } finally {
+    // Always restore the prototype so subsequent tests are unaffected.
     MarkovGraph.prototype.toBinary = original;
   }
 
-  // After restoring toBinary, flushing again should succeed
+  // After restoring toBinary, flushing again should succeed (isDirty is still true).
   manager.flushNow();
   assert.equal(setItemCalls, 1, 'successful persist should write to storage after retry');
+
+  manager.destroy();
+});
+
+// ============================================================
+// LifecycleAdapter — BrowserLifecycleAdapter
+// ============================================================
+
+test('BrowserLifecycleAdapter: pause and resume callbacks are dispatched', () => {
+  let listener = null;
+  let mockHidden = false;
+  const originalDocument = globalThis.document;
+  globalThis.document = {
+    get hidden() {
+      return mockHidden;
+    },
+    addEventListener(_type, fn) {
+      listener = fn;
+    },
+    removeEventListener() {},
+  };
+
+  try {
+    const adapter = new BrowserLifecycleAdapter();
+    const pauses = [];
+    const resumes = [];
+    adapter.onPause(() => pauses.push(1));
+    adapter.onResume(() => resumes.push(1));
+
+    mockHidden = true;
+    listener?.();
+    assert.equal(pauses.length, 1, 'onPause callback must fire when hidden becomes true');
+    assert.equal(resumes.length, 0, 'onResume must not fire on hidden');
+
+    mockHidden = false;
+    listener?.();
+    assert.equal(pauses.length, 1, 'onPause must not fire again on visible');
+    assert.equal(resumes.length, 1, 'onResume callback must fire when hidden becomes false');
+  } finally {
+    globalThis.document = originalDocument;
+  }
+});
+
+test('BrowserLifecycleAdapter: multiple callbacks are all dispatched', () => {
+  let listener = null;
+  let mockHidden = false;
+  const originalDocument = globalThis.document;
+  globalThis.document = {
+    get hidden() {
+      return mockHidden;
+    },
+    addEventListener(_type, fn) {
+      listener = fn;
+    },
+    removeEventListener() {},
+  };
+
+  try {
+    const adapter = new BrowserLifecycleAdapter();
+    const log = [];
+    adapter.onPause(() => log.push('pause-1'));
+    adapter.onPause(() => log.push('pause-2'));
+    adapter.onResume(() => log.push('resume-1'));
+    adapter.onResume(() => log.push('resume-2'));
+
+    mockHidden = true;
+    listener?.();
+    assert.deepEqual(log, ['pause-1', 'pause-2']);
+
+    mockHidden = false;
+    listener?.();
+    assert.deepEqual(log, ['pause-1', 'pause-2', 'resume-1', 'resume-2']);
+  } finally {
+    globalThis.document = originalDocument;
+  }
+});
+
+test('BrowserLifecycleAdapter.destroy() removes the listener and clears all callbacks', () => {
+  let listener = null;
+  let removedCount = 0;
+  let mockHidden = false;
+  const originalDocument = globalThis.document;
+  globalThis.document = {
+    get hidden() {
+      return mockHidden;
+    },
+    addEventListener(_type, fn) {
+      listener = fn;
+    },
+    removeEventListener() {
+      removedCount++;
+    },
+  };
+
+  try {
+    const adapter = new BrowserLifecycleAdapter();
+    const pauses = [];
+    adapter.onPause(() => pauses.push(1));
+
+    adapter.destroy();
+    assert.equal(removedCount, 1, 'removeEventListener should have been called once');
+
+    // Callbacks should be cleared — firing the handler must be a no-op
+    mockHidden = true;
+    listener?.();
+    assert.equal(pauses.length, 0, 'No callbacks should fire after destroy()');
+  } finally {
+    globalThis.document = originalDocument;
+  }
+});
+
+test('BrowserLifecycleAdapter: no-op in non-browser environment (no document)', () => {
+  const originalDocument = globalThis.document;
+  delete globalThis.document;
+
+  try {
+    // Must not throw
+    assert.doesNotThrow(() => {
+      const adapter = new BrowserLifecycleAdapter();
+      adapter.onPause(() => {});
+      adapter.onResume(() => {});
+      adapter.destroy(); // also must not throw
+    });
+  } finally {
+    globalThis.document = originalDocument;
+  }
+});
+
+// ============================================================
+// LifecycleAdapter wired into IntentManager
+// ============================================================
+
+test('IntentManager: injected lifecycleAdapter.destroy() is NOT called from IntentManager.destroy() (ownership: caller)', () => {
+  // Ownership semantics: IntentManager only destroys lifecycle adapters it
+  // created internally.  An adapter injected via config is owned by the caller
+  // and must not be torn down by the manager (the adapter may be shared).
+  let destroyed = false;
+  const fakeAdapter = {
+    onPause() {
+      return () => {};
+    },
+    onResume() {
+      return () => {};
+    },
+    destroy() {
+      destroyed = true;
+    },
+  };
+
+  const manager = new IntentManager({
+    storageKey: 'lc-destroy-test',
+    storage: new MemoryStorage(),
+    botProtection: false,
+    lifecycleAdapter: fakeAdapter,
+  });
+
+  manager.track('/home');
+  manager.destroy();
+  assert.equal(
+    destroyed,
+    false,
+    'IntentManager.destroy() must NOT call destroy() on an injected adapter — caller owns it',
+  );
+});
+
+test('IntentManager: tab-hidden gap is excluded from dwell measurement via custom LifecycleAdapter', () => {
+  let pauseCallback = null;
+  let resumeCallback = null;
+  const fakeAdapter = {
+    onPause(cb) {
+      pauseCallback = cb;
+      return () => {
+        pauseCallback = null;
+      };
+    },
+    onResume(cb) {
+      resumeCallback = cb;
+      return () => {
+        resumeCallback = null;
+      };
+    },
+    destroy() {},
+  };
+
+  const storage = new MemoryStorage();
+  let mockTime = 1000;
+  const originalNow = globalThis.performance.now;
+  globalThis.performance.now = () => mockTime;
+
+  try {
+    const manager = new IntentManager({
+      storageKey: 'lc-dwell-correct-test',
+      storage,
+      botProtection: false,
+      lifecycleAdapter: fakeAdapter,
+      dwellTime: { enabled: true, minSamples: 3, zScoreThreshold: 2.0 },
+    });
+
+    // Build a small baseline: 100ms dwell on A each time
+    for (let i = 0; i < 4; i++) {
+      mockTime += 100;
+      manager.track('A');
+      mockTime += 100;
+      manager.track('B');
+    }
+
+    // Tab hides while user is on B
+    mockTime += 50; // 50ms of visible time on B before hiding
+    pauseCallback?.();
+
+    // OS suspends for 5 seconds — clock jumps forward
+    mockTime += 5000;
+
+    // Tab becomes visible again — 5000ms should be excluded from B's dwell
+    resumeCallback?.();
+
+    // 50ms more visible dwell on B, then navigate to A
+    mockTime += 50;
+    const dwellEvents = [];
+    manager.on('dwell_time_anomaly', (e) => dwellEvents.push(e));
+    manager.track('A');
+
+    // Visible dwell on B is ~100ms, which matches the baseline — no anomaly
+    assert.equal(
+      dwellEvents.length,
+      0,
+      'No anomaly should fire: hidden gap was correctly excluded from B dwell',
+    );
+
+    manager.destroy();
+  } finally {
+    globalThis.performance.now = originalNow;
+  }
+});
+
+// ============================================================
+// session_stale event
+// ============================================================
+
+test('session_stale does NOT fire when dwellTime.enabled is false (hidden_duration_exceeded suppressed)', () => {
+  let pauseCallback = null;
+  let resumeCallback = null;
+  const fakeAdapter = {
+    onPause(cb) {
+      pauseCallback = cb;
+      return () => {
+        pauseCallback = null;
+      };
+    },
+    onResume(cb) {
+      resumeCallback = cb;
+      return () => {
+        resumeCallback = null;
+      };
+    },
+    destroy() {},
+  };
+
+  const storage = new MemoryStorage();
+  let mockTime = 1000;
+  const originalNow = globalThis.performance.now;
+  globalThis.performance.now = () => mockTime;
+
+  try {
+    // dwellTime not enabled — session_stale must be fully suppressed for both
+    // hidden_duration_exceeded (LifecycleAdapter path) and dwell_exceeded
+    // (runTransitionContextStage path), making the behaviour consistent.
+    const manager = new IntentManager({
+      storageKey: 'session-stale-dwell-disabled-test',
+      storage,
+      botProtection: false,
+      lifecycleAdapter: fakeAdapter,
+      // dwellTime intentionally absent (defaults to disabled)
+    });
+
+    manager.track('/home');
+
+    const staleEvents = [];
+    manager.on('session_stale', (e) => staleEvents.push(e));
+
+    // Simulate a 2-hour OS suspend — exceeds MAX_PLAUSIBLE_DWELL_MS
+    pauseCallback?.();
+    mockTime += 7_200_000;
+    resumeCallback?.();
+
+    assert.equal(
+      staleEvents.length,
+      0,
+      'session_stale must not fire when dwellTime.enabled is false',
+    );
+
+    // Navigate after resume — dwell_exceeded path must also be silent
+    mockTime += 100;
+    manager.track('/checkout');
+
+    assert.equal(
+      staleEvents.length,
+      0,
+      'session_stale (dwell_exceeded) must not fire when dwellTime.enabled is false',
+    );
+
+    manager.destroy();
+  } finally {
+    globalThis.performance.now = originalNow;
+  }
+});
+
+test('injected lifecycleAdapter is NOT destroyed when IntentManager.destroy() is called', () => {
+  // Verify ownership semantics: only an internally-created adapter should be
+  // torn down by destroy().  An injected adapter may be shared across multiple
+  // IntentManager instances; destroying it from one manager would silently
+  // remove lifecycle listeners from all other managers using the same adapter.
+  let destroyCalls = 0;
+  const sharedAdapter = {
+    onPause(_cb) {
+      return () => {};
+    },
+    onResume(_cb) {
+      return () => {};
+    },
+    destroy() {
+      destroyCalls += 1;
+    },
+  };
+
+  const storage = new MemoryStorage();
+  const managerA = new IntentManager({
+    storageKey: 'lifecycle-ownership-a',
+    storage,
+    botProtection: false,
+    lifecycleAdapter: sharedAdapter,
+  });
+  const managerB = new IntentManager({
+    storageKey: 'lifecycle-ownership-b',
+    storage,
+    botProtection: false,
+    lifecycleAdapter: sharedAdapter,
+  });
+
+  managerA.destroy();
+  assert.equal(
+    destroyCalls,
+    0,
+    'destroy() on managerA must NOT call destroy() on an injected adapter',
+  );
+
+  managerB.destroy();
+  assert.equal(
+    destroyCalls,
+    0,
+    'destroy() on managerB must NOT call destroy() on an injected adapter',
+  );
+});
+
+test('internally-created lifecycleAdapter IS destroyed when IntentManager.destroy() is called', () => {
+  // Counterpart to the injection test: when no adapter is supplied, the engine
+  // creates BrowserLifecycleAdapter internally and sets ownsLifecycleAdapter=true.
+  // destroy() must call lifecycleAdapter.destroy() on the owned adapter.
+  //
+  // Strategy: construct the manager in a no-DOM environment (lifecycleAdapter
+  // will be null, ownsLifecycleAdapter=true), then swap in a spy adapter and
+  // force the ownership flag to true before calling destroy().  TypeScript
+  // private is compile-time only, so both fields are directly accessible here.
+  let destroyCalls = 0;
+  let resumeCallback = null;
+  const spyAdapter = {
+    onPause(_cb) {
+      return () => {};
+    },
+    onResume(cb) {
+      resumeCallback = cb;
+      return () => {
+        resumeCallback = null;
+      };
+    },
+    destroy() {
+      destroyCalls += 1;
+      resumeCallback = null;
+    },
+  };
+
+  const manager = new IntentManager({
+    storageKey: 'lifecycle-ownership-internal',
+    storage: new MemoryStorage(),
+    botProtection: false,
+    // No lifecycleAdapter — ownsLifecycleAdapter is set to true internally.
+  });
+
+  // Wire the spy in place of whatever adapter the constructor created
+  // (null in a non-browser env, or BrowserLifecycleAdapter in a browser env).
+  manager.lifecycleAdapter = spyAdapter;
+  manager.ownsLifecycleAdapter = true;
+
+  // Prime resumeCallback so we can later verify it was cleared by destroy().
+  spyAdapter.onResume(() => {});
+  assert.ok(resumeCallback !== null, 'precondition: resumeCallback must be set before destroy()');
+
+  assert.doesNotThrow(() => manager.destroy(), 'destroy() must not throw');
+
+  assert.equal(
+    destroyCalls,
+    1,
+    'destroy() must call lifecycleAdapter.destroy() on the owned adapter',
+  );
+  assert.equal(resumeCallback, null, 'spyAdapter.destroy() must clear resumeCallback');
+});
+
+test('session_stale (hidden_duration_exceeded) does NOT fire when no state has been tracked yet (previousState is null)', () => {
+  // Regression guard: onResume must not emit session_stale when previousState
+  // is null — there is no active dwell epoch so there is nothing to measure.
+  // Before the fix, the event was unconditionally emitted and
+  // previousStateEnteredAt was reset even though no navigation had occurred.
+  let pauseCallback = null;
+  let resumeCallback = null;
+  const fakeAdapter = {
+    onPause(cb) {
+      pauseCallback = cb;
+      return () => {
+        pauseCallback = null;
+      };
+    },
+    onResume(cb) {
+      resumeCallback = cb;
+      return () => {
+        resumeCallback = null;
+      };
+    },
+    destroy() {},
+  };
+
+  const storage = new MemoryStorage();
+  let mockTime = 1000;
+  const originalNow = globalThis.performance.now;
+  globalThis.performance.now = () => mockTime;
+
+  try {
+    const manager = new IntentManager({
+      storageKey: 'session-stale-no-prev-state',
+      storage,
+      botProtection: false,
+      lifecycleAdapter: fakeAdapter,
+      dwellTime: { enabled: true },
+    });
+
+    // Do NOT call track() — previousState remains null.
+
+    const staleEvents = [];
+    manager.on('session_stale', (e) => staleEvents.push(e));
+
+    // Simulate a 2-hour OS suspend
+    pauseCallback?.();
+    mockTime += 7_200_000;
+    resumeCallback?.();
+
+    assert.equal(
+      staleEvents.length,
+      0,
+      'session_stale must not fire when previousState is null (no active dwell epoch)',
+    );
+
+    manager.destroy();
+  } finally {
+    globalThis.performance.now = originalNow;
+  }
+});
+
+test('session_stale fires with hidden_duration_exceeded when hidden gap > MAX_PLAUSIBLE_DWELL_MS', () => {
+  let pauseCallback = null;
+  let resumeCallback = null;
+  const fakeAdapter = {
+    onPause(cb) {
+      pauseCallback = cb;
+      return () => {
+        pauseCallback = null;
+      };
+    },
+    onResume(cb) {
+      resumeCallback = cb;
+      return () => {
+        resumeCallback = null;
+      };
+    },
+    destroy() {},
+  };
+
+  const storage = new MemoryStorage();
+  let mockTime = 1000;
+  const originalNow = globalThis.performance.now;
+  globalThis.performance.now = () => mockTime;
+
+  try {
+    const manager = new IntentManager({
+      storageKey: 'session-stale-hidden-test',
+      storage,
+      botProtection: false,
+      lifecycleAdapter: fakeAdapter,
+      dwellTime: { enabled: true },
+    });
+
+    manager.track('/home');
+
+    const staleEvents = [];
+    manager.on('session_stale', (e) => staleEvents.push(e));
+
+    // Pause at t=1000
+    pauseCallback?.();
+
+    // Simulate 2 hours of OS suspend (7,200,000 ms >> 1,800,000 threshold)
+    mockTime += 7_200_000;
+    resumeCallback?.();
+
+    assert.equal(staleEvents.length, 1, 'Exactly one session_stale event expected');
+    assert.equal(staleEvents[0].reason, 'hidden_duration_exceeded');
+    assert.equal(staleEvents[0].measuredMs, 7_200_000);
+    assert.equal(staleEvents[0].thresholdMs, 1_800_000);
+
+    manager.destroy();
+  } finally {
+    globalThis.performance.now = originalNow;
+  }
+});
+
+test('session_stale does NOT fire for a normal short tab-hide (< MAX_PLAUSIBLE_DWELL_MS)', () => {
+  let pauseCallback = null;
+  let resumeCallback = null;
+  const fakeAdapter = {
+    onPause(cb) {
+      pauseCallback = cb;
+      return () => {
+        pauseCallback = null;
+      };
+    },
+    onResume(cb) {
+      resumeCallback = cb;
+      return () => {
+        resumeCallback = null;
+      };
+    },
+    destroy() {},
+  };
+
+  const storage = new MemoryStorage();
+  let mockTime = 1000;
+  const originalNow = globalThis.performance.now;
+  globalThis.performance.now = () => mockTime;
+
+  try {
+    const manager = new IntentManager({
+      storageKey: 'session-stale-short-hide-test',
+      storage,
+      botProtection: false,
+      lifecycleAdapter: fakeAdapter,
+      dwellTime: { enabled: true },
+    });
+
+    manager.track('/home');
+
+    const staleEvents = [];
+    manager.on('session_stale', (e) => staleEvents.push(e));
+
+    pauseCallback?.();
+    mockTime += 30_000; // 30 seconds — well within the 30-minute threshold
+    resumeCallback?.();
+
+    assert.equal(staleEvents.length, 0, 'No session_stale for a short normal tab switch');
+
+    manager.destroy();
+  } finally {
+    globalThis.performance.now = originalNow;
+  }
+});
+
+test('session_stale fires with dwell_exceeded when track() gap > MAX_PLAUSIBLE_DWELL_MS', () => {
+  const storage = new MemoryStorage();
+  let mockTime = 1000;
+  const originalNow = globalThis.performance.now;
+  globalThis.performance.now = () => mockTime;
+
+  // Use a no-op lifecycle adapter so the LifecycleAdapter path does NOT intercept the gap
+  try {
+    const manager = new IntentManager({
+      storageKey: 'session-stale-dwell-test',
+      storage,
+      botProtection: false,
+      lifecycleAdapter: {
+        onPause() {
+          return () => {};
+        },
+        onResume() {
+          return () => {};
+        },
+        destroy() {},
+      },
+      dwellTime: { enabled: true, minSamples: 2, zScoreThreshold: 1.5 },
+    });
+
+    const staleEvents = [];
+    const dwellAnomalyEvents = [];
+    manager.on('session_stale', (e) => staleEvents.push(e));
+    manager.on('dwell_time_anomaly', (e) => dwellAnomalyEvents.push(e));
+
+    mockTime = 1000;
+    manager.track('/home');
+
+    // Simulate 3 hours gap — far beyond MAX_PLAUSIBLE_DWELL_MS
+    mockTime = 1000 + 10_800_000;
+    manager.track('/checkout');
+
+    assert.equal(
+      staleEvents.length,
+      1,
+      'session_stale should fire when dwell is implausibly large',
+    );
+    assert.equal(staleEvents[0].reason, 'dwell_exceeded');
+    assert.ok(
+      staleEvents[0].measuredMs > 1_800_000,
+      `measuredMs (${staleEvents[0].measuredMs}) should exceed 1_800_000`,
+    );
+    assert.equal(staleEvents[0].thresholdMs, 1_800_000);
+    assert.equal(
+      dwellAnomalyEvents.length,
+      0,
+      'dwell_time_anomaly must NOT fire for an implausible sleep-inflated dwell',
+    );
+
+    manager.destroy();
+  } finally {
+    globalThis.performance.now = originalNow;
+  }
+});
+
+test('Welford accumulator not corrupted after session_stale: subsequent normal anomaly detection works', () => {
+  const storage = new MemoryStorage();
+  let mockTime = 1000;
+  const originalNow = globalThis.performance.now;
+  globalThis.performance.now = () => mockTime;
+
+  // No-op lifecycle adapter — the dwell_exceeded path is exercised instead
+  try {
+    const manager = new IntentManager({
+      storageKey: 'welford-no-corrupt-test',
+      storage,
+      botProtection: false,
+      lifecycleAdapter: {
+        onPause() {
+          return () => {};
+        },
+        onResume() {
+          return () => {};
+        },
+        destroy() {},
+      },
+      dwellTime: { enabled: true, minSamples: 5, zScoreThreshold: 2.0 },
+    });
+
+    const staleEvents = [];
+    const dwellAnomalyEvents = [];
+    manager.on('session_stale', (e) => staleEvents.push(e));
+    manager.on('dwell_time_anomaly', (e) => dwellAnomalyEvents.push(e));
+
+    // Build a stable Welford baseline: consistent ~100ms dwells on A and B
+    for (let i = 0; i < 10; i++) {
+      mockTime += 100;
+      manager.track('A');
+      mockTime += 100;
+      manager.track('B');
+    }
+    assert.equal(staleEvents.length, 0, 'No stale events during normal session');
+    assert.equal(dwellAnomalyEvents.length, 0, 'No anomalies during uniform-dwell baseline phase');
+
+    // Simulate OS suspend: 33-minute gap between B and A
+    mockTime += 2_000_000; // >> MAX_PLAUSIBLE_DWELL_MS
+    manager.track('A'); // session_stale fires; Welford for B is NOT updated
+
+    assert.equal(staleEvents.length, 1, 'session_stale should fire');
+    assert.equal(staleEvents[0].reason, 'dwell_exceeded');
+    assert.equal(
+      dwellAnomalyEvents.length,
+      0,
+      'Welford must not be fed the sleep dwell — no dwell_time_anomaly here',
+    );
+
+    // Now introduce a genuine anomaly: 1000ms on A (vs ~100ms baseline)
+    const preSleepAnomalyCount = dwellAnomalyEvents.length;
+    mockTime += 1000;
+    manager.track('B');
+
+    assert.ok(
+      dwellAnomalyEvents.length > preSleepAnomalyCount,
+      'Normal z-score anomaly detection should still function after a stale-session event',
+    );
+
+    manager.destroy();
+  } finally {
+    globalThis.performance.now = originalNow;
+  }
+});
+
+test('session_stale: previousStateEnteredAt resets cleanly so next dwell epoch is accurate', () => {
+  let pauseCallback = null;
+  let resumeCallback = null;
+  const fakeAdapter = {
+    onPause(cb) {
+      pauseCallback = cb;
+      return () => {
+        pauseCallback = null;
+      };
+    },
+    onResume(cb) {
+      resumeCallback = cb;
+      return () => {
+        resumeCallback = null;
+      };
+    },
+    destroy() {},
+  };
+
+  const storage = new MemoryStorage();
+  let mockTime = 0;
+  const originalNow = globalThis.performance.now;
+  globalThis.performance.now = () => mockTime;
+
+  try {
+    const manager = new IntentManager({
+      storageKey: 'stale-epoch-reset-test',
+      storage,
+      botProtection: false,
+      lifecycleAdapter: fakeAdapter,
+      dwellTime: { enabled: true, minSamples: 2, zScoreThreshold: 2.0 },
+    });
+
+    const staleEvents = [];
+    manager.on('session_stale', (e) => staleEvents.push(e));
+
+    mockTime = 1000;
+    manager.track('/home'); // previousStateEnteredAt = 1000
+
+    // Simulate a 2-hour OS suspend.
+    pauseCallback?.();
+    mockTime += 7_200_000;
+    resumeCallback?.(); // session_stale fires; previousStateEnteredAt resets to resumeTime
+
+    assert.equal(staleEvents.length, 1, 'session_stale must fire exactly once');
+    assert.equal(staleEvents[0].reason, 'hidden_duration_exceeded');
+
+    const resumeTime = mockTime;
+
+    // Collect any additional session_stale events that fire AFTER the resume.
+    const postResumeStaleFires = [];
+    manager.on('session_stale', (e) => postResumeStaleFires.push(e));
+
+    // 200ms after resume, transition to /checkout.
+    // If the epoch was correctly reset to resumeTime, the recorded dwell for /home
+    // will be ~200ms — well within MAX_PLAUSIBLE_DWELL_MS — so no second session_stale fires.
+    // If the epoch was NOT reset, the recorded dwell would be ~7_200_200ms, exceeding the
+    // threshold and triggering a 'dwell_exceeded' session_stale.
+    mockTime = resumeTime + 200;
+    manager.track('/checkout');
+
+    assert.equal(
+      postResumeStaleFires.length,
+      0,
+      'No spurious session_stale must fire after resume: epoch was correctly reset to resumeTime',
+    );
+
+    manager.destroy();
+  } finally {
+    globalThis.performance.now = originalNow;
+  }
+});
+
+// ============================================================
+// Aggressive synchronous persist
+// ============================================================
+
+test('persist is called synchronously on every track(): storage written immediately without debounce', () => {
+  const writeLog = [];
+  const manager = new IntentManager({
+    storageKey: 'aggressive-persist-test',
+    storage: {
+      getItem: () => null,
+      setItem: (_k, v) => writeLog.push(v),
+    },
+    botProtection: false,
+    lifecycleAdapter: {
+      onPause() {
+        return () => {};
+      },
+      onResume() {
+        return () => {};
+      },
+      destroy() {},
+    },
+  });
+
+  assert.equal(writeLog.length, 0, 'No write before any track() call');
+
+  manager.track('/a'); // first call: isNewToBloom=true sets isDirty; persist() writes immediately
+  assert.equal(writeLog.length, 1, 'Storage must be written synchronously after first track()');
+
+  manager.track('/b'); // second call: /a→/b transition, isDirty=true; persist() writes again
+  assert.equal(writeLog.length, 2, 'Storage must be written synchronously after second track()');
+
+  // A third distinct transition produces another write
+  manager.track('/c');
+  assert.equal(writeLog.length, 3, 'Storage must be written synchronously after third track()');
+
+  manager.destroy();
+});
+
+test('persist respects dirty-flag: no write if nothing changed between track() calls', () => {
+  const writeLog = [];
+  const manager = new IntentManager({
+    storageKey: 'dirty-flag-test',
+    storage: {
+      getItem: () => null,
+      setItem: (_k, v) => writeLog.push(v),
+    },
+    botProtection: false,
+    lifecycleAdapter: {
+      onPause() {
+        return () => {};
+      },
+      onResume() {
+        return () => {};
+      },
+      destroy() {},
+    },
+  });
+
+  manager.track('/a');
+  manager.track('/b');
+  const writesAfterTwoTracks = writeLog.length; // 2 writes
+
+  // flushNow() with isDirty=false should be a no-op
+  manager.flushNow();
+  assert.equal(
+    writeLog.length,
+    writesAfterTwoTracks,
+    'flushNow() with no dirty state must not produce an additional write',
+  );
 
   manager.destroy();
 });

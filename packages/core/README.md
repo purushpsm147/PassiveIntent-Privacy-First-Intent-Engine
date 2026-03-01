@@ -255,6 +255,12 @@ Inject `IntentService` in your root `AppComponent` (or import it in the root mod
 
 ### IntentManager
 
+**Static factory**
+
+| Method                              | Signature                                                 | Description                                                                                                                                                                                                                                                                 |
+| ----------------------------------- | --------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `IntentManager.createAsync(config)` | `(config: IntentManagerConfig) => Promise<IntentManager>` | Async factory for use with `asyncStorage` backends (e.g. React Native `AsyncStorage`, IndexedDB wrappers). Awaits the initial `getItem` before constructing the instance so the synchronous `track()` hot-path is never blocked. Throws if `config.asyncStorage` is absent. |
+
 **Lifecycle & tracking**
 
 | Method         | Signature                                         | Description                                                                               |
@@ -291,15 +297,16 @@ Inject `IntentService` in your root `AppComponent` (or import it in the root mod
 
 **Events emitted** (`on(event, handler)`)
 
-| Event                 | Payload type                | Fired when                                                                                             |
-| --------------------- | --------------------------- | ------------------------------------------------------------------------------------------------------ |
-| `state_change`        | `StateChangePayload`        | Every `track()` call that records a new transition.                                                    |
-| `high_entropy`        | `HighEntropyPayload`        | Outgoing-transition distribution exceeds `highEntropyThreshold`.                                       |
-| `trajectory_anomaly`  | `TrajectoryAnomalyPayload`  | Log-likelihood window diverges from baseline beyond `divergenceThreshold`.                             |
-| `dwell_time_anomaly`  | `DwellTimeAnomalyPayload`   | Time on previous state deviates beyond z-score threshold (Welford's algorithm).                        |
-| `bot_detected`        | `BotDetectedPayload`        | `botScore` reaches 5 — EntropyGuard flags the session.                                                 |
-| `hesitation_detected` | `HesitationDetectedPayload` | A `trajectory_anomaly` and positive `dwell_time_anomaly` occur within `hesitationCorrelationWindowMs`. |
-| `conversion`          | `ConversionPayload`         | `trackConversion()` was called.                                                                        |
+| Event                 | Payload type                | Fired when                                                                                                                                                                                                                                                                                                 |
+| --------------------- | --------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `state_change`        | `StateChangePayload`        | Every `track()` call that records a new transition.                                                                                                                                                                                                                                                        |
+| `high_entropy`        | `HighEntropyPayload`        | Outgoing-transition distribution exceeds `highEntropyThreshold`.                                                                                                                                                                                                                                           |
+| `trajectory_anomaly`  | `TrajectoryAnomalyPayload`  | Log-likelihood window diverges from baseline beyond `divergenceThreshold`.                                                                                                                                                                                                                                 |
+| `dwell_time_anomaly`  | `DwellTimeAnomalyPayload`   | Time on previous state deviates beyond z-score threshold (Welford's algorithm).                                                                                                                                                                                                                            |
+| `bot_detected`        | `BotDetectedPayload`        | `botScore` reaches 5 — EntropyGuard flags the session.                                                                                                                                                                                                                                                     |
+| `hesitation_detected` | `HesitationDetectedPayload` | A `trajectory_anomaly` and positive `dwell_time_anomaly` occur within `hesitationCorrelationWindowMs`.                                                                                                                                                                                                     |
+| `session_stale`       | `SessionStalePayload`       | **Only emitted when `dwellTime.enabled` is `true`.** A time delta (hidden-duration from `LifecycleAdapter`, or dwell measured at `track()` time) exceeded `MAX_PLAUSIBLE_DWELL_MS` (30 min), indicating CPU suspend or OS sleep. The inflated measurement is discarded to protect the Welford accumulator. |
+| `conversion`          | `ConversionPayload`         | `trackConversion()` was called.                                                                                                                                                                                                                                                                            |
 
 **`onError` callback** (in `IntentManagerConfig`)
 
@@ -314,24 +321,76 @@ new IntentManager({
 });
 ```
 
+### IntentManagerConfig
+
+All fields are optional. Pass them to `new IntentManager(config)` or `IntentManager.createAsync(config)`.
+
+| Field                           | Type                                                     | Default                                               | Description                                                                                                                                                                  |
+| ------------------------------- | -------------------------------------------------------- | ----------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `storageKey`                    | `string`                                                 | `'passive-intent'`                                    | `localStorage` key used to persist the Bloom filter and Markov graph.                                                                                                        |
+| `storage`                       | `StorageAdapter`                                         | `BrowserStorageAdapter`                               | Synchronous storage backend. Override for custom persistence or tests.                                                                                                       |
+| `asyncStorage`                  | `AsyncStorageAdapter`                                    | —                                                     | Async storage backend (React Native, IndexedDB, etc.). Use with `IntentManager.createAsync()`. Takes precedence over `storage` for writes.                                   |
+| `timer`                         | `TimerAdapter`                                           | `BrowserTimerAdapter`                                 | Timer backend. Override for deterministic tests.                                                                                                                             |
+| `lifecycleAdapter`              | `LifecycleAdapter`                                       | `BrowserLifecycleAdapter`                             | Page-visibility adapter. Override for React Native, Electron, or SSR environments.                                                                                           |
+| `bloom`                         | `BloomFilterConfig`                                      | —                                                     | Bloom filter sizing: `{ bitSize?: number, hashCount?: number }`. Defaults to 2048 bits / 4 hashes.                                                                           |
+| `graph`                         | `MarkovGraphConfig`                                      | —                                                     | Markov graph tuning (see sub-fields below).                                                                                                                                  |
+| `graph.highEntropyThreshold`    | `number`                                                 | `0.75`                                                | Normalized entropy threshold `[0, 1]` above which `high_entropy` fires.                                                                                                      |
+| `graph.divergenceThreshold`     | `number`                                                 | `3.5`                                                 | Z-score magnitude for `trajectory_anomaly`. Decrease for more sensitivity.                                                                                                   |
+| `graph.baselineMeanLL`          | `number`                                                 | —                                                     | Pre-computed mean of average per-step log-likelihood for normal sessions. Enables Z-score calibration. Also available as top-level `baselineMeanLL` (takes precedence).      |
+| `graph.baselineStdLL`           | `number`                                                 | —                                                     | Pre-computed std of average per-step log-likelihood. Pair with `baselineMeanLL`. Also available as top-level `baselineStdLL` (takes precedence).                             |
+| `graph.smoothingEpsilon`        | `number`                                                 | `0.01`                                                | Laplace smoothing probability for unseen transitions.                                                                                                                        |
+| `graph.smoothingAlpha`          | `number`                                                 | `0.1`                                                 | Dirichlet pseudo-count for cold-start regularization. `0` = pure frequentist math. Also available as top-level `smoothingAlpha` (takes precedence).                          |
+| `graph.maxStates`               | `number`                                                 | `500`                                                 | Maximum live states before LFU pruning triggers.                                                                                                                             |
+| `baselineMeanLL`                | `number`                                                 | —                                                     | Top-level alias for `graph.baselineMeanLL`. Takes precedence when both are set.                                                                                              |
+| `baselineStdLL`                 | `number`                                                 | —                                                     | Top-level alias for `graph.baselineStdLL`. Takes precedence when both are set.                                                                                               |
+| `smoothingAlpha`                | `number`                                                 | `0.1`                                                 | Top-level alias for `graph.smoothingAlpha`. Takes precedence when both are set.                                                                                              |
+| `baseline`                      | `SerializedMarkovGraph`                                  | —                                                     | Pre-trained baseline graph (from `MarkovGraph.toJSON()`). Required for `trajectory_anomaly` detection.                                                                       |
+| `botProtection`                 | `boolean`                                                | `true`                                                | Enable EntropyGuard heuristic bot detection. Set `false` in E2E/CI environments.                                                                                             |
+| `dwellTime`                     | `DwellTimeConfig`                                        | —                                                     | Dwell-time anomaly settings: `{ enabled?: boolean, minSamples?: number, zScoreThreshold?: number }`.                                                                         |
+| `enableBigrams`                 | `boolean`                                                | `false`                                               | Record second-order (bigram) Markov transitions for more discriminative modeling.                                                                                            |
+| `bigramFrequencyThreshold`      | `number`                                                 | `5`                                                   | Minimum outgoing transitions a unigram state must have before bigram edges are recorded.                                                                                     |
+| `crossTabSync`                  | `boolean`                                                | `false`                                               | Broadcast verified transitions to other tabs via `BroadcastChannel`. No-op in SSR / unsupported environments.                                                                |
+| `persistThrottleMs`             | `number`                                                 | `0`                                                   | Max write frequency for the prune+serialize pipeline. `0` = sync write on every `track()` (full crash-safety). `200–500` recommended for typical graphs.                     |
+| `persistDebounceMs`             | `number`                                                 | `2000`                                                | Delay for the async-error retry path and `flushNow()` timer cancellation only. Does not control write frequency for normal `track()` flow.                                   |
+| `eventCooldownMs`               | `number`                                                 | `0`                                                   | Minimum ms between consecutive emissions of the same cooldown-gated event (`high_entropy`, `trajectory_anomaly`, `dwell_time_anomaly`). `0` disables throttling.             |
+| `hesitationCorrelationWindowMs` | `number`                                                 | `30000`                                               | Max gap (ms) between a `trajectory_anomaly` and a `dwell_time_anomaly` for them to combine into a `hesitation_detected` event.                                               |
+| `driftProtection`               | `{ maxAnomalyRate: number; evaluationWindowMs: number }` | `{ maxAnomalyRate: 0.4, evaluationWindowMs: 300000 }` | Killswitch: disables trajectory evaluation when anomaly rate exceeds `maxAnomalyRate` within the rolling window. Set `maxAnomalyRate: 1` to disable.                         |
+| `holdoutConfig`                 | `{ percentage: number }`                                 | —                                                     | Local A/B holdout: `percentage` (0–100) chance of routing a session to the `'control'` group, which suppresses anomaly events. Visible via `getTelemetry().assignmentGroup`. |
+| `benchmark`                     | `BenchmarkConfig`                                        | —                                                     | Enable op-latency instrumentation: `{ enabled?: boolean, maxSamples?: number }`. Read results via `getPerformanceReport()`.                                                  |
+| `onError`                       | `(error: PassiveIntentError) => void`                    | —                                                     | Non-fatal error callback for storage errors, quota exhaustion, parse failures, and validation errors. The engine never throws to the host.                                   |
+
 ### Adapters
 
-| Export                  | Kind      | Description                                                                             |
-| ----------------------- | --------- | --------------------------------------------------------------------------------------- |
-| `BrowserStorageAdapter` | class     | Wraps `localStorage`. Use in any browser context.                                       |
-| `BrowserTimerAdapter`   | class     | Wraps `setTimeout` / `clearTimeout`.                                                    |
-| `MemoryStorageAdapter`  | class     | In-memory fallback — no persistence. Useful for SSR, tests, or ephemeral sessions.      |
-| `StorageAdapter`        | interface | Implement to provide a custom storage backend (IndexedDB, Capacitor Preferences, etc.). |
-| `TimerAdapter`          | interface | Implement to provide a custom timer backend (e.g. Node.js timers in tests).             |
-| `TimerHandle`           | type      | Opaque handle returned by `TimerAdapter.setTimeout`.                                    |
+| Export                    | Kind      | Description                                                                                                                                                                                         |
+| ------------------------- | --------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `BrowserStorageAdapter`   | class     | Wraps `localStorage`. Use in any browser context.                                                                                                                                                   |
+| `BrowserTimerAdapter`     | class     | Wraps `setTimeout` / `clearTimeout`.                                                                                                                                                                |
+| `MemoryStorageAdapter`    | class     | In-memory fallback — no persistence. Useful for SSR, tests, or ephemeral sessions.                                                                                                                  |
+| `BrowserLifecycleAdapter` | class     | Page Visibility API adapter. Registers a `visibilitychange` listener and dispatches `onPause` / `onResume` callbacks. All `document` accesses are guarded so it is safe to import in SSR.           |
+| `StorageAdapter`          | interface | Implement to provide a custom storage backend (IndexedDB, Capacitor Preferences, etc.).                                                                                                             |
+| `TimerAdapter`            | interface | Implement to provide a custom timer backend (e.g. Node.js timers in tests).                                                                                                                         |
+| `LifecycleAdapter`        | interface | Implement to provide a custom page-visibility / app-lifecycle backend for React Native, Electron, or environments where `document` is unavailable. Pass via `IntentManagerConfig.lifecycleAdapter`. |
+| `TimerHandle`             | type      | Opaque handle returned by `TimerAdapter.setTimeout`.                                                                                                                                                |
 
 ### Utilities
 
-| Export                | Signature                                                                                       | Description                                                                                                                                                                              |
-| --------------------- | ----------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `computeBloomConfig`  | `(expectedItems: number, falsePositiveRate: number) => { bitSize, hashCount, estimatedFpRate }` | Pure math helper — compute Bloom parameters without instantiating `BloomFilter`. Tree-shakeable.                                                                                         |
-| `normalizeRouteState` | `(url: string) => string`                                                                       | Strips query strings/hash fragments, removes trailing slashes, and replaces UUID v4 / MongoDB ObjectID segments with `:id` — call this before `track()` to keep the state space compact. |
-| `MAX_STATE_LENGTH`    | `256` (constant)                                                                                | Hard upper bound on state label length accepted by `BroadcastSync`. Payloads exceeding this are silently dropped.                                                                        |
+| Export                   | Signature                                                                                       | Description                                                                                                                                                                                                                       |
+| ------------------------ | ----------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `computeBloomConfig`     | `(expectedItems: number, falsePositiveRate: number) => { bitSize, hashCount, estimatedFpRate }` | Pure math helper — compute Bloom parameters without instantiating `BloomFilter`. Tree-shakeable.                                                                                                                                  |
+| `normalizeRouteState`    | `(url: string) => string`                                                                       | Strips query strings/hash fragments, removes trailing slashes, and replaces UUID v4 / MongoDB ObjectID segments with `:id` — call this before `track()` to keep the state space compact.                                          |
+| `MAX_STATE_LENGTH`       | `256` (constant)                                                                                | Hard upper bound on state label length accepted by `BroadcastSync`. Payloads exceeding this are silently dropped.                                                                                                                 |
+| `MAX_PLAUSIBLE_DWELL_MS` | `1_800_000` (constant, 30 min)                                                                  | Threshold above which a dwell-time or tab-hidden duration is considered implausible (CPU suspend / OS sleep). Measurements exceeding this are discarded and trigger a `session_stale` event (when `dwellTime.enabled` is `true`). |
+
+### Performance types
+
+Exported from `@passiveintent/core` for use with `getPerformanceReport()`. Enable instrumentation via `benchmark: { enabled: true }` in `IntentManagerConfig`.
+
+| Type                    | Description                                                                                                                                                                                                                                                          |
+| ----------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `BenchmarkConfig`       | `{ enabled?: boolean; maxSamples?: number }` — passed to `IntentManagerConfig.benchmark` to activate latency recording.                                                                                                                                              |
+| `OperationStats`        | Per-operation statistics: `{ count, avgMs, p95Ms, p99Ms, maxMs }`. One entry per tracked operation inside `PerformanceReport`.                                                                                                                                       |
+| `MemoryFootprintReport` | Snapshot of engine size: `{ stateCount, totalTransitions, bloomBitsetBytes, serializedGraphBytes }`.                                                                                                                                                                 |
+| `PerformanceReport`     | Full report returned by `getPerformanceReport()`: contains `track`, `bloomAdd`, `bloomCheck`, `incrementTransition`, `entropyComputation`, `divergenceComputation` (`OperationStats` each), plus `memoryFootprint` (`MemoryFootprintReport`) and `benchmarkEnabled`. |
 
 ### BroadcastSync
 
@@ -432,15 +491,18 @@ On each `track(state)`:
 7. Evaluate entropy signal (skipped if bot suspected, or below minimum sample gate).
 8. Evaluate trajectory anomaly (skipped if bot suspected, or below minimum window gate, or no baseline).
 9. Emit `state_change` (always emitted — cooldown applies only to anomaly channels).
-10. Schedule debounced persistence.
+10. **Persist synchronously** (crash-safe write on every `track()` call).
 
 During persistence:
 
-1. Return immediately if `isDirty` is `false` (no-op).
-2. Prune graph if state count exceeds limit.
-3. Serialize graph to binary.
-4. Encode binary to base64 and store alongside Bloom snapshot.
-5. Reset `isDirty` to `false`.
+1. Return immediately if `isDirty` is `false` (no-op — nothing changed).
+2. For async backends: return immediately (setting a pending-write flag) if a write is already in-flight; avoids redundant prune + serialize work.
+3. Prune graph if state count exceeds limit.
+4. Serialize graph to binary.
+5. Encode binary to base64 and store alongside Bloom snapshot.
+6. Reset `isDirty` to `false`.
+
+> **`persistDebounceMs`** no longer controls write frequency for normal flow. Every `track()` calls `persist()` synchronously. The debounce value is only consulted by the async-error retry path and `flushNow()` timer cancellation.
 
 ## Run tests
 

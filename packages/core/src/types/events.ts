@@ -7,7 +7,12 @@
 
 import type { BenchmarkConfig } from '../performance-instrumentation.js';
 import type { SerializedMarkovGraph } from '../core/markov.js';
-import type { AsyncStorageAdapter, StorageAdapter, TimerAdapter } from '../adapters.js';
+import type {
+  AsyncStorageAdapter,
+  LifecycleAdapter,
+  StorageAdapter,
+  TimerAdapter,
+} from '../adapters.js';
 
 export type IntentEventName =
   | 'high_entropy'
@@ -16,7 +21,8 @@ export type IntentEventName =
   | 'dwell_time_anomaly'
   | 'conversion'
   | 'bot_detected'
-  | 'hesitation_detected';
+  | 'hesitation_detected'
+  | 'session_stale';
 
 export interface ConversionPayload {
   type: string;
@@ -71,6 +77,38 @@ export interface HesitationDetectedPayload {
   dwellZScore: number;
 }
 
+/**
+ * Emitted when a measured time delta (dwell time or tab-hidden duration) exceeds
+ * `MAX_PLAUSIBLE_DWELL_MS`, indicating that the host machine was likely suspended
+ * or the user was genuinely absent for an implausible length of time.
+ *
+ * The inflated measurement is **discarded** — it is never entered into the Welford
+ * accumulator and never used to offset `previousStateEnteredAt`.  The engine
+ * resets its dwell baseline to the current timestamp so the next transition
+ * measurement starts from a clean epoch.
+ *
+ * This is a diagnostic / observability event only.  It does not affect the
+ * Markov graph, Bloom filter, or any anomaly-detection signals.
+ *
+ * **Precondition**: both `'hidden_duration_exceeded'` and `'dwell_exceeded'`
+ * are only emitted when `dwellTime.enabled` is `true`.  Callers who opt out of
+ * dwell-time detection will never receive this event.
+ */
+export interface SessionStalePayload {
+  /**
+   * What triggered the stale-session guard:
+   * - `'hidden_duration_exceeded'` — the tab-hidden gap from the LifecycleAdapter
+   *   exceeded the plausible threshold when the tab resumed.
+   * - `'dwell_exceeded'` — the computed dwell time for the previous state exceeded
+   *   the plausible threshold at `track()` time.
+   */
+  reason: 'hidden_duration_exceeded' | 'dwell_exceeded';
+  /** The raw (uncapped) duration in milliseconds that triggered the guard. */
+  measuredMs: number;
+  /** The threshold in milliseconds that was exceeded (`MAX_PLAUSIBLE_DWELL_MS`). */
+  thresholdMs: number;
+}
+
 export interface IntentEventMap {
   high_entropy: HighEntropyPayload;
   trajectory_anomaly: TrajectoryAnomalyPayload;
@@ -79,6 +117,7 @@ export interface IntentEventMap {
   conversion: ConversionPayload;
   bot_detected: BotDetectedPayload;
   hesitation_detected: HesitationDetectedPayload;
+  session_stale: SessionStalePayload;
 }
 
 export interface DwellTimeConfig {
@@ -224,8 +263,68 @@ export interface IntentManagerConfig {
   smoothingAlpha?: number;
   /** localStorage key used to persist the Bloom filter and Markov graph. Default: `'passive-intent'`. */
   storageKey?: string;
-  /** Debounce delay in ms before writing to storage after a `track()` call. Default: 2000. */
+  /**
+   * Delay in ms used for the **async retry / coalescing path** only. Default: `2000`.
+   *
+   * When `persistThrottleMs` is `0` (the default), `track()` calls
+   * `persist()` synchronously on every invocation, giving full crash-safety —
+   * no navigation data is lost on a sudden process kill.  This field does not
+   * control write frequency in that mode.
+   *
+   * When `persistThrottleMs > 0`, the `persist()` call inside `track()` is
+   * throttled: writes are skipped for calls that fall within the throttle
+   * window, relaxing the per-track crash-safety guarantee (up to
+   * `persistThrottleMs` ms of recent navigation data can be lost in a hard
+   * crash). In this mode, the trailing-flush timer that fires after the
+   * throttle window expires is governed by `persistThrottleMs`, not this
+   * debounce value.
+   *
+   * This value governs two narrower scenarios regardless of `persistThrottleMs`:
+   * - **Async storage retry**: when an async `setItem` fails for the first time
+   *   in a consecutive sequence, one retry pass is scheduled after
+   *   `persistDebounceMs`.  This gives the host app time to surface the error
+   *   (via `onError`) before the retry fires.  If the retry also fails, no
+   *   further automatic retry is scheduled — the dirty flag is preserved and
+   *   the next `track()` or `flushNow()` call will trigger a fresh attempt.
+   * - **`flushNow()`**: cancels any pending throttle and retry timers and
+   *   requests an immediate write.  With a sync `StorageAdapter` the write
+   *   completes before `flushNow()` returns.  With `asyncStorage`, if a write
+   *   is already in-flight the actual flush is deferred until that write
+   *   settles — `flushNow()` cannot interrupt an in-progress async `setItem`
+   *   call.  Reducing `persistDebounceMs` has no observable effect on this
+   *   behaviour.
+   *
+   * If your async backend cannot handle burst writes, consider wrapping it in a
+   * throttled `AsyncStorageAdapter` instead of tuning this value.
+   */
   persistDebounceMs?: number;
+  /**
+   * Maximum frequency at which the expensive prune+serialize+write pipeline
+   * runs during normal `track()` flow, in milliseconds.
+   * Default: `0` (disabled — every dirty `track()` writes synchronously,
+   * full crash-safety).
+   *
+   * When `> 0`, the pipeline runs at most once per `persistThrottleMs` window:
+   * - The **first** dirty write after a quiescent period executes immediately
+   *   (leading-edge), preserving crash-safety for the initial navigation event.
+   * - Subsequent dirty writes within the same window are **skipped**, but a
+   *   trailing timer fires within `persistThrottleMs` ms to flush any
+   *   accumulated dirty state.
+   * - At most `persistThrottleMs` ms of recent navigation data can be lost in a
+   *   hard crash (OS kill, power loss, Chrome tab discard).
+   *
+   * `flushNow()` and `destroy()` always bypass the throttle: they request a
+   * flush as soon as possible. If no async write is in-flight, they write
+   * immediately; with `asyncStorage` and an in-flight write, they schedule a
+   * flush to run right after the current write settles.
+   *
+   * Recommended values:
+   * - `0`       — full crash-safety (default); best for checkout / payment flows.
+   * - `200–500` — good balance for typical graphs (50–200 states).
+   * - `1000`    — aggressive throttle for large graphs (300+ states) where
+   *               prune+serialize takes >1 ms per call.
+   */
+  persistThrottleMs?: number;
   /**
    * Pre-trained baseline graph (from `MarkovGraph.toJSON()`) representing
    * the expected normal navigation pattern.  Required for `trajectory_anomaly`
@@ -253,6 +352,15 @@ export interface IntentManagerConfig {
   asyncStorage?: AsyncStorageAdapter;
   /** Override the timer backend (useful for deterministic tests). */
   timer?: TimerAdapter;
+  /**
+   * Override the lifecycle (page-visibility) adapter.
+   *
+   * Provide a custom implementation to support React Native, Electron, or any
+   * SSR environment where `document` is unavailable.  When omitted the engine
+   * falls back to `BrowserLifecycleAdapter` in browser contexts and does
+   * nothing in non-browser contexts.
+   */
+  lifecycleAdapter?: LifecycleAdapter;
   /**
    * Non-fatal error callback — surfaces storage errors, quota exhaustion, parse
    * failures, and invalid API calls without ever throwing to the host application.

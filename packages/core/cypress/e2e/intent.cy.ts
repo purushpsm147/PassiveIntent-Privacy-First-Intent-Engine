@@ -680,4 +680,222 @@ describe('Cross-Tab Sync (BroadcastSync)', () => {
       (win as any).__testMgrAG.destroy();
     });
   });
+
+  // =========================================================================
+  // LifecycleAdapter — BrowserLifecycleAdapter DOM integration
+  // =========================================================================
+
+  it('Test AH: BrowserLifecycleAdapter registers visibilitychange on the browser DOM', () => {
+    cy.window().then((win) => {
+      const { BrowserLifecycleAdapter } = (win as any).__PassiveIntentSDK;
+
+      const adapter = new BrowserLifecycleAdapter();
+
+      const pauses: number[] = [];
+      const resumes: number[] = [];
+      adapter.onPause(() => pauses.push(win.performance.now()));
+      adapter.onResume(() => resumes.push(win.performance.now()));
+
+      (win as any).__testAdapterAH = adapter;
+      (win as any).__testPausesAH = pauses;
+      (win as any).__testResumesAH = resumes;
+    });
+
+    // Simulate tab hidden
+    cy.document().then((doc) => {
+      Object.defineProperty(doc, 'hidden', { value: true, writable: true, configurable: true });
+      doc.dispatchEvent(new Event('visibilitychange'));
+    });
+
+    cy.window().then((win) => {
+      expect((win as any).__testPausesAH).to.have.length(
+        1,
+        'onPause must fire once when tab hides',
+      );
+      expect((win as any).__testResumesAH).to.have.length(0, 'onResume must not fire on tab hide');
+    });
+
+    // Simulate tab visible
+    cy.document().then((doc) => {
+      Object.defineProperty(doc, 'hidden', { value: false, writable: true, configurable: true });
+      doc.dispatchEvent(new Event('visibilitychange'));
+    });
+
+    cy.window().then((win) => {
+      expect((win as any).__testResumesAH).to.have.length(
+        1,
+        'onResume must fire once when tab becomes visible',
+      );
+
+      // destroy() must remove the listener
+      (win as any).__testAdapterAH.destroy();
+    });
+
+    // Fire visibilitychange again — no new callbacks after destroy
+    cy.document().then((doc) => {
+      Object.defineProperty(doc, 'hidden', { value: true, writable: true, configurable: true });
+      doc.dispatchEvent(new Event('visibilitychange'));
+    });
+
+    cy.window().then((win) => {
+      expect((win as any).__testPausesAH).to.have.length(
+        1,
+        'No callback must fire after BrowserLifecycleAdapter.destroy()',
+      );
+    });
+  });
+
+  it('Test AI: session_stale fires with hidden_duration_exceeded after a simulated OS sleep', () => {
+    cy.window().then((win) => {
+      const { IntentManager, BrowserLifecycleAdapter } = (win as any).__PassiveIntentSDK;
+
+      // Override performance.now with a controllable clock
+      let mockTime = 1000;
+      const originalNow = win.performance.now.bind(win.performance);
+      win.performance.now = () => mockTime;
+      (win as any).__testOriginalNowAI = originalNow;
+      (win as any).__testMockTimeSetterAI = (t: number) => {
+        mockTime = t;
+      };
+
+      // Build a custom lifecycle adapter so we control pause/resume
+      let pauseCb: (() => void) | null = null;
+      let resumeCb: (() => void) | null = null;
+      const fakeAdapter = {
+        onPause: (cb: () => void) => {
+          pauseCb = cb;
+        },
+        onResume: (cb: () => void) => {
+          resumeCb = cb;
+        },
+        destroy: () => {},
+      };
+
+      const staleEvents: any[] = [];
+      const mgr = new IntentManager({
+        storageKey: 'e2e-session-stale-test',
+        botProtection: false,
+        lifecycleAdapter: fakeAdapter,
+        dwellTime: { enabled: true },
+      });
+      mgr.on('session_stale', (e: any) => staleEvents.push(e));
+
+      mgr.track('/home');
+
+      // Simulate 2-hour OS sleep
+      pauseCb?.();
+      mockTime += 7_200_000;
+      resumeCb?.();
+
+      (win as any).__testStaleEventsAI = staleEvents;
+      (win as any).__testMgrAI = mgr;
+
+      // Restore clock immediately so Cypress timers are not affected
+      win.performance.now = originalNow;
+    });
+
+    cy.window().then((win) => {
+      const staleEvents: any[] = (win as any).__testStaleEventsAI;
+      expect(staleEvents).to.have.length(1, 'exactly one session_stale must fire');
+      expect(staleEvents[0].reason).to.equal(
+        'hidden_duration_exceeded',
+        'reason must be hidden_duration_exceeded',
+      );
+      expect(staleEvents[0].measuredMs).to.be.above(
+        1_800_000,
+        'measuredMs must exceed MAX_PLAUSIBLE_DWELL_MS',
+      );
+      expect(staleEvents[0].thresholdMs).to.equal(
+        1_800_000,
+        'thresholdMs must equal MAX_PLAUSIBLE_DWELL_MS',
+      );
+      (win as any).__testMgrAI.destroy();
+    });
+  });
+
+  it('Test AJ: session_stale fires with dwell_exceeded when track() gap exceeds MAX_PLAUSIBLE_DWELL_MS', () => {
+    cy.window().then((win) => {
+      const { IntentManager } = (win as any).__PassiveIntentSDK;
+
+      let mockTime = 1000;
+      const originalNow = win.performance.now.bind(win.performance);
+      win.performance.now = () => mockTime;
+
+      const staleEvents: any[] = [];
+      const mgr = new IntentManager({
+        storageKey: 'e2e-dwell-exceeded-test',
+        botProtection: false,
+        // Explicit no-op lifecycleAdapter to prevent the default BrowserLifecycleAdapter from intercepting the gap
+        lifecycleAdapter: { onPause: () => {}, onResume: () => {}, destroy: () => {} },
+        dwellTime: { enabled: true },
+      });
+      mgr.on('session_stale', (e: any) => staleEvents.push(e));
+
+      mgr.track('/home');
+      // Jump 31 minutes — exceeds MAX_PLAUSIBLE_DWELL_MS without any pause/resume
+      mockTime += 1_860_000;
+      mgr.track('/checkout');
+
+      (win as any).__testStaleEventsAJ = staleEvents;
+      (win as any).__testMgrAJ = mgr;
+
+      // Restore clock
+      win.performance.now = originalNow;
+    });
+
+    cy.window().then((win) => {
+      const staleEvents: any[] = (win as any).__testStaleEventsAJ;
+      expect(staleEvents).to.have.length(1, 'exactly one session_stale must fire');
+      expect(staleEvents[0].reason).to.equal(
+        'dwell_exceeded',
+        'reason must be dwell_exceeded when the LifecycleAdapter did not fire',
+      );
+      (win as any).__testMgrAJ.destroy();
+    });
+  });
+
+  it('Test AK: crash-safe persist — localStorage is written synchronously on every track()', () => {
+    cy.window().then((win) => {
+      const { IntentManager } = (win as any).__PassiveIntentSDK;
+
+      // Use a spy storage to count writes
+      const writeLog: string[] = [];
+      const spyStorage = {
+        getItem: (_k: string) => null,
+        setItem: (k: string, _v: string) => {
+          writeLog.push(k);
+        },
+      };
+
+      const mgr = new IntentManager({
+        storageKey: 'e2e-crash-persist-test',
+        storage: spyStorage,
+        botProtection: false,
+        // Even with a large debounce, every track() must write synchronously
+        persistDebounceMs: 60_000,
+      });
+
+      mgr.track('/home');
+      mgr.track('/products');
+      mgr.track('/checkout');
+
+      (win as any).__testWriteLogAK = writeLog;
+      (win as any).__testMgrAK = mgr;
+    });
+
+    cy.window().then((win) => {
+      const writeLog: string[] = (win as any).__testWriteLogAK;
+      // All three track() calls must produce a synchronous write:
+      //   - track('/home')     → new Bloom entry → isDirty → write
+      //   - track('/products') → new transition  → isDirty → write
+      //   - track('/checkout') → new transition  → isDirty → write
+      // Exactly 3 writes must have occurred without waiting for any debounce.
+      expect(writeLog.length).to.be.at.least(
+        3,
+        'storage must be written synchronously on every track() — no debounce',
+      );
+      expect(writeLog.every((k) => k === 'e2e-crash-persist-test')).to.be.true;
+      (win as any).__testMgrAK.destroy();
+    });
+  });
 });

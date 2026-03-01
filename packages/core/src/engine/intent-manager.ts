@@ -7,9 +7,14 @@
 
 import { BenchmarkRecorder } from '../performance-instrumentation.js';
 import type { PerformanceReport } from '../performance-instrumentation.js';
-import { BrowserStorageAdapter, BrowserTimerAdapter } from '../adapters.js';
+import {
+  BrowserLifecycleAdapter,
+  BrowserStorageAdapter,
+  BrowserTimerAdapter,
+} from '../adapters.js';
 import type {
   AsyncStorageAdapter,
+  LifecycleAdapter,
   StorageAdapter,
   TimerAdapter,
   TimerHandle,
@@ -35,6 +40,7 @@ import {
   MIN_WINDOW_LENGTH,
   MAX_WINDOW_LENGTH,
   MIN_SAMPLE_TRANSITIONS,
+  MAX_PLAUSIBLE_DWELL_MS,
 } from './constants.js';
 import { EventEmitter } from './event-emitter.js';
 
@@ -78,6 +84,12 @@ export class IntentManager {
   private readonly baseline: MarkovGraph | null;
   private readonly emitter = new EventEmitter<IntentEventMap>();
   private readonly storageKey: string;
+  /**
+   * Used exclusively for the async-error retry path (`schedulePersist`) and
+   * `flushNow()` timer cancellation. The primary persist is synchronous
+   * (called directly from `runEmitAndPersistStage`), so this value no longer
+   * controls write frequency for normal `track()` flow.
+   */
   private readonly persistDebounceMs: number;
   private readonly benchmark: BenchmarkRecorder;
   private readonly storage: StorageAdapter;
@@ -95,6 +107,20 @@ export class IntentManager {
    * Guarantees one follow-up persist pass after the in-flight write settles.
    */
   private hasPendingAsyncPersist = false;
+  /**
+   * Counts consecutive async `setItem` failures for the in-progress retry
+   * sequence.  Reset to 0 on every successful write.  Used to schedule exactly
+   * one automatic retry after the first failure without risking an infinite
+   * retry loop when storage is persistently broken.
+   */
+  private asyncWriteFailCount = 0;
+  /**
+   * Maximum interval (ms) between prune+serialize+write cycles.  0 = disabled
+   * (every dirty `track()` writes synchronously — full crash-safety).
+   */
+  private readonly persistThrottleMs: number;
+  /** Timestamp (from `timer.now()`) of the last successful persist write. */
+  private lastPersistedAt: number = -Infinity;
   private readonly timer: TimerAdapter;
   private readonly onError?: (error: PassiveIntentError) => void;
   private readonly botProtection: boolean;
@@ -130,12 +156,23 @@ export class IntentManager {
    * `null` while the tab is visible or before the first hide event.
    */
   private tabHiddenAt: number | null = null;
+  /** Lifecycle adapter for page-visibility — drives dwell-time correction. */
+  private readonly lifecycleAdapter: LifecycleAdapter | null;
   /**
-   * Bound `visibilitychange` handler — stored so `destroy()` can call
-   * `removeEventListener` with the exact same function reference and fully
-   * clean up in SPA teardown paths.  `null` in non-browser environments.
+   * True when IntentManager created the adapter internally (no `lifecycleAdapter`
+   * was provided in config).  Only the internally-created adapter should be
+   * destroyed on `destroy()` — injected adapters may be shared across multiple
+   * IntentManager instances and must not be torn down by any one of them.
    */
-  private readonly visibilityChangeListener: (() => void) | null;
+  private readonly ownsLifecycleAdapter: boolean;
+  /**
+   * Unsubscribe handles returned by `lifecycleAdapter.onPause/onResume`.
+   * Called in `destroy()` to remove this instance's specific callbacks from
+   * the adapter without tearing down the adapter itself — which is essential
+   * for shared (injected) adapters that may still be used by other managers.
+   */
+  private pauseUnsub: (() => void) | null = null;
+  private resumeUnsub: (() => void) | null = null;
 
   /* ================================================================== */
   /*  Failsafe Killswitch — Baseline Drift Protection                   */
@@ -164,7 +201,19 @@ export class IntentManager {
     dwell_time_anomaly: -Infinity,
   };
 
-  private persistTimer: TimerHandle | null = null;
+  /**
+   * Trailing-flush timer for the persist throttle gate.  Fires within
+   * `persistThrottleMs` ms to write any dirty state that was skipped during
+   * the throttle window.  Kept separate from `retryTimer` so an async-write
+   * failure cannot cancel a pending throttle flush (and vice-versa).
+   */
+  private throttleTimer: TimerHandle | null = null;
+  /**
+   * One-shot retry timer scheduled by `schedulePersist()` after the first
+   * consecutive async `setItem` failure.  Kept separate from `throttleTimer`
+   * so cancelling a retry does not affect the throttle trailing flush.
+   */
+  private retryTimer: TimerHandle | null = null;
   private previousState: string | null = null;
   /** Timestamp (ms, from timer.now()) when previousState was entered */
   private previousStateEnteredAt: number = 0;
@@ -225,7 +274,11 @@ export class IntentManager {
 
   constructor(config: IntentManagerConfig = {}) {
     this.storageKey = config.storageKey ?? 'passive-intent';
+    // NOTE: persistDebounceMs is no longer the primary write policy.
+    // track() -> persist() is now synchronous (crash-safe).  This value is
+    // only consulted by schedulePersist() on the async-error retry path.
     this.persistDebounceMs = config.persistDebounceMs ?? 2000;
+    this.persistThrottleMs = config.persistThrottleMs ?? 0;
     this.benchmark = new BenchmarkRecorder(config.benchmark);
     this.storage = config.storage ?? new BrowserStorageAdapter();
     this.asyncStorage = config.asyncStorage ?? null;
@@ -321,28 +374,66 @@ export class IntentManager {
     // Tab-visibility correction for dwell-time anomaly detection.
     // When the user switches tabs the monotonic timer keeps ticking, which
     // would inflate dwellMs and fire spurious dwell_time_anomaly events.
-    // The fix: when the tab becomes hidden we snapshot tabHiddenAt; when it
-    // becomes visible again we add the hidden duration to previousStateEnteredAt
-    // so the dwell calculation automatically ignores the off-screen gap.
-    // Only wired in browser environments that expose the Page Visibility API.
-    if (typeof document !== 'undefined') {
-      this.visibilityChangeListener = () => {
-        if (document.hidden) {
-          this.tabHiddenAt = this.timer.now();
-        } else if (this.tabHiddenAt !== null) {
-          const hiddenDuration = this.timer.now() - this.tabHiddenAt;
-          // Only offset the dwell baseline when we are actively tracking a state.
-          // If no state has been entered yet (previousState === null) there is no
-          // dwell accumulation in progress, so no adjustment is needed.
-          if (this.previousState !== null) {
-            this.previousStateEnteredAt += hiddenDuration;
-          }
-          this.tabHiddenAt = null;
-        }
-      };
-      document.addEventListener('visibilitychange', this.visibilityChangeListener);
+    // The fix: onPause we snapshot tabHiddenAt; onResume we add the hidden
+    // duration to previousStateEnteredAt so the dwell calculation ignores
+    // off-screen gaps.  Wired through LifecycleAdapter to support React Native
+    // and SSR environments where document is unavailable.
+    // Track whether this instance owns the adapter so destroy() only tears
+    // down adapters it created itself.  Injected adapters may be shared across
+    // multiple IntentManager instances and must not be destroyed by any one of
+    // them.
+    if (config.lifecycleAdapter !== undefined) {
+      this.lifecycleAdapter = config.lifecycleAdapter;
+      this.ownsLifecycleAdapter = false;
     } else {
-      this.visibilityChangeListener = null;
+      this.lifecycleAdapter = typeof window !== 'undefined' ? new BrowserLifecycleAdapter() : null;
+      this.ownsLifecycleAdapter = true;
+    }
+
+    if (this.lifecycleAdapter) {
+      this.pauseUnsub = this.lifecycleAdapter.onPause(() => {
+        this.tabHiddenAt = this.timer.now();
+      });
+      this.resumeUnsub = this.lifecycleAdapter.onResume(() => {
+        if (this.tabHiddenAt === null) return;
+        const hiddenDuration = this.timer.now() - this.tabHiddenAt;
+        this.tabHiddenAt = null;
+
+        // All resume-path operations (previousStateEnteredAt adjustment and
+        // session_stale) are dwell-time bookkeeping.  When dwell-time detection
+        // is disabled the caller has opted out of all dwell-related diagnostics,
+        // so skip everything.  This makes hidden_duration_exceeded consistent
+        // with dwell_exceeded, which is already gated by dwellTimeEnabled in
+        // runTransitionContextStage.
+        if (!this.dwellTimeEnabled) return;
+
+        if (hiddenDuration > MAX_PLAUSIBLE_DWELL_MS) {
+          // The host machine was almost certainly suspended (sleep, hibernate,
+          // lid close, etc.).  Only act when we have an active dwell epoch
+          // (previousState !== null) — if the user hasn't navigated anywhere
+          // yet there is nothing to measure or report.
+          if (this.previousState !== null) {
+            // Adding this massive gap to previousStateEnteredAt would push the
+            // baseline far into the past and corrupt every subsequent dwell-time
+            // measurement.  Instead: reset the baseline to now so the next
+            // track() call begins a clean dwell epoch.
+            this.previousStateEnteredAt = this.timer.now();
+            this.emitter.emit('session_stale', {
+              reason: 'hidden_duration_exceeded',
+              measuredMs: hiddenDuration,
+              thresholdMs: MAX_PLAUSIBLE_DWELL_MS,
+            });
+          }
+          return;
+        }
+
+        // Only offset the dwell baseline when we are actively tracking a state.
+        // If no state has been entered yet (previousState === null) there is no
+        // dwell accumulation in progress, so no adjustment is needed.
+        if (this.previousState !== null) {
+          this.previousStateEnteredAt += hiddenDuration;
+        }
+      });
     }
   }
 
@@ -485,7 +576,19 @@ export class IntentManager {
 
     if (this.dwellTimeEnabled && ctx.from && !this.entropyGuard.suspected) {
       const dwellMs = ctx.now - this.previousStateEnteredAt;
-      this.evaluateDwellTime(ctx.from, dwellMs);
+      if (dwellMs > MAX_PLAUSIBLE_DWELL_MS) {
+        // Implausibly large dwell — CPU suspend or OS hibernation slipped past
+        // the LifecycleAdapter (e.g. no visibility API in this host environment).
+        // Discard the measurement to protect the Welford accumulator and emit a
+        // diagnostic event; the baseline resets to ctx.now below.
+        this.emitter.emit('session_stale', {
+          reason: 'dwell_exceeded',
+          measuredMs: dwellMs,
+          thresholdMs: MAX_PLAUSIBLE_DWELL_MS,
+        });
+      } else {
+        this.evaluateDwellTime(ctx.from, dwellMs);
+      }
     }
     this.previousStateEnteredAt = ctx.now;
 
@@ -535,7 +638,23 @@ export class IntentManager {
 
   private runEmitAndPersistStage = (ctx: TrackContext): void => {
     this.emitter.emit('state_change', { from: ctx.from, to: ctx.state });
-    this.schedulePersist();
+    // Synchronous persist on every transition — crash-safe against sudden OS
+    // process kills (iOS swipe-up, Android OOM reaper, Chrome tab discard) where
+    // lifecycle events (visibilitychange, pagehide, beforeunload) never fire.
+    //
+    // For sync StorageAdapter (localStorage): writes the binary-encoded payload
+    // immediately, before the browser paints the next frame.
+    //
+    // For AsyncStorageAdapter: fires the promise immediately; the in-flight write
+    // guard in persist() ensures overlapping writes are serialized correctly.
+    //
+    // The dirty-flag short-circuit in persist() means this is a no-op when
+    // nothing has changed, keeping the overhead negligible for redundant calls.
+    //
+    // If `persistThrottleMs` is configured, the prune+serialize+write pipeline
+    // is throttled to at most once per window; a trailing timer flushes any
+    // skipped dirty state within `persistThrottleMs` ms.
+    this.persist();
   };
 
   hasSeen(state: string): boolean {
@@ -606,10 +725,17 @@ export class IntentManager {
   }
 
   flushNow(): void {
-    if (this.persistTimer !== null) {
-      this.timer.clearTimeout(this.persistTimer);
-      this.persistTimer = null;
+    if (this.throttleTimer !== null) {
+      this.timer.clearTimeout(this.throttleTimer);
+      this.throttleTimer = null;
     }
+    if (this.retryTimer !== null) {
+      this.timer.clearTimeout(this.retryTimer);
+      this.retryTimer = null;
+    }
+    // Bypass persistThrottleMs — flushNow() and destroy() must always flush
+    // dirty state immediately, regardless of the throttle window.
+    this.lastPersistedAt = -Infinity;
     this.persist();
   }
 
@@ -626,9 +752,18 @@ export class IntentManager {
   destroy(): void {
     this.flushNow();
     this.emitter.removeAll();
-    if (this.visibilityChangeListener !== null) {
-      document.removeEventListener('visibilitychange', this.visibilityChangeListener);
-    }
+    // Deregister this instance's specific pause/resume callbacks so the adapter
+    // no longer holds closure references to this (now-destroyed) manager.
+    // For owned adapters this is superseded by adapter.destroy() below;
+    // for shared injected adapters it is the only teardown path.
+    this.pauseUnsub?.();
+    this.pauseUnsub = null;
+    this.resumeUnsub?.();
+    this.resumeUnsub = null;
+    // Only destroy the adapter when this instance created it.  An injected
+    // adapter may be shared by other IntentManager instances; destroying it
+    // here would silently remove their lifecycle listeners too.
+    if (this.ownsLifecycleAdapter) this.lifecycleAdapter?.destroy();
     this.broadcastSync?.close();
   }
 
@@ -1017,12 +1152,12 @@ export class IntentManager {
   }
 
   private schedulePersist(): void {
-    if (this.persistTimer !== null) {
-      this.timer.clearTimeout(this.persistTimer);
+    if (this.retryTimer !== null) {
+      this.timer.clearTimeout(this.retryTimer);
     }
 
-    this.persistTimer = this.timer.setTimeout(() => {
-      this.persistTimer = null;
+    this.retryTimer = this.timer.setTimeout(() => {
+      this.retryTimer = null;
       this.persist();
     }, this.persistDebounceMs);
   }
@@ -1031,6 +1166,35 @@ export class IntentManager {
     // Dirty-flag optimization: skip persistence if nothing changed
     if (!this.isDirty) {
       return;
+    }
+
+    // Async fast-exit: if a write is already in-flight there is no point
+    // running the expensive prune + toBinary + base64 pipeline — the result
+    // would be thrown away anyway when the isAsyncWriting check fires below.
+    // Mark hasPendingAsyncPersist so the in-flight write's .then() callback
+    // schedules one follow-up pass once the channel is clear.
+    if (this.asyncStorage && this.isAsyncWriting) {
+      this.hasPendingAsyncPersist = true;
+      return;
+    }
+
+    // Throttle gate: skip the expensive prune+serialize+write pipeline if the
+    // last successful write was within `persistThrottleMs` ms.  A trailing timer
+    // fires within one window to flush remaining dirty state so crash data loss
+    // is bounded by at most `persistThrottleMs` ms.  Disabled when 0 (default).
+    if (this.persistThrottleMs > 0) {
+      const now = this.timer.now();
+      const elapsed = now - this.lastPersistedAt;
+      if (elapsed < this.persistThrottleMs) {
+        if (this.throttleTimer === null) {
+          const remainingMs = this.persistThrottleMs - elapsed;
+          this.throttleTimer = this.timer.setTimeout(() => {
+            this.throttleTimer = null;
+            this.persist();
+          }, remainingMs);
+        }
+        return;
+      }
     }
 
     // LFU prune before serializing — keeps storage bounded.
@@ -1074,12 +1238,8 @@ export class IntentManager {
 
     if (this.asyncStorage) {
       // ── Async path ────────────────────────────────────────────────────────
-      // Guard: if a write is already in flight, queue one follow-up persist pass.
-      if (this.isAsyncWriting) {
-        this.hasPendingAsyncPersist = true;
-        return;
-      }
-
+      // isAsyncWriting was already checked above — if we reach this point the
+      // channel is clear and we can start a new write immediately.
       this.isAsyncWriting = true;
       this.hasPendingAsyncPersist = false;
       // Optimistically clear isDirty now that we've captured the current state
@@ -1090,6 +1250,10 @@ export class IntentManager {
         .setItem(this.storageKey, JSON.stringify(payload))
         .then(() => {
           this.isAsyncWriting = false;
+          // Successful write: reset the consecutive-failure counter so the
+          // next failure (if any) gets its own single automatic retry.
+          this.asyncWriteFailCount = 0;
+          this.lastPersistedAt = this.timer.now();
           if (this.hasPendingAsyncPersist || this.isDirty) {
             this.hasPendingAsyncPersist = false;
             this.persist();
@@ -1097,8 +1261,9 @@ export class IntentManager {
         })
         .catch((err: unknown) => {
           this.isAsyncWriting = false;
-          // Restore dirty flag so the data is retried on the next persist cycle.
+          // Restore dirty flag so the data is not silently discarded.
           this.isDirty = true;
+          this.asyncWriteFailCount += 1;
           const isQuota =
             err instanceof Error &&
             (err.name === 'QuotaExceededError' || err.message.toLowerCase().includes('quota'));
@@ -1112,10 +1277,20 @@ export class IntentManager {
               originalError: err,
             });
           }
-          // If a persist attempt was queued while this write was in flight,
-          // schedule one retry pass after the failure surface has been reported.
-          if (this.hasPendingAsyncPersist) {
-            this.hasPendingAsyncPersist = false;
+          // Schedule exactly one automatic retry pass after the FIRST consecutive
+          // failure, regardless of whether a write was queued during this
+          // in-flight attempt.  This covers the common case where no new
+          // track()/flushNow() call will arrive to re-trigger persist().
+          //
+          // Subsequent consecutive failures (asyncWriteFailCount > 1) are NOT
+          // auto-retried to prevent infinite retry loops when storage is
+          // persistently broken.  isDirty remains true, so the next
+          // track()/flushNow() call will naturally trigger a new attempt.
+          //
+          // hasPendingAsyncPersist is cleared here — any queued write is
+          // already covered by the scheduled retry below.
+          this.hasPendingAsyncPersist = false;
+          if (this.asyncWriteFailCount === 1) {
             this.schedulePersist();
           }
         });
@@ -1125,6 +1300,7 @@ export class IntentManager {
         this.storage.setItem(this.storageKey, JSON.stringify(payload));
         // Reset dirty flag after successful save
         this.isDirty = false;
+        this.lastPersistedAt = this.timer.now();
       } catch (err) {
         // QuotaExceededError, SecurityError, or Private Browsing restrictions.
         // Surface through the optional error callback; never crash the main thread.

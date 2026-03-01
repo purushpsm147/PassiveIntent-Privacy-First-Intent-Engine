@@ -11,6 +11,7 @@ import {
   MarkovGraph,
   BroadcastSync,
   normalizeRouteState,
+  BrowserLifecycleAdapter,
   SerializedMarkovGraph,
 } from '../src/intent-sdk.js';
 
@@ -93,6 +94,7 @@ routes.addEventListener('click', (event: Event) => {
       MarkovGraph: typeof MarkovGraph;
       BroadcastSync: typeof BroadcastSync;
       normalizeRouteState: typeof normalizeRouteState;
+      BrowserLifecycleAdapter: typeof BrowserLifecycleAdapter;
     };
   }
 ).__intentManager = intentManager;
@@ -103,4 +105,5 @@ routes.addEventListener('click', (event: Event) => {
   MarkovGraph,
   BroadcastSync,
   normalizeRouteState,
+  BrowserLifecycleAdapter,
 };

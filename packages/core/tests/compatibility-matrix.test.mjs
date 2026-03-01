@@ -88,8 +88,13 @@ test('IntentManager runs with custom storage+manual timer adapters (runtime matr
   manager.track('home');
   manager.track('search');
 
-  // Debounced persistence should not run until time advances.
-  assert.equal(storage.getItem('compat-matrix'), null);
+  // Aggressive sync persist: storage is written immediately on track(), even
+  // though a debounce is configured. The debounce only applies to the async
+  // coalescing path; the synchronous persist always runs first.
+  assert.ok(
+    storage.getItem('compat-matrix'),
+    'storage must be written synchronously after track()',
+  );
   timer.advance(11);
   assert.ok(storage.getItem('compat-matrix'));
 });

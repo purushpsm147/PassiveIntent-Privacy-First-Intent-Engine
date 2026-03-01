@@ -144,23 +144,28 @@ test('dirty flag: multiple flushNow() calls without track() write storage exactl
     storage: countingStorage,
   });
 
-  manager.track('A');
-  manager.track('B');
-  manager.flushNow(); // dirty → write #1, resets flag
+  // With aggressive sync persist each track() writes immediately.
+  manager.track('A'); // write #1
+  manager.track('B'); // write #2 (new transition → dirty)
+  assert.equal(writeCount, 2, `Expected 2 sync writes from track() calls, got ${writeCount}`);
 
-  manager.flushNow(); // not dirty → no write
-  manager.flushNow(); // not dirty → no write
-
-  assert.equal(writeCount, 1, `Expected exactly 1 storage write, got ${writeCount}`);
-
-  // Track again → should produce exactly one more write.
-  manager.track('C');
-  manager.flushNow();
+  manager.flushNow(); // not dirty → no additional write
+  manager.flushNow(); // not dirty → no additional write
 
   assert.equal(
     writeCount,
     2,
-    `Expected exactly 2 storage writes after second track, got ${writeCount}`,
+    `Expected still 2 writes (flushNow noop when not dirty), got ${writeCount}`,
+  );
+
+  // Track again → exactly one more write.
+  manager.track('C'); // write #3
+  manager.flushNow(); // not dirty → no additional write
+
+  assert.equal(
+    writeCount,
+    3,
+    `Expected exactly 3 storage writes after third track, got ${writeCount}`,
   );
 });
 
