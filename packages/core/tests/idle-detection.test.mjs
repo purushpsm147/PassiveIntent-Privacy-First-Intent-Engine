@@ -222,10 +222,9 @@ test('dwell baseline adjustment excludes idle duration', () => {
 
   manager.track('/products');
 
-  // Capture previousStateEnteredAt baseline via the manager internals.
-  // We'll observe the effect indirectly: after idle+resume the dwell clock
-  // should have been adjusted by the idle duration.
-  const baselineBefore = manager.previousStateEnteredAt;
+  // Capture the dwell-clock baseline via the test-only getter (the field is
+  // private; _previousStateEnteredAt is the sanctioned test accessor).
+  const baselineBefore = manager._previousStateEnteredAt;
 
   // Go idle.
   advanceTo(1000 + 130_000);
@@ -234,7 +233,7 @@ test('dwell baseline adjustment excludes idle duration', () => {
   setTime(1000 + 140_000);
   kit.interact();
 
-  const baselineAfter = manager.previousStateEnteredAt;
+  const baselineAfter = manager._previousStateEnteredAt;
 
   // The baseline should have been pushed forward by the idle duration.
   assert.ok(

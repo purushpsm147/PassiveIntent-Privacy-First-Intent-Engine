@@ -25,7 +25,7 @@ _(Under the hood, it uses a highly-optimized sparse Markov graph and Bloom filte
 - **Bot & Scraper Resilient:** Built-in `EntropyGuard` automatically detects impossibly fast or robotic click cadences, preventing bots from triggering your interventions.
 - **Zero Performance Hit:** Capped at 500 tracked states, compiles to a tiny 6 kB footprint, and uses dirty-flag persistence to skip unnecessary writes.
 - **SPA-Ready Lifecycle:** SSR-safe adapters and a clean `destroy()` API make it drop-in compatible with Next.js, Vue, Angular, and React Router.
-- **Comparison Shopper Awareness:** Automatically detects users who leave and return after ≥ 15 seconds, firing an `attention_return` event so you can greet them with a personalised welcome-back offer.
+- **Comparison Shopper Awareness:** Automatically detects users who leave and return after ≥ 15 seconds, firing an `attention_return` event so you can greet them with a personalized welcome-back offer.
 - **Idle-State Detection:** Tracks interaction silence with a lightweight polling loop and fires `user_idle` / `user_resumed` events, letting you dim overlays or pause expensive animations without any extra timers.
 
 ## What can you build?

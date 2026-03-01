@@ -388,6 +388,14 @@ export class IntentManager {
     this.persistenceCoordinator.persist();
   };
 
+  /**
+   * @internal Test-only accessor for the dwell-clock baseline.
+   * Not part of the stable public API — prefixed with `_` to signal that.
+   */
+  get _previousStateEnteredAt(): number {
+    return this.previousStateEnteredAt;
+  }
+
   hasSeen(state: string): boolean {
     const start = this.benchmark.now();
     const seen = this.bloom.check(state);

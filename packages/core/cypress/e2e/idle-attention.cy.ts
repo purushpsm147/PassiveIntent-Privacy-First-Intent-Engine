@@ -313,6 +313,10 @@ describe('Comparison Shopper — attention_return', () => {
 // ─────────────────────────────────────────────────────────────────────────────
 describe('Idle-State Detector — user_idle / user_resumed', () => {
   beforeEach(() => {
+    // Install Cypress's fake clock BEFORE the page loads so that every
+    // window.setTimeout call made by IntentManager / LifecycleCoordinator is
+    // stubbed.  Tests can then drive time with cy.tick() instead of real waits.
+    cy.clock();
     cy.visit('/sandbox/index.html', {
       onBeforeLoad: (win) => {
         win.localStorage.clear();
@@ -403,14 +407,14 @@ describe('Idle-State Detector — user_idle / user_resumed', () => {
       (win as any).__testOriginalNowAQ = originalNow;
     });
 
-    // Advance mock time past the 2-minute idle threshold + one check interval
-    // and wait for the idle timer to fire (real setTimeout of 5 seconds)
+    // Advance mock time past the 2-minute idle threshold + one check interval,
+    // then tick the stubbed clock to fire the 5-second idle check timer.
     cy.window().then((win) => {
       (win as any).__testMockTimeSetterAQ(5000 + 125_000); // 2 min + 5 s buffer
     });
 
-    // Wait for the 5-second idle check interval to fire
-    cy.wait(6000);
+    // Tick the stubbed clock to fire the 5-second idle check timer.
+    cy.tick(6000);
 
     cy.window().then((win) => {
       const idleEvents: any[] = (win as any).__testIdleEventsAQ;
@@ -455,8 +459,8 @@ describe('Idle-State Detector — user_idle / user_resumed', () => {
       (win as any).__testOriginalNowAR = originalNow;
     });
 
-    // Wait for one idle check cycle
-    cy.wait(6000);
+    // Tick the stubbed clock forward one idle check cycle.
+    cy.tick(6000);
 
     cy.window().then((win) => {
       const idleEvents: any[] = (win as any).__testIdleEventsAR;
@@ -511,8 +515,8 @@ describe('Idle-State Detector — user_idle / user_resumed', () => {
       (win as any).__testMockTimeSetterAS(5000 + 130_000); // > 2 min
     });
 
-    // Wait for idle check timer to detect idle
-    cy.wait(6000);
+    // Tick the stubbed clock forward to fire the idle check timer.
+    cy.tick(6000);
 
     // User interacts — should trigger user_resumed
     cy.window().then((win) => {
@@ -565,7 +569,8 @@ describe('Idle-State Detector — user_idle / user_resumed', () => {
       (win as any).__testMockTimeSetterAT(5000 + 300_000); // 5 minutes
     });
 
-    cy.wait(6000);
+    // Tick the stubbed clock to fire any pending idle check timers.
+    cy.tick(6000);
 
     cy.window().then((win) => {
       const idleEvents: any[] = (win as any).__testIdleEventsAT;
@@ -610,8 +615,9 @@ describe('Idle-State Detector — user_idle / user_resumed', () => {
       (win as any).__testOriginalNowAU = originalNow;
     });
 
-    // Wait well past the idle check interval
-    cy.wait(7000);
+    // Tick the stubbed clock well past the idle check interval to prove no
+    // timers fire after destroy().
+    cy.tick(7000);
 
     cy.window().then((win) => {
       const idleEvents: any[] = (win as any).__testIdleEventsAU;
@@ -690,7 +696,8 @@ describe('Idle-State Detector — user_idle / user_resumed', () => {
       (win as any).__testMockTimeSetterAV(5000 + 30_000 + 130_000); // past 2 min idle
     });
 
-    cy.wait(6000);
+    // Tick the stubbed clock to fire the idle check timer.
+    cy.tick(6000);
 
     cy.window().then((win) => {
       const idleEvents: any[] = (win as any).__testIdleEventsAV;
