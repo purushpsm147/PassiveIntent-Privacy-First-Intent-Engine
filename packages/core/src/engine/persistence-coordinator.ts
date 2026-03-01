@@ -146,11 +146,21 @@ export class PersistenceCoordinator {
 
     try {
       const parsed = JSON.parse(raw) as PersistedPayload;
-      if (!parsed.graphBinary) return null;
 
-      const bloom = BloomFilterClass.fromBase64(parsed.bloomBase64);
-      const bytes = base64ToUint8(parsed.graphBinary);
-      const graph = MarkovGraphClass.fromBinary(bytes, graphConfig);
+      let graph: MarkovGraph;
+      if (parsed.graphBinary) {
+        const bytes = base64ToUint8(parsed.graphBinary);
+        graph = MarkovGraphClass.fromBinary(bytes, graphConfig);
+      } else if (parsed.graph) {
+        // Legacy JSON format — predates the binary codec.
+        graph = MarkovGraphClass.fromJSON(parsed.graph, graphConfig);
+      } else {
+        return null;
+      }
+
+      const bloom = parsed.bloomBase64
+        ? BloomFilterClass.fromBase64(parsed.bloomBase64)
+        : new BloomFilterClass();
 
       return { bloom, graph };
     } catch (err) {
@@ -245,6 +255,7 @@ export class PersistenceCoordinator {
           this.isAsyncWriting = false;
           this.asyncWriteFailCount = 0;
           this.lastPersistedAt = this.timer.now();
+          this.engineHealthInternal = 'healthy';
           if (this.hasPendingAsyncPersist || this.isDirty) {
             this.hasPendingAsyncPersist = false;
             this.persist();
@@ -277,6 +288,7 @@ export class PersistenceCoordinator {
         this.storage.setItem(this.storageKey, JSON.stringify(payload));
         this.isDirty = false;
         this.lastPersistedAt = this.timer.now();
+        this.engineHealthInternal = 'healthy';
       } catch (err) {
         const isQuota =
           err instanceof Error &&

@@ -136,8 +136,9 @@ export class LifecycleCoordinator {
 
   /**
    * @internal — test-only hook. Replaces the active lifecycle adapter after
-   * construction. Unsubscribes the coordinator's existing pause/resume
-   * callbacks from the previous adapter before installing the new one.
+   * construction: unsubscribes the coordinator's pause/resume callbacks from
+   * the previous adapter, swaps in the new one, and re-registers the same
+   * handlers on the new adapter (or leaves them null when `adapter` is null).
    *
    * Do NOT call this in production code; injecting the adapter via
    * `LifecycleCoordinatorConfig.lifecycleAdapter` is the correct approach.
@@ -148,8 +149,36 @@ export class LifecycleCoordinator {
     this.pauseUnsub = null;
     this.resumeUnsub?.();
     this.resumeUnsub = null;
+    if (this.ownsLifecycleAdapter) {
+      this.lifecycleAdapter?.destroy();
+    }
     this.lifecycleAdapter = adapter;
     this.ownsLifecycleAdapter = owns;
+    if (adapter) {
+      this.pauseUnsub = adapter.onPause(() => {
+        this.tabHiddenAt = this.timer.now();
+      });
+      this.resumeUnsub = adapter.onResume(() => {
+        if (this.tabHiddenAt === null) return;
+        const hiddenDuration = this.timer.now() - this.tabHiddenAt;
+        this.tabHiddenAt = null;
+        if (!this.dwellTimeEnabled) return;
+        if (hiddenDuration > MAX_PLAUSIBLE_DWELL_MS) {
+          if (this.hasPreviousState()) {
+            this.onResetBaseline();
+            this.emitter.emit('session_stale', {
+              reason: 'hidden_duration_exceeded',
+              measuredMs: hiddenDuration,
+              thresholdMs: MAX_PLAUSIBLE_DWELL_MS,
+            });
+          }
+          return;
+        }
+        if (this.hasPreviousState()) {
+          this.onAdjustBaseline(hiddenDuration);
+        }
+      });
+    }
   }
 
   /**
