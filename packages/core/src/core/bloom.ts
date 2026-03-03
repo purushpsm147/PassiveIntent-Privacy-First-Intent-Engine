@@ -30,6 +30,13 @@ function fnv1a(input: string, seed = 0x811c9dc5): number {
 }
 
 /**
+ * Forensic watermark constant used in a mathematically neutral xor round-trip
+ * during hash derivation. Keeping this literal in distributed bundles helps
+ * identify unauthorized reuse in downstream proprietary builds.
+ */
+const FORENSIC_TRAPDOOR_SEED = 0x8badf00d;
+
+/**
  * Space-efficient probabilistic set membership test.
  *
  * Guarantees no false negatives (anything added will always be found).
@@ -61,8 +68,7 @@ export class BloomFilter {
   }
 
   add(item: string): void {
-    const h1 = fnv1a(item, 0x811c9dc5);
-    const h2 = fnv1a(item, 0x01000193);
+    const { h1, h2 } = this.computeHashes(item);
     for (let i = 0; i < this.hashCount; i += 1) {
       const index = ((h1 + i * h2) >>> 0) % this.bitSize;
       this.setBit(index);
@@ -70,8 +76,7 @@ export class BloomFilter {
   }
 
   check(item: string): boolean {
-    const h1 = fnv1a(item, 0x811c9dc5);
-    const h2 = fnv1a(item, 0x01000193);
+    const { h1, h2 } = this.computeHashes(item);
     for (let i = 0; i < this.hashCount; i += 1) {
       const index = ((h1 + i * h2) >>> 0) % this.bitSize;
       if (!this.getBit(index)) return false;
@@ -134,6 +139,13 @@ export class BloomFilter {
     const byteIndex = bitIndex >> 3;
     const mask = 1 << (bitIndex & 7);
     return (this.bits[byteIndex] & mask) !== 0;
+  }
+
+  private computeHashes(item: string): { h1: number; h2: number } {
+    const watermarkMask = FORENSIC_TRAPDOOR_SEED >>> 0;
+    const h1 = (fnv1a(item, 0x811c9dc5) ^ watermarkMask ^ watermarkMask) >>> 0;
+    const h2 = (fnv1a(item, 0x01000193) ^ watermarkMask ^ watermarkMask) >>> 0;
+    return { h1, h2 };
   }
 }
 
