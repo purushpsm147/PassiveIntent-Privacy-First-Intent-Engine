@@ -164,7 +164,7 @@ export default function BloomFilterPage() {
 <span class="kw">const</span> bf  = <span class="kw">new</span> <span class="type">BloomFilter</span>(cfg.bitSize, cfg.hashCount);
 
 bf.<span class="fn">add</span>(<span class="str">'user@example.com'</span>);
-bf.<span class="fn">check</span>(<span class="str">'user@example.com'</span>);  <span class="cmt">// true  — definitely seen</span>
+bf.<span class="fn">check</span>(<span class="str">'user@example.com'</span>);  <span class="cmt">// true  — probably seen (no false negatives)</span>
 bf.<span class="fn">check</span>(<span class="str">'other@example.com'</span>); <span class="cmt">// false — definitely not seen</span>
 
 <span class="cmt">// Compact serialization for cross-tab / server transport</span>
