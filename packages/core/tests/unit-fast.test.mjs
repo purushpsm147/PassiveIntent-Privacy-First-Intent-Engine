@@ -5392,3 +5392,125 @@ test('stateNormalizer: returning empty string silently drops the track() call (n
   assert.equal(changes[0], '/home');
   manager.flushNow();
 });
+
+// ─── Property-based invariant tests for normalizedEntropyForState ─────────────
+//
+// These tests assert *mathematical identities* across a range of inputs rather
+// than single examples.  The goal is to catch regressions where the numerator
+// and denominator of the normalized-entropy formula drift apart (e.g., Bayesian
+// numerator vs. frequentist denominator), which was the root cause of the
+// entropy-normalization bug that the Math.min(1,...) clamp was silently masking.
+
+test('[property] normalizedEntropyForState: uniform k-way distribution always scores exactly 1.0', () => {
+  // Identity: H_freq(uniform k) = ln(k) = maxEntropy → normalized = 1.0 exactly.
+  // If numerator and denominator ever use different k values, this will fail for
+  // at least one value of k, because ln(k_global) / ln(k_local) ≠ 1 when they differ.
+  for (const k of [2, 3, 4, 5, 6, 8, 10]) {
+    const graph = new MarkovGraph({ smoothingAlpha: 0 });
+    // 100 background states inflates global k — score must remain 1.0 regardless.
+    for (let bg = 0; bg < 100; bg++) graph.incrementTransition(`bg-${bg}`, `bg-${bg + 1}`);
+    // Perfectly uniform k-way from 'focal': each destination visited exactly 20 times.
+    for (let j = 0; j < 20; j++) {
+      for (let d = 0; d < k; d++) graph.incrementTransition('focal', `dest-${d}`);
+    }
+    const score = graph.normalizedEntropyForState('focal');
+    assert.ok(
+      Math.abs(score - 1.0) < 1e-9,
+      `Uniform ${k}-way with 100 background states must score exactly 1.0; got ${score}`,
+    );
+  }
+});
+
+test('[property] normalizedEntropyForState: single-edge state always scores exactly 0', () => {
+  // Identity: H_freq(deterministic) = 0 → normalized = 0 / ln(supportSize) = 0 exactly.
+  // Holds for any number of background states.
+  for (const bgCount of [0, 5, 50, 200, 500]) {
+    const graph = new MarkovGraph({ smoothingAlpha: 0 });
+    for (let bg = 0; bg < bgCount; bg++) graph.incrementTransition(`bg-${bg}`, `bg-${bg + 1}`);
+    for (let j = 0; j < 20; j++) graph.incrementTransition('linear', 'always-next');
+    const score = graph.normalizedEntropyForState('linear');
+    assert.equal(
+      score,
+      0,
+      `Deterministic state must score exactly 0 at bgCount=${bgCount}; got ${score}`,
+    );
+  }
+});
+
+test('[property] normalizedEntropyForState: score does not change when unrelated states are added', () => {
+  // Adding states that never transition from 'focal' must leave its score unchanged.
+  // This is the "entropy crush" invariant in property form: the only input that
+  // affects the score is the local transition distribution of the queried state.
+  for (const [localFanOut, bgBefore, bgAfter] of [
+    [2, 0, 100],
+    [3, 5, 200],
+    [4, 10, 500],
+    [6, 20, 50],
+  ]) {
+    const graph = new MarkovGraph({ smoothingAlpha: 0 });
+    for (let bg = 0; bg < bgBefore; bg++) graph.incrementTransition(`bg-${bg}`, `bg-${bg + 1}`);
+    for (let j = 0; j < 10; j++) {
+      for (let d = 0; d < localFanOut; d++) graph.incrementTransition('focal', `dest-${d}`);
+    }
+    const scoreBefore = graph.normalizedEntropyForState('focal');
+
+    // Add many more background states — none touch 'focal'.
+    for (let bg = bgBefore; bg < bgAfter; bg++)
+      graph.incrementTransition(`bg-${bg}`, `bg-${bg + 1}`);
+    const scoreAfter = graph.normalizedEntropyForState('focal');
+
+    assert.ok(
+      Math.abs(scoreBefore - scoreAfter) < 1e-9,
+      `Score must be stable after adding ${bgAfter - bgBefore} background states ` +
+        `(fanOut=${localFanOut}): was ${scoreBefore}, now ${scoreAfter}`,
+    );
+  }
+});
+
+test('[property] normalizedEntropyForState: clamp is never the mechanism — raw formula is already in [0, 1]', () => {
+  // The Math.min(1, ...) clamp in normalizedEntropyForState is a SAFETY NET.
+  // By the maximum-entropy principle, H_freq / ln(k) ∈ [0, 1] for any probability
+  // distribution over k outcomes — no clamping is needed.
+  // This test verifies that the public score equals the raw frequentist formula
+  // exactly, proving the clamp never fired and the invariant holds by construction.
+  const distributionShapes = [
+    { counts: [10, 1] }, // skewed 2-way
+    { counts: [5, 5, 1] }, // near-uniform 3-way
+    { counts: [8, 4, 2, 1] }, // geometric 4-way
+    { counts: [3, 3, 3, 3, 3] }, // uniform 5-way
+    { counts: [1, 2, 3, 4, 5, 6] }, // linear-ramp 6-way
+    { counts: [20, 1, 1] }, // heavily skewed 3-way
+  ];
+
+  for (const { counts } of distributionShapes) {
+    const graph = new MarkovGraph({ smoothingAlpha: 0 });
+    // 200 background states inflate global k to stress-test independence.
+    for (let bg = 0; bg < 200; bg++) graph.incrementTransition(`bg-${bg}`, `bg-${bg + 1}`);
+    for (let d = 0; d < counts.length; d++) {
+      for (let c = 0; c < counts[d]; c++) graph.incrementTransition('focal', `dest-${d}`);
+    }
+
+    const publicScore = graph.normalizedEntropyForState('focal');
+
+    // Compute the expected value from first principles.
+    const total = counts.reduce((s, c) => s + c, 0);
+    const rawH = counts.reduce((s, c) => {
+      const p = c / total;
+      return s - (p > 0 ? p * Math.log(p) : 0);
+    }, 0);
+    const supportSize = Math.max(2, counts.length);
+    const expectedRaw = rawH / Math.log(supportSize);
+
+    // Invariant 1: raw formula is already in [0, 1] (clamp never needed).
+    assert.ok(
+      expectedRaw >= 0 && expectedRaw <= 1 + 1e-9,
+      `Raw formula must be in [0, 1] for counts=[${counts}]; got ${expectedRaw}`,
+    );
+    // Invariant 2: public result equals the raw formula (clamp had no effect).
+    assert.ok(
+      Math.abs(publicScore - expectedRaw) < 1e-9,
+      `Public score must equal raw formula for counts=[${counts}]: ` +
+        `expected ${expectedRaw}, got ${publicScore}`,
+    );
+  }
+});

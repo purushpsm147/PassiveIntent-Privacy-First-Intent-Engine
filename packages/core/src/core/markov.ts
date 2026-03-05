@@ -91,6 +91,15 @@ export class MarkovGraph {
    * appending to the end of `indexToState`, keeping the array compact.
    *
    * Empty string is rejected because `''` is the internal tombstone marker.
+   *
+   * ⚠ **Multi-call safety:** `ensureState` is NOT safe to call twice in sequence
+   * without first ensuring no prune can fire between the two calls.  If a caller
+   * resolves index A via `ensureState(a)`, then a prune fires before `ensureState(b)`,
+   * state A may be tombstoned (it was just allocated so its `total = 0`, making it the
+   * first LFU eviction candidate).  Any subsequent write using index A then lands on
+   * a dead slot — a "ghost row".  Any method that calls `ensureState` more than once
+   * MUST execute the prune guard BEFORE the first call, never between calls.
+   * See `incrementTransition` for the canonical pattern.
    */
   ensureState(state: string): number {
     if (state === '') throw new Error('MarkovGraph: state label must not be empty string');
@@ -243,7 +252,15 @@ export class MarkovGraph {
       if (p > 0) entropy -= p * Math.log(p);
     });
 
-    // Bound to [0, 1] to preserve the documented normalized-entropy contract.
+    // ── Invariant: entropy ≤ maxEntropy (should hold WITHOUT the clamp) ────────
+    // By the maximum-entropy principle, H(p) = -Σ p_i ln(p_i) ≤ ln(k) for any
+    // probability distribution over k outcomes.  Here k = supportSize and
+    // maxEntropy = ln(supportSize), so entropy / maxEntropy ∈ [0, 1] by construction.
+    //
+    // Math.min(1, ...) below is a SAFETY NET only — it must never be the
+    // mechanism that produces a value ≤ 1.  If it fires, the numerator and
+    // denominator are using different distributions (regression indicator).
+    // Property-based tests in unit-fast.test.mjs assert this invariant directly.
     const normalized = entropy / maxEntropy;
     return Math.min(1, Math.max(0, normalized));
   }
