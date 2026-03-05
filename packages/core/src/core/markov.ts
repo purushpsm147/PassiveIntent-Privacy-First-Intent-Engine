@@ -220,7 +220,6 @@ export class MarkovGraph {
     if (!row || row.total === 0) return 0;
 
     const supportSize = Math.max(2, row.toCounts.size);
-    if (supportSize <= 1) return 0;
 
     const entropy = this.entropyForState(state);
     const maxEntropy = Math.log(supportSize);
