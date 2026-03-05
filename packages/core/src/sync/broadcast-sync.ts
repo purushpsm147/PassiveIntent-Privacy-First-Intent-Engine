@@ -220,6 +220,7 @@ export class BroadcastSync {
    * @param by   Validated finite increment amount.
    */
   applyRemoteCounter(key: string, by: number): void {
+    if (!this.counters.has(key) && this.counters.size >= 50) return;
     const current = this.counters.get(key) ?? 0;
     this.counters.set(key, current + by);
   }

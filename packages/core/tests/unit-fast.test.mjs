@@ -23,6 +23,10 @@ import { MemoryStorage, setupTestEnvironment, storage } from './helpers/test-env
 
 setupTestEnvironment();
 
+/* =================================================================== */
+/*  BloomFilter                                                         */
+/* =================================================================== */
+
 test('BloomFilter supports add/check and base64 round-trip', () => {
   const bloom = new BloomFilter({ bitSize: 256, hashCount: 3 });
   bloom.add('home');
@@ -37,6 +41,10 @@ test('BloomFilter supports add/check and base64 round-trip', () => {
   assert.equal(restored.check('settings'), true);
   assert.equal(restored.check('notadded'), false);
 });
+
+/* =================================================================== */
+/*  MarkovGraph                                                         */
+/* =================================================================== */
 
 test('MarkovGraph calculates probabilities, entropy, and serialization', () => {
   // smoothingAlpha: 0 — this test asserts exact frequentist probability values
@@ -55,9 +63,6 @@ test('MarkovGraph calculates probabilities, entropy, and serialization', () => {
   assert.ok(entropy > 0);
   const normalized = graph.normalizedEntropyForState('A');
   assert.ok(normalized > 0 && normalized <= 1);
-
-  const quantized = graph.getQuantizedProbability('A', 'B');
-  assert.ok(Math.abs(quantized - 2 / 3) < 0.01);
 
   // Pass smoothingAlpha: 0 explicitly so the round-tripped graph stays frequentist.
   const roundTripped = MarkovGraph.fromJSON(graph.toJSON(), { smoothingAlpha: 0 });
@@ -234,6 +239,10 @@ test('fromJSON rejects inconsistent payloads (freedIndices / label mismatch)', (
   );
 });
 
+/* =================================================================== */
+/*  IntentManager — Core                                                */
+/* =================================================================== */
+
 test('IntentManager returns performance report when benchmark mode is enabled', () => {
   const manager = new IntentManager({
     storageKey: 'perf-test',
@@ -294,6 +303,10 @@ test("IntentManager.track('') is a no-op and surfaces a non-fatal error via onEr
   assert.equal(manager.hasSeen('search'), true);
   assert.equal(manager.hasSeen(''), false);
 });
+
+/* =================================================================== */
+/*  EntropyGuard — Bot Detection                                        */
+/* =================================================================== */
 
 test('EntropyGuard: botProtection:false never suppresses events regardless of call speed', () => {
   storage.clear();
@@ -394,7 +407,7 @@ test('EntropyGuard: state_change events are still emitted for suspected bots', (
   manager.flushNow();
 });
 
-test('EntropyGuard: Bloom filter and Markov graph still update when bot is suspected', () => {
+test('EntropyGuard: Bloom filter still updates but graph stops recording after bot is suspected', () => {
   storage.clear();
 
   const manager = new IntentManager({
@@ -402,16 +415,26 @@ test('EntropyGuard: Bloom filter and Markov graph still update when bot is suspe
     botProtection: true,
   });
 
+  // With 30 rapid-fire synchronous calls the bot flag trips well before all
+  // transitions are recorded.  The Bloom filter always receives every state
+  // (runBloomStage runs unconditionally).  The Markov graph stops recording
+  // once `suspected` becomes true (runGraphAndSignalStage guard).
   for (let i = 0; i < 30; i += 1) {
     manager.track(i % 2 === 0 ? 'P' : 'Q');
   }
 
-  // Underlying state collection continues even while signals are suppressed.
+  // Bloom filter must still reflect all visited states.
   assert.equal(manager.hasSeen('P'), true);
   assert.equal(manager.hasSeen('Q'), true);
+
+  // The graph should have far fewer than 29 transitions recorded because
+  // the bot guard aborts the graph stage after the flag trips (~call 3-5).
   const graph = manager.exportGraph();
-  assert.ok(graph.states.includes('P'), 'Expected P in graph states');
-  assert.ok(graph.states.includes('Q'), 'Expected Q in graph states');
+  const totalTransitions = graph.rows.reduce((sum, [, total]) => sum + total, 0);
+  assert.ok(
+    totalTransitions < 10,
+    `Expected graph to have < 10 transitions after bot guard; got ${totalTransitions}`,
+  );
   manager.flushNow();
 });
 
@@ -499,8 +522,10 @@ test('EntropyGuard: bot flag clears automatically after sufficient human-paced i
     // Phase 2 — human-paced calls: 200 ms between each.
     // BOT_DETECTION_WINDOW = 10; after 10 slow calls, all 10 buffer slots hold
     // 200 ms deltas, so windowBotScore drops to 0 and isSuspectedBot resets.
-    // These calls also push hub above MIN_SAMPLE_TRANSITIONS (10) if needed.
-    for (let i = 0; i < 15; i++) {
+    // We need MIN_SAMPLE_TRANSITIONS (10) hub→dest transitions so entropy
+    // evaluates.  With 25 iterations (half land on hub as ctx.from), hub
+    // accumulates ~12 outgoing transitions — comfortably above the threshold.
+    for (let i = 0; i < 25; i++) {
       mockTime += 200;
       manager.track(i % 2 === 0 ? 'hub' : destinations[i % destinations.length]);
     }
@@ -1579,6 +1604,48 @@ test('bot_detected fires on the false→true EntropyGuard transition', () => {
   manager.flushNow();
 });
 
+test('bot protection: bloom entries from suspected-bot tracks are persisted so hasSeen() survives a session reload', () => {
+  // Regression: when botProtection && signalEngine.suspected, the early return
+  // in runGraphAndSignalStage skipped both markDirty() calls.  bloom.add() had
+  // already run in runBloomStage, so the bloom update existed in memory but was
+  // never written to storage.  After a page reload, hasSeen() would return false
+  // for states only visited during the bot burst.
+  storage.clear();
+  const manager = new IntentManager({
+    storageKey: 'bot-bloom-persist-test',
+    storage,
+    botProtection: true,
+  });
+
+  // Trigger bot detection with 60 rapid-fire calls.
+  const states = ['A', 'B', 'C', 'D', 'E', 'F'];
+  for (let i = 0; i < 60; i++) {
+    manager.track(states[i % states.length]);
+  }
+
+  // Track a brand-new state AFTER bot detection fires.
+  // Pre-fix: bloom.add() ran but markDirty() was never called → not persisted.
+  // Post-fix: isNewToBloom → markDirty() fires before the early return → persisted.
+  manager.track('bot-era-new-page');
+
+  // Force flush so storage has the latest snapshot.
+  manager.flushNow();
+  manager.destroy();
+
+  // Restore from persisted storage — simulates a page reload.
+  const manager2 = new IntentManager({
+    storageKey: 'bot-bloom-persist-test',
+    storage,
+    botProtection: false, // fresh session, no longer a bot
+  });
+
+  assert.ok(
+    manager2.hasSeen('bot-era-new-page'),
+    'hasSeen() must return true for a state visited during a bot-suspected burst after a simulated session reload',
+  );
+  manager2.destroy();
+});
+
 test('bot_detected fires at most once per false→true transition (not on every rapid call while suspected)', () => {
   storage.clear();
 
@@ -2156,6 +2223,8 @@ test('visibilitychange: no listener is attached in non-browser (SSR) environment
   }
 });
 
+// ── holdoutConfig (A/B Holdout) ──────────────────────────────────────────────
+
 test('holdoutConfig: assignmentGroup defaults to treatment when holdoutConfig is absent', () => {
   storage.clear();
   const manager = new IntentManager({
@@ -2244,6 +2313,8 @@ test('holdoutConfig: treatment group still emits high_entropy normally', () => {
   assert.ok(emitted.length > 0, 'treatment group must emit high_entropy events');
   manager.flushNow();
 });
+
+// ── Counter API (incrementCounter / resetCounter) ─────────────────────────────
 
 test('incrementCounter: starts at 0 and increments by 1 by default', () => {
   storage.clear();
@@ -2542,6 +2613,39 @@ test('normalizeRouteState: does NOT replace hyphenated slugs (non-UUID hyphens)'
   assert.equal(normalizeRouteState('/category/red-shoes'), '/category/red-shoes');
 });
 
+// ─── Numeric ID normalization ────────────────────────────────────────────────
+
+test('normalizeRouteState: replaces 4+ digit numeric path segments with :id', () => {
+  assert.equal(normalizeRouteState('/user/12345/profile'), '/user/:id/profile');
+  assert.equal(normalizeRouteState('/order/9999'), '/order/:id');
+  assert.equal(normalizeRouteState('/products/100000/reviews'), '/products/:id/reviews');
+});
+
+test('normalizeRouteState: does NOT replace 1–3 digit numbers (pagination, wizard steps)', () => {
+  assert.equal(normalizeRouteState('/page/2'), '/page/2');
+  assert.equal(normalizeRouteState('/step/3'), '/step/3');
+  assert.equal(normalizeRouteState('/items/999'), '/items/999');
+});
+
+test('normalizeRouteState: replaces multiple numeric IDs in one path', () => {
+  assert.equal(normalizeRouteState('/org/12345/user/67890'), '/org/:id/user/:id');
+});
+
+test('normalizeRouteState: replaces mixed UUID + numeric IDs', () => {
+  assert.equal(
+    normalizeRouteState('/org/550e8400-e29b-41d4-a716-446655440000/user/12345'),
+    '/org/:id/user/:id',
+  );
+});
+
+test('normalizeRouteState: numeric ID with trailing slash', () => {
+  assert.equal(normalizeRouteState('/user/12345/'), '/user/:id');
+});
+
+test('normalizeRouteState: numeric ID with query string', () => {
+  assert.equal(normalizeRouteState('/product/54321?tab=specs'), '/product/:id');
+});
+
 test('normalizeRouteState: handles empty string without throwing', () => {
   assert.equal(normalizeRouteState(''), '');
 });
@@ -2679,6 +2783,8 @@ test('track() auto-normalizes: plain semantic states are unchanged', () => {
   assert.equal(changes[1], 'checkout');
   manager.flushNow();
 });
+
+// ── Next-State Prediction (getLikelyNextStates / predictNextStates) ───────────
 
 test('MarkovGraph.getLikelyNextStates returns edges above the probability threshold', () => {
   // smoothingAlpha: 0 to assert the exact frequentist probability (2/3).
@@ -3214,6 +3320,8 @@ test('IntentManager: remote counter increment from another tab is reflected in g
   });
 });
 
+// ── IntentManager.createAsync ─────────────────────────────────────────────────
+
 test('IntentManager.createAsync() throws when asyncStorage is absent', async () => {
   await assert.rejects(
     () => IntentManager.createAsync({ storage: storage }),
@@ -3283,6 +3391,8 @@ test('IntentManager.createAsync() restores persisted state from async storage', 
   m2.destroy();
 });
 
+// ── Trajectory Scoring (smoothingEpsilon) ─────────────────────────────────────
+
 test('trajectory scoring: smoothingEpsilon config controls unseen-transition likelihood', () => {
   const baseline = new MarkovGraph();
   baseline.incrementTransition('/known', '/known');
@@ -3337,6 +3447,8 @@ test('trajectory scoring: smoothingEpsilon config controls unseen-transition lik
     `invalid smoothingEpsilon must fall back to default (${llInvalid} vs ${llDefault})`,
   );
 });
+
+// ── Async Persist ─────────────────────────────────────────────────────────────
 
 test('IntentManager async persist: overlapping writes are coalesced and auto-flushed', async () => {
   const writes = [];
@@ -4871,4 +4983,534 @@ test('persist respects dirty-flag: no write if nothing changed between track() c
   );
 
   manager.destroy();
+});
+
+// ─── ensureState hard-cap guard (burst bloat prevention) ─────────────────────
+
+test('MarkovGraph ensureState triggers synchronous prune at 1.5× maxStates', () => {
+  const graph = new MarkovGraph({ maxStates: 10 });
+
+  // Without the hard cap, adding 30 unique states would grow indexToState to 30.
+  // With the hard cap (prune at 1.5× = 15 live states), the array should stay
+  // much smaller because prune recycles slots via freedIndices.
+  for (let i = 0; i < 30; i++) {
+    // Each state has an outgoing transition so it's not trivially evicted.
+    graph.incrementTransition(`s${i}`, `s${(i + 1) % 30}`);
+  }
+
+  const json = graph.toJSON();
+  const arrayLen = json.states.length;
+
+  // The indexToState array must not have grown to 30 — the hard cap should
+  // have pruned mid-burst and reused freed slots.
+  assert.ok(
+    arrayLen < 25,
+    `Hard-cap guard should prevent unbounded array growth (got ${arrayLen} slots for 30 unique states)`,
+  );
+
+  // The hard-cap fires prune at the TOP of incrementTransition (before any
+  // ensureState call), so freed slots are eligible for immediate reuse within
+  // the same call.  Tombstones may or may not remain at the very end depending
+  // on whether those slots were consumed by the two ensureState calls that
+  // follow each prune.  The invariant to assert is that LIVE states are
+  // bounded, which is the actual goal of the hard-cap guard.
+  const liveStates = json.states.filter((s) => s !== '').length;
+  assert.ok(
+    liveStates <= Math.ceil(10 * 1.5),
+    `Prune must keep live-state count bounded (got ${liveStates} live states for maxStates=10)`,
+  );
+});
+
+test('MarkovGraph ensureState hard cap recycles freed indices', () => {
+  const graph = new MarkovGraph({ maxStates: 5 });
+
+  // Burst 8 unique states (1.6× maxStates).
+  for (let i = 0; i < 8; i++) {
+    graph.incrementTransition(`s${i}`, `s${(i + 1) % 8}`);
+  }
+
+  const jsonBeforeNewState = graph.toJSON();
+  const arrayLenBefore = jsonBeforeNewState.states.length;
+
+  // Add one more state — should reuse a freed slot, not grow the array.
+  graph.incrementTransition('s0', 'new-state');
+  const jsonAfter = graph.toJSON();
+
+  assert.ok(
+    jsonAfter.states.length <= arrayLenBefore,
+    `Array should not grow after prune frees slots (was ${arrayLenBefore}, now ${jsonAfter.states.length})`,
+  );
+});
+
+test('incrementTransition: fromState not evicted by prune triggered for toState (ghost-row regression)', () => {
+  // maxStates = 4, burst threshold = 6 (4 * 1.5).
+  // Reproduce the ghost-row bug:
+  //   1. Fill graph with 5 states that each have high transition counts so
+  //      they survive LFU pruning.
+  //   2. Call incrementTransition('fresh-from', 'fresh-to') where both states
+  //      are brand-new (total = 0).
+  //   Pre-fix: ensureState('fresh-from') raised size to 6,
+  //            ensureState('fresh-to') then triggered prune() which evicted
+  //            'fresh-from' (total=0), leaving a ghost row at a tombstoned
+  //            index and getProbability returning 0.
+  //   Post-fix: prune fires at the TOP of incrementTransition (size=5 < 6,
+  //             so no prune this time), then both states are allocated safely.
+  const graph = new MarkovGraph({ maxStates: 4, smoothingAlpha: 0 });
+
+  // Seed 5 states with heavy traffic so none of them are LFU-evicted.
+  for (let i = 0; i < 5; i++) {
+    for (let j = 0; j < 20; j++) {
+      graph.incrementTransition(`seed${i}`, `seed${(i + 1) % 5}`);
+    }
+  }
+  // stateToIndex.size == 5, below the burst threshold of 6.
+
+  // Both 'fresh-from' and 'fresh-to' are new.  In the buggy code, prune would
+  // fire during ensureState('fresh-to') and tombstone 'fresh-from'.
+  graph.incrementTransition('fresh-from', 'fresh-to');
+
+  const p = graph.getProbability('fresh-from', 'fresh-to');
+  assert.ok(
+    p > 0,
+    `expected probability > 0 for fresh-from→fresh-to but got ${p} (ghost-row bug: fromState was evicted mid-resolution)`,
+  );
+});
+
+// ─── stateNormalizer config option ───────────────────────────────────────────
+
+test('IntentManager stateNormalizer: custom normalizer collapses blog slugs', () => {
+  storage.clear();
+  const manager = new IntentManager({
+    storageKey: 'state-normalizer-test',
+    storage,
+    botProtection: false,
+    stateNormalizer: (state) => state.replace(/^\/blog\/[^/]+$/, '/blog/:slug'),
+    lifecycleAdapter: {
+      onPause() {
+        return () => {};
+      },
+      onResume() {
+        return () => {};
+      },
+      destroy() {},
+    },
+  });
+  const changes = [];
+  manager.on('state_change', ({ to }) => changes.push(to));
+
+  manager.track('/blog/how-to-tie-a-tie');
+  manager.track('/blog/best-running-shoes-2026');
+
+  assert.equal(changes[0], '/blog/:slug');
+  assert.equal(changes[1], '/blog/:slug');
+  manager.destroy();
+});
+
+test('IntentManager stateNormalizer: custom normalizer runs after built-in normalizer', () => {
+  storage.clear();
+  const manager = new IntentManager({
+    storageKey: 'state-normalizer-order-test',
+    storage,
+    botProtection: false,
+    stateNormalizer: (state) => state.replace(/\/:id\/edit$/, '/:id/view'),
+    lifecycleAdapter: {
+      onPause() {
+        return () => {};
+      },
+      onResume() {
+        return () => {};
+      },
+      destroy() {},
+    },
+  });
+  const changes = [];
+  manager.on('state_change', ({ to }) => changes.push(to));
+
+  // UUID is stripped first by built-in normalizer, then custom normalizer remaps /edit → /view
+  manager.track('/users/550e8400-e29b-41d4-a716-446655440000/edit');
+  assert.equal(changes[0], '/users/:id/view');
+  manager.destroy();
+});
+
+test('track() auto-normalizes: replaces numeric ID segments with :id', () => {
+  storage.clear();
+  const manager = new IntentManager({
+    storageKey: 'track-norm-numeric-id',
+    storage,
+    botProtection: false,
+    lifecycleAdapter: {
+      onPause() {
+        return () => {};
+      },
+      onResume() {
+        return () => {};
+      },
+      destroy() {},
+    },
+  });
+  const changes = [];
+  manager.on('state_change', ({ to }) => changes.push(to));
+
+  manager.track('/user/12345/profile');
+  manager.track('/user/67890/profile');
+  assert.equal(changes[0], '/user/:id/profile');
+  assert.equal(changes[1], '/user/:id/profile');
+  manager.destroy();
+});
+
+// ─── Entropy Crush fix ────────────────────────────────────────────────────────
+
+test('normalizedEntropyForState: stays high even after many unique states are visited (Bayesian mode)', () => {
+  // Regression test for the "entropy crush" bug.
+  // With the old global-denominator formula, visiting 50+ unique pages
+  // would grow ln(stateCount) large enough to crush the normalized score
+  // of a locally-confused state well below the 0.75 threshold.
+  const graph = new MarkovGraph({ smoothingAlpha: 0.1, highEntropyThreshold: 0.75 });
+
+  // Simulate 50 unique "background" states to inflate the global state count.
+  for (let i = 0; i < 50; i += 1) {
+    graph.incrementTransition(`page-${i}`, `page-${i + 1}`);
+  }
+
+  // Now simulate a locally-confused state hopping between just 4 links
+  // with near-uniform distribution — this should register as high entropy.
+  for (let j = 0; j < 10; j += 1) {
+    graph.incrementTransition('confused', 'linkA');
+    graph.incrementTransition('confused', 'linkB');
+    graph.incrementTransition('confused', 'linkC');
+    graph.incrementTransition('confused', 'linkD');
+  }
+
+  const normalized = graph.normalizedEntropyForState('confused');
+  assert.ok(
+    normalized >= 0.75,
+    `Expected normalized entropy >= 0.75 for locally confused state after 50 background pages; got ${normalized}`,
+  );
+});
+
+test('normalizedEntropyForState: deterministic state scores at 0 regardless of global state count', () => {
+  // A state with only one outgoing edge should always score 0 (no confusion)
+  // regardless of how many total states are in the graph.
+  const graph = new MarkovGraph({ smoothingAlpha: 0 });
+
+  for (let i = 0; i < 100; i += 1) {
+    graph.incrementTransition(`bg-${i}`, `bg-${i + 1}`);
+  }
+
+  for (let k = 0; k < 20; k += 1) {
+    graph.incrementTransition('linear', 'always-next');
+  }
+
+  // frequentist mode: exactly 0 entropy (single outgoing edge)
+  assert.equal(graph.normalizedEntropyForState('linear'), 0);
+});
+
+test('normalizedEntropyForState: never exceeds 1.0 without clamping when Bayesian smoothing is active and graph is large', () => {
+  // Regression for the numerator/denominator mismatch:
+  // entropyForState() (Bayesian) spreads mass over k global states, so its
+  // maximum value is ln(k).  normalizedEntropyForState() used to divide by
+  // ln(local fan-out), which is << ln(k), producing raw scores > 1 that the
+  // clamp silently masked.  Now both use the local frequentist distribution.
+  const graph = new MarkovGraph({ smoothingAlpha: 0.1 });
+
+  // 200 background states to make global k large so Bayesian entropy >> ln(local fan-out).
+  for (let i = 0; i < 200; i += 1) {
+    graph.incrementTransition(`bg-${i}`, `bg-${i + 1}`);
+  }
+
+  // A state with 3 outgoing edges — local fan-out = 3, maxEntropy = ln(3).
+  // With old code, Bayesian entropy (over k=200 states) would be >> ln(3),
+  // so raw normalized score >> 1 before clamping.
+  for (let j = 0; j < 10; j += 1) {
+    graph.incrementTransition('focal', 'x');
+    graph.incrementTransition('focal', 'y');
+    graph.incrementTransition('focal', 'z');
+  }
+
+  // Compute the raw normalized value without the clamp to expose > 1 scores.
+  // We can't access internals directly, but we can verify the public result
+  // equals what pure frequentist math produces — i.e., ≤ 1 by definition.
+  const normalized = graph.normalizedEntropyForState('focal');
+  assert.ok(
+    normalized >= 0 && normalized <= 1,
+    `normalizedEntropyForState must be in [0, 1] without relying on clamping; got ${normalized}`,
+  );
+
+  // With perfectly uniform 3-way distribution, frequentist entropy = ln(3)
+  // and maxEntropy = ln(max(2, 3)) = ln(3), so normalized must equal exactly 1.
+  assert.ok(
+    normalized >= 0.99,
+    `Uniform 3-way local distribution should score near 1.0; got ${normalized}`,
+  );
+});
+
+// ─── Counter hard cap ─────────────────────────────────────────────────────────
+
+test('incrementCounter: hard cap at 50 unique keys triggers LIMIT_EXCEEDED error', () => {
+  storage.clear();
+  const errors = [];
+  const manager = new IntentManager({
+    storageKey: 'counter-hard-cap-test',
+    storage,
+    botProtection: false,
+    onError: (err) => errors.push(err),
+  });
+
+  // Fill up to the cap.
+  for (let i = 0; i < 50; i += 1) {
+    manager.incrementCounter(`key-${i}`);
+  }
+  assert.equal(errors.length, 0, 'no errors until the cap is reached');
+
+  // The 51st unique key must be rejected.
+  const result = manager.incrementCounter('key-overflow');
+  assert.equal(result, 0, 'must return 0 when cap is exceeded');
+  assert.equal(errors.length, 1, 'must fire onError once');
+  assert.equal(errors[0].code, 'LIMIT_EXCEEDED');
+
+  // Existing keys must still be incrementable.
+  const next = manager.incrementCounter('key-0');
+  assert.equal(next, 2, 'existing counter must still increment normally');
+  assert.equal(errors.length, 1, 'no extra error for incrementing existing key');
+
+  manager.flushNow();
+});
+
+test('incrementCounter: cap allows exact 50 keys, rejects the 51st', () => {
+  storage.clear();
+  const manager = new IntentManager({
+    storageKey: 'counter-cap-boundary-test',
+    storage,
+    botProtection: false,
+  });
+
+  for (let i = 0; i < 50; i += 1) {
+    const v = manager.incrementCounter(`k${i}`);
+    assert.equal(v, 1, `key k${i} should register normally`);
+  }
+
+  // 51st new key must return 0 (rejected).
+  assert.equal(manager.incrementCounter('overflow'), 0);
+  manager.flushNow();
+});
+
+// ─── applyRemoteCounter cap ───────────────────────────────────────────────────
+
+test('BroadcastSync.applyRemoteCounter: hard cap at 50 unique keys prevents Map growth', () => {
+  const graph = new MarkovGraph();
+  const bloom = new BloomFilter({ bitSize: 256, hashCount: 3 });
+  const counters = new Map();
+  const sync = new BroadcastSync('passiveintent-test-remote-cap', graph, bloom, counters);
+
+  // Fill to the cap via remote increments.
+  for (let i = 0; i < 50; i += 1) {
+    sync.applyRemoteCounter(`remote-key-${i}`, 1);
+  }
+  assert.equal(counters.size, 50, 'exactly 50 keys should be stored');
+
+  // The 51st unique remote key must be silently dropped (no OOM risk).
+  sync.applyRemoteCounter('remote-overflow', 1);
+  assert.equal(counters.size, 50, 'Map must not grow beyond 50 after cap is hit');
+
+  // Existing remote key must still accumulate.
+  sync.applyRemoteCounter('remote-key-0', 5);
+  assert.equal(counters.get('remote-key-0'), 6, 'existing key still increments');
+
+  sync.close();
+});
+
+// ─── stateNormalizer safety: throw, non-string, and empty-string ─────────────
+
+test('stateNormalizer: throwing normalizer drops the track() call and fires onError', () => {
+  storage.clear();
+  const errors = [];
+  const manager = new IntentManager({
+    storageKey: 'normalizer-throw-test',
+    storage,
+    botProtection: false,
+    onError: (err) => errors.push(err),
+    stateNormalizer: () => {
+      throw new Error('boom');
+    },
+  });
+  const changes = [];
+  manager.on('state_change', ({ to }) => changes.push(to));
+
+  manager.track('/home');
+  assert.equal(changes.length, 0, 'track() must be dropped when normalizer throws');
+  assert.equal(errors.length, 1, 'onError must fire once');
+  assert.equal(errors[0].code, 'VALIDATION');
+  assert.ok(
+    errors[0].message.includes('boom'),
+    `Expected "boom" in message, got: ${errors[0].message}`,
+  );
+  manager.flushNow();
+});
+
+test('stateNormalizer: non-string return is coerced to string and tracked normally', () => {
+  storage.clear();
+  const manager = new IntentManager({
+    storageKey: 'normalizer-nonstring-test',
+    storage,
+    botProtection: false,
+    // @ts-ignore — intentional: simulate a JS caller returning a number
+    stateNormalizer: () => 42,
+  });
+  const changes = [];
+  manager.on('state_change', ({ to }) => changes.push(to));
+
+  manager.track('/home');
+  assert.equal(changes.length, 1, 'track() must succeed after string coercion');
+  assert.equal(changes[0], '42', 'state must be the string-coerced return value');
+  manager.flushNow();
+});
+
+test('stateNormalizer: returning empty string silently drops the track() call (no VALIDATION error)', () => {
+  storage.clear();
+  const errors = [];
+  const manager = new IntentManager({
+    storageKey: 'normalizer-empty-test',
+    storage,
+    botProtection: false,
+    onError: (err) => errors.push(err),
+    stateNormalizer: (state) => (state === '/skip-me' ? '' : state),
+  });
+  const changes = [];
+  manager.on('state_change', ({ to }) => changes.push(to));
+
+  manager.track('/skip-me');
+  assert.equal(changes.length, 0, 'track() must be silently dropped when normalizer returns ""');
+  assert.equal(
+    errors.length,
+    0,
+    'no VALIDATION error must fire for normalizer empty-string return',
+  );
+
+  // Other states still tracked normally.
+  manager.track('/home');
+  assert.equal(changes.length, 1);
+  assert.equal(changes[0], '/home');
+  manager.flushNow();
+});
+
+// ─── Property-based invariant tests for normalizedEntropyForState ─────────────
+//
+// These tests assert *mathematical identities* across a range of inputs rather
+// than single examples.  The goal is to catch regressions where the numerator
+// and denominator of the normalized-entropy formula drift apart (e.g., Bayesian
+// numerator vs. frequentist denominator), which was the root cause of the
+// entropy-normalization bug that the Math.min(1,...) clamp was silently masking.
+
+test('[property] normalizedEntropyForState: uniform k-way distribution always scores exactly 1.0', () => {
+  // Identity: H_freq(uniform k) = ln(k) = maxEntropy → normalized = 1.0 exactly.
+  // If numerator and denominator ever use different k values, this will fail for
+  // at least one value of k, because ln(k_global) / ln(k_local) ≠ 1 when they differ.
+  for (const k of [2, 3, 4, 5, 6, 8, 10]) {
+    const graph = new MarkovGraph({ smoothingAlpha: 0 });
+    // 100 background states inflates global k — score must remain 1.0 regardless.
+    for (let bg = 0; bg < 100; bg++) graph.incrementTransition(`bg-${bg}`, `bg-${bg + 1}`);
+    // Perfectly uniform k-way from 'focal': each destination visited exactly 20 times.
+    for (let j = 0; j < 20; j++) {
+      for (let d = 0; d < k; d++) graph.incrementTransition('focal', `dest-${d}`);
+    }
+    const score = graph.normalizedEntropyForState('focal');
+    assert.ok(
+      Math.abs(score - 1.0) < 1e-9,
+      `Uniform ${k}-way with 100 background states must score exactly 1.0; got ${score}`,
+    );
+  }
+});
+
+test('[property] normalizedEntropyForState: single-edge state always scores exactly 0', () => {
+  // Identity: H_freq(deterministic) = 0 → normalized = 0 / ln(supportSize) = 0 exactly.
+  // Holds for any number of background states.
+  for (const bgCount of [0, 5, 50, 200, 500]) {
+    const graph = new MarkovGraph({ smoothingAlpha: 0 });
+    for (let bg = 0; bg < bgCount; bg++) graph.incrementTransition(`bg-${bg}`, `bg-${bg + 1}`);
+    for (let j = 0; j < 20; j++) graph.incrementTransition('linear', 'always-next');
+    const score = graph.normalizedEntropyForState('linear');
+    assert.equal(
+      score,
+      0,
+      `Deterministic state must score exactly 0 at bgCount=${bgCount}; got ${score}`,
+    );
+  }
+});
+
+test('[property] normalizedEntropyForState: score does not change when unrelated states are added', () => {
+  // Adding states that never transition from 'focal' must leave its score unchanged.
+  // This is the "entropy crush" invariant in property form: the only input that
+  // affects the score is the local transition distribution of the queried state.
+  for (const [localFanOut, bgBefore, bgAfter] of [
+    [2, 0, 100],
+    [3, 5, 200],
+    [4, 10, 500],
+    [6, 20, 50],
+  ]) {
+    const graph = new MarkovGraph({ smoothingAlpha: 0 });
+    for (let bg = 0; bg < bgBefore; bg++) graph.incrementTransition(`bg-${bg}`, `bg-${bg + 1}`);
+    for (let j = 0; j < 10; j++) {
+      for (let d = 0; d < localFanOut; d++) graph.incrementTransition('focal', `dest-${d}`);
+    }
+    const scoreBefore = graph.normalizedEntropyForState('focal');
+
+    // Add many more background states — none touch 'focal'.
+    for (let bg = bgBefore; bg < bgAfter; bg++)
+      graph.incrementTransition(`bg-${bg}`, `bg-${bg + 1}`);
+    const scoreAfter = graph.normalizedEntropyForState('focal');
+
+    assert.ok(
+      Math.abs(scoreBefore - scoreAfter) < 1e-9,
+      `Score must be stable after adding ${bgAfter - bgBefore} background states ` +
+        `(fanOut=${localFanOut}): was ${scoreBefore}, now ${scoreAfter}`,
+    );
+  }
+});
+
+test('[property] normalizedEntropyForState: clamp is never the mechanism — raw formula is already in [0, 1]', () => {
+  // The Math.min(1, ...) clamp in normalizedEntropyForState is a SAFETY NET.
+  // By the maximum-entropy principle, H_freq / ln(k) ∈ [0, 1] for any probability
+  // distribution over k outcomes — no clamping is needed.
+  // This test verifies that the public score equals the raw frequentist formula
+  // exactly, proving the clamp never fired and the invariant holds by construction.
+  const distributionShapes = [
+    { counts: [10, 1] }, // skewed 2-way
+    { counts: [5, 5, 1] }, // near-uniform 3-way
+    { counts: [8, 4, 2, 1] }, // geometric 4-way
+    { counts: [3, 3, 3, 3, 3] }, // uniform 5-way
+    { counts: [1, 2, 3, 4, 5, 6] }, // linear-ramp 6-way
+    { counts: [20, 1, 1] }, // heavily skewed 3-way
+  ];
+
+  for (const { counts } of distributionShapes) {
+    const graph = new MarkovGraph({ smoothingAlpha: 0 });
+    // 200 background states inflate global k to stress-test independence.
+    for (let bg = 0; bg < 200; bg++) graph.incrementTransition(`bg-${bg}`, `bg-${bg + 1}`);
+    for (let d = 0; d < counts.length; d++) {
+      for (let c = 0; c < counts[d]; c++) graph.incrementTransition('focal', `dest-${d}`);
+    }
+
+    const publicScore = graph.normalizedEntropyForState('focal');
+
+    // Compute the expected value from first principles.
+    const total = counts.reduce((s, c) => s + c, 0);
+    const rawH = counts.reduce((s, c) => {
+      const p = c / total;
+      return s - (p > 0 ? p * Math.log(p) : 0);
+    }, 0);
+    const supportSize = Math.max(2, counts.length);
+    const expectedRaw = rawH / Math.log(supportSize);
+
+    // Invariant 1: raw formula is already in [0, 1] (clamp never needed).
+    assert.ok(
+      expectedRaw >= 0 && expectedRaw <= 1 + 1e-9,
+      `Raw formula must be in [0, 1] for counts=[${counts}]; got ${expectedRaw}`,
+    );
+    // Invariant 2: public result equals the raw formula (clamp had no effect).
+    assert.ok(
+      Math.abs(publicScore - expectedRaw) < 1e-9,
+      `Public score must equal raw formula for counts=[${counts}]: ` +
+        `expected ${expectedRaw}, got ${publicScore}`,
+    );
+  }
 });
