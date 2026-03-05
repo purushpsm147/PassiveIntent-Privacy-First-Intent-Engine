@@ -158,7 +158,11 @@ class ControllableTimerAdapter implements TimerAdapter {
       const now = this.now();
       let earliest: {
         id: number;
-        entry: { fn: () => void; firesAt: number; realId: ReturnType<typeof globalThis.setTimeout> };
+        entry: {
+          fn: () => void;
+          firesAt: number;
+          realId: ReturnType<typeof globalThis.setTimeout>;
+        };
       } | null = null;
       for (const [id, entry] of this.pending) {
         if (entry.firesAt <= now && (!earliest || entry.firesAt < earliest.entry.firesAt)) {
@@ -1924,7 +1928,7 @@ intent.<span class="fn">destroy</span>(); <span class="cmt">// closes BroadcastC
 
       // Quick simulate buttons — async with frame yields for reactivity
       const simBtns = el.querySelectorAll<HTMLButtonElement>(
-        '#btn-browse-back-forth,#btn-rage-click,#btn-exit-intent,#btn-tab-switch,#btn-cancel-sub,#btn-jump-payment,#btn-bot-activity,#btn-back-browse'
+        '#btn-browse-back-forth,#btn-rage-click,#btn-exit-intent,#btn-tab-switch,#btn-cancel-sub,#btn-jump-payment,#btn-bot-activity,#btn-back-browse',
       );
       function setPlaygroundBtns(disabled: boolean) {
         simBtns.forEach((b) => (b.disabled = disabled));
@@ -1935,23 +1939,33 @@ intent.<span class="fn">destroy</span>(); <span class="cmt">// closes BroadcastC
         _cooldownActive = false;
         setPlaygroundBtns(true);
         setSimButtons(true);
-        try { await fn(); } finally {
+        try {
+          await fn();
+        } finally {
           timer.resetOffset();
           _simRunning = false;
           setPlaygroundBtns(false);
           setSimButtons(false);
           _cooldownActive = true;
           if (_cooldownTimer) clearTimeout(_cooldownTimer);
-          _cooldownTimer = setTimeout(() => { _cooldownActive = false; }, COOLDOWN_DURATION);
+          _cooldownTimer = setTimeout(() => {
+            _cooldownActive = false;
+          }, COOLDOWN_DURATION);
         }
       }
 
       el.querySelector('#btn-browse-back-forth')?.addEventListener('click', () => {
         runPlaygroundSim(async () => {
           const states = [
-            '/amazon/home', '/amazon/deals', '/product/headphones',
-            '/amazon/home', '/product/keyboard', '/amazon/deals',
-            '/amazon/home', '/product/monitor', '/amazon/home',
+            '/amazon/home',
+            '/amazon/deals',
+            '/product/headphones',
+            '/amazon/home',
+            '/product/keyboard',
+            '/amazon/deals',
+            '/amazon/home',
+            '/product/monitor',
+            '/amazon/home',
           ];
           for (let i = 0; i < states.length; i++) {
             timer.fastForward(5000);
@@ -1963,8 +1977,12 @@ intent.<span class="fn">destroy</span>(); <span class="cmt">// closes BroadcastC
       el.querySelector('#btn-rage-click')?.addEventListener('click', () => {
         runPlaygroundSim(async () => {
           const productStates = [
-            '/product/headphones', '/product/keyboard', '/product/monitor',
-            '/product/mouse', '/product/stand', '/product/webcam',
+            '/product/headphones',
+            '/product/keyboard',
+            '/product/monitor',
+            '/product/mouse',
+            '/product/stand',
+            '/product/webcam',
           ];
           const hub = '/amazon/home';
           for (let round = 0; round < 3; round++) {
@@ -2010,8 +2028,12 @@ intent.<span class="fn">destroy</span>(); <span class="cmt">// closes BroadcastC
       el.querySelector('#btn-bot-activity')?.addEventListener('click', () => {
         runPlaygroundSim(async () => {
           const productStates = [
-            '/product/headphones', '/product/keyboard', '/product/monitor',
-            '/product/mouse', '/product/stand', '/product/webcam',
+            '/product/headphones',
+            '/product/keyboard',
+            '/product/monitor',
+            '/product/mouse',
+            '/product/stand',
+            '/product/webcam',
           ];
           for (let round = 0; round < 3; round++) {
             for (const ps of productStates) {
@@ -2181,14 +2203,28 @@ intent.on('user_resumed', () => updateMeterGauge('idle', 0));
 }
 
 // Per-gauge Quick Simulate buttons
-const RAGE_SIM_STATES = ['/sim/rage/a', '/sim/rage/b', '/sim/rage/c', '/sim/rage/d', '/sim/rage/e', '/sim/rage/f'];
+const RAGE_SIM_STATES = [
+  '/sim/rage/a',
+  '/sim/rage/b',
+  '/sim/rage/c',
+  '/sim/rage/d',
+  '/sim/rage/e',
+  '/sim/rage/f',
+];
 
 const yieldFrame = () => new Promise<void>((r) => requestAnimationFrame(() => r()));
 let _simRunning = false;
 
 /** Guard against concurrent sims; disable all sim buttons while running. */
 function setSimButtons(disabled: boolean) {
-  for (const id of ['sim-rage', 'sim-anxiety', 'sim-hesitation', 'sim-bot', 'sim-idle', 'sim-exit']) {
+  for (const id of [
+    'sim-rage',
+    'sim-anxiety',
+    'sim-hesitation',
+    'sim-bot',
+    'sim-idle',
+    'sim-exit',
+  ]) {
     const btn = document.getElementById(id) as HTMLButtonElement | null;
     if (btn) btn.disabled = disabled;
   }
@@ -2208,7 +2244,9 @@ async function runSim(fn: () => Promise<void>) {
     // Enter cooldown — accelerated decay settles gauges toward baseline
     _cooldownActive = true;
     if (_cooldownTimer) clearTimeout(_cooldownTimer);
-    _cooldownTimer = setTimeout(() => { _cooldownActive = false; }, COOLDOWN_DURATION);
+    _cooldownTimer = setTimeout(() => {
+      _cooldownActive = false;
+    }, COOLDOWN_DURATION);
   }
 }
 
@@ -2230,16 +2268,26 @@ document.getElementById('sim-rage')!.addEventListener('click', () => {
 document.getElementById('sim-anxiety')!.addEventListener('click', () => {
   runSim(async () => {
     const oddPath = [
-      '/sim/anxiety/checkout', '/sim/anxiety/faq',
-      '/sim/anxiety/refund-policy', '/sim/anxiety/checkout',
-      '/sim/anxiety/compare', '/sim/anxiety/checkout',
-      '/sim/anxiety/faq', '/sim/anxiety/compare',
-      '/sim/anxiety/refund-policy', '/sim/anxiety/checkout',
-      '/sim/anxiety/faq', '/sim/anxiety/compare',
-      '/sim/anxiety/checkout', '/sim/anxiety/refund-policy',
-      '/sim/anxiety/faq', '/sim/anxiety/compare',
-      '/sim/anxiety/checkout', '/sim/anxiety/faq',
-      '/sim/anxiety/refund-policy', '/sim/anxiety/compare',
+      '/sim/anxiety/checkout',
+      '/sim/anxiety/faq',
+      '/sim/anxiety/refund-policy',
+      '/sim/anxiety/checkout',
+      '/sim/anxiety/compare',
+      '/sim/anxiety/checkout',
+      '/sim/anxiety/faq',
+      '/sim/anxiety/compare',
+      '/sim/anxiety/refund-policy',
+      '/sim/anxiety/checkout',
+      '/sim/anxiety/faq',
+      '/sim/anxiety/compare',
+      '/sim/anxiety/checkout',
+      '/sim/anxiety/refund-policy',
+      '/sim/anxiety/faq',
+      '/sim/anxiety/compare',
+      '/sim/anxiety/checkout',
+      '/sim/anxiety/faq',
+      '/sim/anxiety/refund-policy',
+      '/sim/anxiety/compare',
     ];
     for (let i = 0; i < oddPath.length; i++) {
       timer.fastForward(2000);

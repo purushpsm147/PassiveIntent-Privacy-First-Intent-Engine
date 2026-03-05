@@ -155,7 +155,9 @@ body {
   overflow-y: auto;
   padding: 12px 8px;
   position: relative;
-  transition: opacity 0.2s, width 0.25s;
+  transition:
+    opacity 0.2s,
+    width 0.25s;
 }
 .sidebar--hidden {
   opacity: 0;
@@ -554,7 +556,9 @@ label {
   display: flex;
   flex-direction: column;
   overflow: hidden;
-  transition: opacity 0.2s, width 0.25s;
+  transition:
+    opacity 0.2s,
+    width 0.25s;
 }
 .event-log--hidden {
   opacity: 0;
@@ -1141,7 +1145,7 @@ label {
   opacity: 0;
   transition: opacity 0.15s;
   z-index: 100;
-  box-shadow: 0 4px 12px rgba(0,0,0,0.3);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
 }
 [data-tooltip]:hover::after {
   opacity: 1;

@@ -111,7 +111,11 @@ export class ControllableTimerAdapter implements TimerAdapter {
       const now = this.now();
       let earliest: {
         id: number;
-        entry: { fn: () => void; firesAt: number; realId: ReturnType<typeof globalThis.setTimeout> };
+        entry: {
+          fn: () => void;
+          firesAt: number;
+          realId: ReturnType<typeof globalThis.setTimeout>;
+        };
       } | null = null;
       for (const [id, entry] of this.pending) {
         if (entry.firesAt <= now && (!earliest || entry.firesAt < earliest.entry.firesAt)) {

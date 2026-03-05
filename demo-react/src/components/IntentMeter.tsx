@@ -38,8 +38,12 @@ const yieldFrame = () => new Promise<void>((r) => requestAnimationFrame(() => r(
 
 // Product states for rage simulation
 const RAGE_STATES = [
-  '/sim/rage/a', '/sim/rage/b', '/sim/rage/c',
-  '/sim/rage/d', '/sim/rage/e', '/sim/rage/f',
+  '/sim/rage/a',
+  '/sim/rage/b',
+  '/sim/rage/c',
+  '/sim/rage/d',
+  '/sim/rage/e',
+  '/sim/rage/f',
 ];
 
 export default function IntentMeter() {
@@ -185,16 +189,26 @@ export default function IntentMeter() {
     () =>
       runSim(async () => {
         const oddPath = [
-          '/sim/anxiety/checkout', '/sim/anxiety/faq',
-          '/sim/anxiety/refund-policy', '/sim/anxiety/checkout',
-          '/sim/anxiety/compare', '/sim/anxiety/checkout',
-          '/sim/anxiety/faq', '/sim/anxiety/compare',
-          '/sim/anxiety/refund-policy', '/sim/anxiety/checkout',
-          '/sim/anxiety/faq', '/sim/anxiety/compare',
-          '/sim/anxiety/checkout', '/sim/anxiety/refund-policy',
-          '/sim/anxiety/faq', '/sim/anxiety/compare',
-          '/sim/anxiety/checkout', '/sim/anxiety/faq',
-          '/sim/anxiety/refund-policy', '/sim/anxiety/compare',
+          '/sim/anxiety/checkout',
+          '/sim/anxiety/faq',
+          '/sim/anxiety/refund-policy',
+          '/sim/anxiety/checkout',
+          '/sim/anxiety/compare',
+          '/sim/anxiety/checkout',
+          '/sim/anxiety/faq',
+          '/sim/anxiety/compare',
+          '/sim/anxiety/refund-policy',
+          '/sim/anxiety/checkout',
+          '/sim/anxiety/faq',
+          '/sim/anxiety/compare',
+          '/sim/anxiety/checkout',
+          '/sim/anxiety/refund-policy',
+          '/sim/anxiety/faq',
+          '/sim/anxiety/compare',
+          '/sim/anxiety/checkout',
+          '/sim/anxiety/faq',
+          '/sim/anxiety/refund-policy',
+          '/sim/anxiety/compare',
         ];
         for (let i = 0; i < oddPath.length; i++) {
           timer.fastForward(2000);
@@ -258,8 +272,20 @@ export default function IntentMeter() {
 
   const gauges: Gauge[] = [
     { label: 'Rage', emoji: '😤', value: rage, color: 'var(--red)', onSimulate: simRage },
-    { label: 'Anxiety', emoji: '😰', value: anxiety, color: 'var(--yellow)', onSimulate: simAnxiety },
-    { label: 'Hesitation', emoji: '🤔', value: hesitation, color: 'var(--purple)', onSimulate: simHesitation },
+    {
+      label: 'Anxiety',
+      emoji: '😰',
+      value: anxiety,
+      color: 'var(--yellow)',
+      onSimulate: simAnxiety,
+    },
+    {
+      label: 'Hesitation',
+      emoji: '🤔',
+      value: hesitation,
+      color: 'var(--purple)',
+      onSimulate: simHesitation,
+    },
     { label: 'Bot', emoji: '🤖', value: botPct, color: 'var(--red)', onSimulate: simBot },
     { label: 'Idle', emoji: '💤', value: idle, color: 'var(--text-muted)', onSimulate: simIdle },
     { label: 'Exit', emoji: '🚪', value: exitIntent, color: 'var(--blue)', onSimulate: simExit },

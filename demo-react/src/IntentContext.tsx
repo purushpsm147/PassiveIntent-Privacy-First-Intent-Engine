@@ -132,7 +132,9 @@ export function IntentProvider({ children }: { children: ReactNode }) {
   // after the instance exists gives wrappedOn a new identity → children
   // re-run their subscription effects with a live instance.
   const [instanceReady, setInstanceReady] = useState(0);
-  useEffect(() => { setInstanceReady(1); }, []);
+  useEffect(() => {
+    setInstanceReady(1);
+  }, []);
 
   const wrappedOn = useCallback(
     (event: IntentEventName, handler: (payload: unknown) => void): (() => void) =>

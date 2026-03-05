@@ -101,7 +101,9 @@ export default function Shell({ active, onNavigate, onReset, children }: Props) 
         </div>
       </header>
 
-      <div className={`layout${sidebarOpen ? '' : ' sidebar-collapsed'}${logOpen ? '' : ' log-collapsed'}`}>
+      <div
+        className={`layout${sidebarOpen ? '' : ' sidebar-collapsed'}${logOpen ? '' : ' log-collapsed'}`}
+      >
         {/* Sidebar */}
         <nav className={`sidebar${sidebarOpen ? '' : ' sidebar--hidden'}`}>
           <button
@@ -169,11 +171,7 @@ export default function Shell({ active, onNavigate, onReset, children }: Props) 
           </div>
         </aside>
         {!logOpen && (
-          <button
-            className="log-expand"
-            onClick={() => setLogOpen(true)}
-            title="Expand event log"
-          >
+          <button className="log-expand" onClick={() => setLogOpen(true)} title="Expand event log">
             ◀ Log
           </button>
         )}
