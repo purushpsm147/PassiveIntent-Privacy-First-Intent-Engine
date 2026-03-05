@@ -8,25 +8,6 @@
 import type { MarkovGraphConfig } from '../types/events.js';
 
 /**
- * Map probability [0, 1] to an 8-bit integer [0, 255].
- *
- * Only used by `getQuantizedRow` / `getQuantizedProbability` for
- * memory-compact exports (e.g. sending probability vectors over postMessage).
- * The *canonical* hot-path (`getProbability`) always works with raw floats
- * from live counts to avoid quantization error accumulation.
- */
-function quantizeProbability(probability: number): number {
-  if (probability <= 0) return 0;
-  if (probability >= 1) return 255;
-  return Math.round(probability * 255) & 0xff;
-}
-
-/** Inverse of `quantizeProbability`. */
-function dequantizeProbability(value: number): number {
-  return (value & 0xff) / 255;
-}
-
-/**
  * Outgoing transition counts for a single source state.
  *
  * Using a nested `Map<number, number>` keeps the representation sparse:
@@ -110,6 +91,15 @@ export class MarkovGraph {
    * appending to the end of `indexToState`, keeping the array compact.
    *
    * Empty string is rejected because `''` is the internal tombstone marker.
+   *
+   * ⚠ **Multi-call safety:** `ensureState` is NOT safe to call twice in sequence
+   * without first ensuring no prune can fire between the two calls.  If a caller
+   * resolves index A via `ensureState(a)`, then a prune fires before `ensureState(b)`,
+   * state A may be tombstoned (it was just allocated so its `total = 0`, making it the
+   * first LFU eviction candidate).  Any subsequent write using index A then lands on
+   * a dead slot — a "ghost row".  Any method that calls `ensureState` more than once
+   * MUST execute the prune guard BEFORE the first call, never between calls.
+   * See `incrementTransition` for the canonical pattern.
    */
   ensureState(state: string): number {
     if (state === '') throw new Error('MarkovGraph: state label must not be empty string');
@@ -129,6 +119,15 @@ export class MarkovGraph {
   }
 
   incrementTransition(fromState: string, toState: string): void {
+    // Burst-bloat guard: prune BEFORE resolving any indices so that neither
+    // fromState nor toState can be tombstoned mid-resolution.  Placing this
+    // inside ensureState caused a ghost-row bug: a freshly-allocated fromState
+    // index (total=0) would be evicted by the prune triggered during the
+    // subsequent ensureState(toState) call, leaving a phantom row at a
+    // tombstoned index with no stateToIndex entry.
+    if (this.stateToIndex.size >= this.maxStates * 1.5) {
+      this.prune();
+    }
     const from = this.ensureState(fromState);
     const to = this.ensureState(toState);
 
@@ -212,11 +211,24 @@ export class MarkovGraph {
 
   /**
    * Normalized entropy in [0..1], dividing by max entropy ln(k)
-   * where k is the support size of the probability distribution.
+   * where k is the **local** branching factor (number of observed outgoing
+   * edges from this state, floored at 2 to avoid division artifacts).
    *
-   * - Frequentist mode (`smoothingAlpha = 0`): k = observed outgoing edges.
-   * - Bayesian mode (`smoothingAlpha > 0`): k = live-state count, because
-   *   unobserved transitions receive non-zero mass.
+   * Using the local fan-out instead of the global state count ensures that
+   * the normalized score correctly reflects *local* decision-space confusion
+   * (rage-clicking between 3–4 links) regardless of how many total pages
+   * exist in the graph.  With the global denominator, ln(N) grows without
+   * bound as users browse more pages, crushing the normalized score and
+   * making high-entropy anomalies undetectable after ~10 unique states.
+   *
+   * **Smoothing note:** this method uses raw frequentist counts
+   * (count / row.total) for both the entropy numerator and the ln(supportSize)
+   * denominator so that both are anchored to the same local support.
+   * `entropyForState()` uses Bayesian Laplace smoothing over all k global
+   * states and is intentionally a different (larger) quantity — calling it
+   * here would make the numerator exceed the denominator whenever the graph
+   * has many states, producing raw normalized scores > 1 that the clamp would
+   * silently mask.
    */
   normalizedEntropyForState(state: string): number {
     const from = this.stateToIndex.get(state);
@@ -225,14 +237,30 @@ export class MarkovGraph {
     const row = this.rows.get(from);
     if (!row || row.total === 0) return 0;
 
-    const supportSize = this.smoothingAlpha > 0 ? this.stateToIndex.size : row.toCounts.size;
-    if (supportSize <= 1) return 0;
-
-    const entropy = this.entropyForState(state);
+    const supportSize = Math.max(2, row.toCounts.size);
     const maxEntropy = Math.log(supportSize);
     if (maxEntropy <= 0) return 0;
 
-    // Bound to [0, 1] to preserve the documented normalized-entropy contract.
+    // Compute entropy using only the observed local transitions (frequentist).
+    // This keeps the numerator and denominator anchored to the same support
+    // (local fan-out), avoiding the mismatch that would arise from calling
+    // entropyForState() which spreads probability mass over all k global states
+    // in Bayesian mode.
+    let entropy = 0;
+    row.toCounts.forEach((count) => {
+      const p = count / row.total;
+      if (p > 0) entropy -= p * Math.log(p);
+    });
+
+    // ── Invariant: entropy ≤ maxEntropy (should hold WITHOUT the clamp) ────────
+    // By the maximum-entropy principle, H(p) = -Σ p_i ln(p_i) ≤ ln(k) for any
+    // probability distribution over k outcomes.  Here k = supportSize and
+    // maxEntropy = ln(supportSize), so entropy / maxEntropy ∈ [0, 1] by construction.
+    //
+    // Math.min(1, ...) below is a SAFETY NET only — it must never be the
+    // mechanism that produces a value ≤ 1.  If it fires, the numerator and
+    // denominator are using different distributions (regression indicator).
+    // Property-based tests in unit-fast.test.mjs assert this invariant directly.
     const normalized = entropy / maxEntropy;
     return Math.min(1, Math.max(0, normalized));
   }
@@ -257,53 +285,6 @@ export class MarkovGraph {
       sum += Math.log(p > 0 ? p : epsilon);
     }
     return sum;
-  }
-
-  /**
-   * Quantized view of outgoing probabilities for a state as Uint8Array.
-   *
-   * Encoding per edge (3 bytes):
-   *   byte 0: low byte  of toIndex  (toIndex & 0xff)
-   *   byte 1: high byte of toIndex  ((toIndex >> 8) & 0xff)
-   *   byte 2: quantized probability  round(P * 255) & 0xff
-   *
-   * Using 2 bytes for toIndex supports up to 65535 states without overflow.
-   */
-  getQuantizedRow(state: string): Uint8Array {
-    const from = this.stateToIndex.get(state);
-    if (from === undefined) return new Uint8Array(0);
-
-    const row = this.rows.get(from);
-    if (!row || row.total === 0) return new Uint8Array(0);
-
-    // 3 bytes per edge: [lowByte(toIndex), highByte(toIndex), quantizedProbability]
-    const out = new Uint8Array(row.toCounts.size * 3);
-    let offset = 0;
-    row.toCounts.forEach((count, toIndex) => {
-      const probability = count / row.total;
-      out[offset] = toIndex & 0xff; // low byte of toIndex
-      out[offset + 1] = (toIndex >> 8) & 0xff; // high byte of toIndex
-      out[offset + 2] = quantizeProbability(probability); // quantized probability
-      offset += 3;
-    });
-    return out;
-  }
-
-  /**
-   * Return dequantized transition probability by state labels.
-   */
-  getQuantizedProbability(fromState: string, toState: string): number {
-    const from = this.stateToIndex.get(fromState);
-    const to = this.stateToIndex.get(toState);
-    if (from === undefined || to === undefined) return 0;
-
-    const row = this.rows.get(from);
-    if (!row || row.total === 0) return 0;
-
-    const count = row.toCounts.get(to) ?? 0;
-    if (count === 0) return 0;
-
-    return dequantizeProbability(quantizeProbability(count / row.total));
   }
 
   /**

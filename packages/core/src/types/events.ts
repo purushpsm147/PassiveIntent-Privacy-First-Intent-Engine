@@ -266,6 +266,7 @@ export interface PassiveIntentError {
    * - `RESTORE_PARSE`   — Binary/JSON parse failed when restoring a saved graph; cold-start applied.
    * - `SERIALIZE`       — Binary serialization failed when saving the graph.
    * - `VALIDATION`      — An invalid argument was passed to a public API method (e.g., empty `track('')`).
+   * - `LIMIT_EXCEEDED`   — A hard cap was reached (e.g., max unique counter keys).
    */
   code:
     | 'STORAGE_READ'
@@ -273,7 +274,8 @@ export interface PassiveIntentError {
     | 'QUOTA_EXCEEDED'
     | 'RESTORE_PARSE'
     | 'SERIALIZE'
-    | 'VALIDATION';
+    | 'VALIDATION'
+    | 'LIMIT_EXCEEDED';
   /** Human-readable description of the failure. */
   message: string;
   /**
@@ -453,6 +455,25 @@ export interface IntentManagerConfig {
    */
   hesitationCorrelationWindowMs?: number;
   dwellTime?: DwellTimeConfig;
+  /**
+   * Optional custom state normalizer applied **after** the built-in
+   * `normalizeRouteState()` (which strips query strings, hash fragments,
+   * trailing slashes, UUIDs, MongoDB ObjectIDs, and numeric IDs ≥ 4 digits).
+   *
+   * Use this to collapse dynamic segments that the built-in normalizer does
+   * not recognise — for example, SEO slugs on a blog:
+   *
+   * ```ts
+   * new IntentManager({
+   *   stateNormalizer: (state) =>
+   *     state.replace(/^\/blog\/[^/]+$/, '/blog/:slug'),
+   * });
+   * ```
+   *
+   * The return value of this function becomes the canonical state label.
+   * Returning an empty string causes the `track()` call to be silently dropped.
+   */
+  stateNormalizer?: (state: string) => string;
   /**
    * Enable second-order (bigram) Markov transitions.
    * Bigram states are encoded as `"prev→from"` → `"from→to"` using U+2192
