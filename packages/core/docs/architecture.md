@@ -116,11 +116,11 @@ Some native mobile SDK competitors harvest OS-level sensor data — acceleromete
 
 This is not a limitation — it is the design. Users cannot be profiled without their application explicitly opting in to each tracked state.
 
-### 6 kB Footprint vs. Heavy Native SDK Integration
+### ~11 kB gzip Footprint vs. Heavy Native SDK Integration
 
 Native edge AI SDKs typically require platform-specific binary dependencies (iOS CocoaPod, Android AAR), background entitlements, and multi-megabyte model files downloaded at runtime.
 
-PassiveIntent ships as a single **≈ 6 kB gzip tree-shakeable ESM module** with zero runtime dependencies. It works identically in:
+PassiveIntent ships as a single **≈ 11 kB gzip tree-shakeable ESM module** with zero runtime dependencies. It works identically in:
 
 - **Web browsers** (Chrome, Firefox, Safari, Edge) — no install prompt, no permission dialog, no app store review
 - **SSR frameworks** (Next.js, Nuxt, Remix, SvelteKit) — via `MemoryStorageAdapter`, no `typeof window` guard required
@@ -159,7 +159,7 @@ All of this happens inside the user’s browser. No analytics endpoint. No finge
 | Property                      | Detail                                                                                                                                                                                                                                                                                                                                                                                                  |
 | ----------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | **Zero data egress**          | Every computation runs on the device. Nothing leaves the browser.                                                                                                                                                                                                                                                                                                                                       |
-| **Tiny footprint**            | Minified bundle ≈ 6 kB gzip. Bloom filter default: 256 bytes. Serialized graph: ~1.4 kB for 100 states.                                                                                                                                                                                                                                                                                                 |
+| **Tiny footprint**            | Minified bundle ≈ 11 kB gzip (39.7 kB raw, 9.8 kB brotli). Bloom filter default: 256 bytes. Serialized graph: ~1.4 kB for 100 states.                                                                                                                                                                                                                                                                  |
 | **Sub-millisecond hot path**  | `track()` averages **0.0019 ms** at steady state (p99 < 0.005 ms).                                                                                                                                                                                                                                                                                                                                      |
 | **SSR-safe**                  | All browser globals are behind `StorageAdapter` / `TimerAdapter` interfaces. Works in Next.js, Nuxt, Remix, and Cloudflare Workers without a `typeof window` guard.                                                                                                                                                                                                                                     |
 | **Isomorphic adapters**       | Ship your own storage and timer implementations for testing, Redis, or any other backing store.                                                                                                                                                                                                                                                                                                         |
@@ -2663,7 +2663,7 @@ dist/index.cjs    — CommonJS, minified, source map included
 dist/index.d.ts   — TypeScript declaration file
 ```
 
-The entire SDK — `IntentManager`, `MarkovGraph`, `BloomFilter`, adapters, and the event emitter — fits comfortably under **6 kB gzip**. There are zero runtime dependencies.
+The entire SDK — `IntentManager`, `MarkovGraph`, `BloomFilter`, adapters, and the event emitter — weighs **~11 kB gzip** (~10.9 kB gzip / ~9.8 kB brotli, fully minified). There are zero runtime dependencies.
 
 If you only use `BloomFilter` and `MarkovGraph` directly (no `IntentManager`), tree-shaking will drop the orchestration layer, the event emitter, adapters, and benchmark recorder — bringing the footprint below 3 kB gzip.
 
