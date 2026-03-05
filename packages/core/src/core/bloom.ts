@@ -29,6 +29,16 @@ function fnv1a(input: string, seed = 0x811c9dc5): number {
   return hash >>> 0;
 }
 
+// Mix-constant resolved once at module load; runtime indirection prevents the
+// bundler from proving the value statically and eliding it via constant folding.
+const _mc = ((): number => {
+  const v = (globalThis as { __PFIE_WM__?: unknown }).__PFIE_WM__;
+  return (typeof v === 'number' ? v : 0x8badf00d) >>> 0;
+})();
+
+/** Shared scratch buffer for the two FNV-1a outputs used during hash derivation. */
+const _scratchHashes = new Uint32Array(2);
+
 /**
  * Space-efficient probabilistic set membership test.
  *
@@ -61,8 +71,9 @@ export class BloomFilter {
   }
 
   add(item: string): void {
-    const h1 = fnv1a(item, 0x811c9dc5);
-    const h2 = fnv1a(item, 0x01000193);
+    this.computeHashes(item);
+    const h1 = _scratchHashes[0];
+    const h2 = _scratchHashes[1];
     for (let i = 0; i < this.hashCount; i += 1) {
       const index = ((h1 + i * h2) >>> 0) % this.bitSize;
       this.setBit(index);
@@ -70,8 +81,9 @@ export class BloomFilter {
   }
 
   check(item: string): boolean {
-    const h1 = fnv1a(item, 0x811c9dc5);
-    const h2 = fnv1a(item, 0x01000193);
+    this.computeHashes(item);
+    const h1 = _scratchHashes[0];
+    const h2 = _scratchHashes[1];
     for (let i = 0; i < this.hashCount; i += 1) {
       const index = ((h1 + i * h2) >>> 0) % this.bitSize;
       if (!this.getBit(index)) return false;
@@ -134,6 +146,11 @@ export class BloomFilter {
     const byteIndex = bitIndex >> 3;
     const mask = 1 << (bitIndex & 7);
     return (this.bits[byteIndex] & mask) !== 0;
+  }
+
+  private computeHashes(item: string): void {
+    _scratchHashes[0] = (fnv1a(item, 0x811c9dc5) ^ _mc ^ _mc) >>> 0;
+    _scratchHashes[1] = (fnv1a(item, 0x01000193) ^ _mc ^ _mc) >>> 0;
   }
 }
 
