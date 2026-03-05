@@ -13,6 +13,7 @@ import React, {
   useContext,
   useEffect,
   useReducer,
+  useState,
   type ReactNode,
 } from 'react';
 import { usePassiveIntent } from '@passiveintent/react';
@@ -125,10 +126,24 @@ export function IntentProvider({ children }: { children: ReactNode }) {
     dwellTime: { enabled: true, minSamples: 3, zScoreThreshold: 2.0 },
   });
 
+  // React fires child effects before parent effects, so children's initial
+  // on() calls arrive before usePassiveIntent's useEffect creates the
+  // IntentManager (returning no-op unsubscribes).  Bumping this counter
+  // after the instance exists gives wrappedOn a new identity → children
+  // re-run their subscription effects with a live instance.
+  const [instanceReady, setInstanceReady] = useState(0);
+  useEffect(() => { setInstanceReady(1); }, []);
+
+  const wrappedOn = useCallback(
+    (event: IntentEventName, handler: (payload: unknown) => void): (() => void) =>
+      on(event, handler),
+    [on, instanceReady],
+  );
+
   // Subscribe to all events once, log them all
   useEffect(() => {
     const unsubs = ALL_EVENTS.map((ev) =>
-      on(ev as IntentEventName, (payload) => {
+      wrappedOn(ev as IntentEventName, (payload) => {
         dispatch({
           type: 'ADD',
           entry: {
@@ -140,7 +155,7 @@ export function IntentProvider({ children }: { children: ReactNode }) {
       }),
     );
     return () => unsubs.forEach((u) => u());
-  }, [on]);
+  }, [wrappedOn]);
 
   const clearLog = useCallback(() => dispatch({ type: 'CLEAR' }), []);
 
@@ -148,7 +163,7 @@ export function IntentProvider({ children }: { children: ReactNode }) {
     <IntentContext.Provider
       value={{
         track,
-        on,
+        on: wrappedOn,
         getTelemetry,
         predictNextStates,
         hasSeen,

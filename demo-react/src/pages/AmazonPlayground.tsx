@@ -15,6 +15,9 @@ import type {
   ExitIntentPayload,
 } from '@passiveintent/core';
 
+/** Yield to the browser so React can flush a render. */
+const yieldFrame = () => new Promise<void>((r) => requestAnimationFrame(() => r()));
+
 // ─── Product catalogue ────────────────────────────────────────────────────────
 
 interface Product {
@@ -102,7 +105,8 @@ interface Intervention {
     | 'zendesk'
     | 'idle'
     | 'compare'
-    | 'guarantee';
+    | 'guarantee'
+    | 'cancel-sub';
   icon: string;
   title: string;
   body: string;
@@ -114,12 +118,15 @@ let _interventionSeq = 0;
 // ─── Component ────────────────────────────────────────────────────────────────
 
 export default function AmazonPlayground() {
-  const { track, on } = useIntent();
+  const { track, on, timer, lifecycle } = useIntent();
 
   const [selectedProduct, setSelectedProduct] = useState<Product | null>(null);
   const [cartItems, setCartItems] = useState<Product[]>([]);
   const [checkoutStep, setCheckoutStep] = useState(0); // 0=browsing, 1=cart, 2=payment
   const [interventions, setInterventions] = useState<Intervention[]>([]);
+  const [prevExpanded, setPrevExpanded] = useState(false);
+  const [simulating, setSimulating] = useState(false);
+  const simRef = useRef(false);
 
   // Track page load
   useEffect(() => {
@@ -199,16 +206,26 @@ export default function AmazonPlayground() {
         });
       }),
 
-      // Hesitation detected → Money-back guarantee
+      // Hesitation detected → Money-back guarantee or Cancel-Sub retention
       on('hesitation_detected', (p) => {
         const payload = p as HesitationDetectedPayload;
-        pushIntervention({
-          type: 'guarantee',
-          icon: '🛡️',
-          title: '100% money-back guarantee',
-          body: `Hesitation on "${payload.state}" — dwell z: ${payload.dwellZScore.toFixed(1)}, trajectory z: ${payload.trajectoryZScore.toFixed(1)}`,
-          trigger: 'hesitation_detected',
-        });
+        if (payload.state.includes('cancel')) {
+          pushIntervention({
+            type: 'cancel-sub',
+            icon: '🚫',
+            title: "We'd hate to see you go — 3 months free!",
+            body: `Hesitation on "${payload.state}" — dwell z: ${payload.dwellZScore.toFixed(1)}, trajectory z: ${payload.trajectoryZScore.toFixed(1)}`,
+            trigger: 'hesitation_detected',
+          });
+        } else {
+          pushIntervention({
+            type: 'guarantee',
+            icon: '🛡️',
+            title: '100% money-back guarantee',
+            body: `Hesitation on "${payload.state}" — dwell z: ${payload.dwellZScore.toFixed(1)}, trajectory z: ${payload.trajectoryZScore.toFixed(1)}`,
+            trigger: 'hesitation_detected',
+          });
+        }
       }),
 
       // User idle → Still shopping?
@@ -250,13 +267,110 @@ export default function AmazonPlayground() {
     setCheckoutStep(2);
   }, [track]);
 
-  const simulateRageClicks = useCallback(() => {
-    // Rapid state toggling to trigger high_entropy
-    for (let i = 0; i < 6; i++) {
-      const p = PRODUCTS[i % PRODUCTS.length];
-      setTimeout(() => track(p.state), i * 60);
+  const simulateRageClicks = useCallback(async () => {
+    if (simRef.current) return;
+    simRef.current = true;
+    setSimulating(true);
+    try {
+      const hub = '/amazon/home';
+      for (let round = 0; round < 3; round++) {
+        for (const p of PRODUCTS) {
+          timer.fastForward(100);
+          track(hub);
+          timer.fastForward(100);
+          track(p.state);
+        }
+        await yieldFrame();
+      }
+    } finally {
+      timer.resetOffset();
+      simRef.current = false;
+      setSimulating(false);
     }
-  }, [track]);
+  }, [track, timer]);
+
+  const simulateBrowseBackForth = useCallback(async () => {
+    if (simRef.current) return;
+    simRef.current = true;
+    setSimulating(true);
+    try {
+      const states = [
+        '/amazon/home', '/amazon/deals', '/product/headphones',
+        '/amazon/home', '/product/keyboard', '/amazon/deals',
+        '/amazon/home', '/product/monitor', '/amazon/home',
+      ];
+      for (let i = 0; i < states.length; i++) {
+        timer.fastForward(5000);
+        track(states[i]);
+        if (i % 3 === 2) await yieldFrame();
+      }
+    } finally {
+      timer.resetOffset();
+      simRef.current = false;
+      setSimulating(false);
+    }
+  }, [track, timer]);
+
+  const simulateExitIntent = useCallback(() => {
+    lifecycle.triggerExitIntent();
+  }, [lifecycle]);
+
+  const simulateTabSwitch = useCallback(() => {
+    lifecycle.triggerPause();
+    // Auto-resume after 2s to fire attention_return with hiddenDuration
+    setTimeout(() => lifecycle.triggerResume(), 2000);
+  }, [lifecycle]);
+
+  const simulateBotActivity = useCallback(async () => {
+    if (simRef.current) return;
+    simRef.current = true;
+    setSimulating(true);
+    try {
+      // Bots navigate many unique pages without normal human dwell time.
+      // Firing rapid sequential tracks (no fastForward) saturates the
+      // uniqueStateCounter and triggers bot_detected.
+      for (let round = 0; round < 3; round++) {
+        for (const p of PRODUCTS) {
+          track(p.state);
+        }
+        track('/amazon/home');
+        track('/amazon/deals');
+        track('/amazon/cart');
+        await yieldFrame();
+      }
+    } finally {
+      timer.resetOffset();
+      simRef.current = false;
+      setSimulating(false);
+    }
+  }, [track, timer]);
+
+  const simulateCancelSubscription = useCallback(async () => {
+    if (simRef.current) return;
+    simRef.current = true;
+    setSimulating(true);
+    try {
+      const cancelPath = [
+        '/account/settings',
+        '/account/cancel-subscription',
+        '/account/cancel-subscription',
+        '/account/cancel-subscription/reason',
+        '/account/cancel-subscription',
+        '/account/cancel-subscription/confirm',
+        '/account/cancel-subscription',
+        '/account/cancel-subscription/confirm',
+      ];
+      for (let i = 0; i < cancelPath.length; i++) {
+        timer.fastForward(4000);
+        track(cancelPath[i]);
+        if (i % 3 === 2) await yieldFrame();
+      }
+    } finally {
+      timer.resetOffset();
+      simRef.current = false;
+      setSimulating(false);
+    }
+  }, [track, timer]);
 
   const backToBrowse = useCallback(() => {
     track('/amazon/home');
@@ -285,55 +399,86 @@ export default function AmazonPlayground() {
           Trigger specific behaviors to see interventions:
         </p>
         <div className="btn-row">
-          <button
-            className="btn btn-secondary"
-            onClick={() => {
-              track('/amazon/home');
-              track('/amazon/deals');
-              track('/amazon/home');
-              track('/amazon/deals');
-            }}
-          >
+          <button className="btn btn-secondary" onClick={simulateBrowseBackForth} disabled={simulating} data-tooltip="Simulates browsing 9 pages with 5s dwell each. Triggers: dwell_time_anomaly, trajectory_anomaly">
             🔄 Browse Back &amp; Forth
           </button>
-          <button className="btn btn-danger" onClick={simulateRageClicks}>
+          <button className="btn btn-danger" onClick={simulateRageClicks} disabled={simulating} data-tooltip="Simulates rapid switching between all products (100ms per click). Triggers: high_entropy">
             😤 Rage-Click Products
           </button>
-          <button className="btn btn-secondary" onClick={() => track('/amazon/checkout/payment')}>
+          <button className="btn btn-secondary" onClick={simulateExitIntent} disabled={simulating} data-tooltip="Fires the exit_intent lifecycle event. Triggers: exit_intent">
+            🚪 Trigger Exit Intent
+          </button>
+          <button className="btn btn-secondary" onClick={simulateTabSwitch} disabled={simulating} data-tooltip="Simulates tab-switch (pause) and auto-return after 2s. Triggers: attention_return">
+            👁 Tab Away &amp; Return
+          </button>
+          <button className="btn btn-secondary" onClick={() => track('/amazon/checkout/payment')} disabled={simulating} data-tooltip="Navigates to the payment page. Linger there to trigger dwell_time_anomaly or hesitation_detected">
             💳 Jump to Payment
           </button>
-          <button className="btn btn-green" onClick={backToBrowse}>
+          <button className="btn btn-warning" onClick={simulateCancelSubscription} disabled={simulating} data-tooltip="Simulates hesitant browsing through cancel pages with 4s dwell. Triggers: hesitation_detected">
+            🚫 Cancel Subscription
+          </button>
+          <button className="btn btn-secondary" onClick={simulateBotActivity} disabled={simulating} data-tooltip="Simulates rapid bot-like navigation with zero dwell time. Triggers: bot_detected">
+            🤖 Bot Activity
+          </button>
+          <button className="btn btn-green" onClick={backToBrowse} disabled={simulating} data-tooltip="Returns to the product browse page. Navigation shortcut — no signal triggered">
             🏠 Back to Browse
           </button>
         </div>
         <p style={{ color: 'var(--text-muted)', fontSize: 11, marginTop: 8 }}>
-          💡 Tip: Switch to another tab and return after 15s to trigger "Welcome Back". Move your
-          mouse above the viewport for "Exit Intent".
+          💡 Tip: Or switch tabs / move mouse above the viewport for real browser-level signals.
+          Hover any button for details on what it simulates.
         </p>
       </div>
 
-      {/* Interventions */}
+      {/* Interventions — latest always visible, previous collapsible */}
       {interventions.length > 0 && (
         <div className="card">
-          <div className="card-title">🎯 Triggered Interventions ({interventions.length})</div>
-          {interventions.map((iv) => (
-            <div key={iv.id} className={`intervention intervention-${iv.type}`}>
-              <span className="intervention-icon">{iv.icon}</span>
-              <div className="intervention-body">
-                <h4>{iv.title}</h4>
-                <p>{iv.body}</p>
-                <span
-                  className="badge badge-purple"
-                  style={{ marginTop: 4, display: 'inline-block', fontSize: 10 }}
-                >
-                  Signal: {iv.trigger}
-                </span>
-              </div>
-              <button className="intervention-dismiss" onClick={() => dismissIntervention(iv.id)}>
-                ✕
-              </button>
+          <div className="card-title" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+            <span>🎯 Triggered Intervention</span>
+            <button
+              className="btn btn-ghost btn-sm"
+              onClick={() => { setInterventions([]); setPrevExpanded(false); }}
+              title="Dismiss all notifications"
+            >
+              Dismiss all
+            </button>
+          </div>
+          {/* Latest notification */}
+          <div className={`intervention intervention-${interventions[0].type}`}>
+            <span className="intervention-icon">{interventions[0].icon}</span>
+            <div className="intervention-body">
+              <h4>{interventions[0].title}</h4>
+              <p>{interventions[0].body}</p>
+              <span className="badge badge-purple" style={{ marginTop: 4, display: 'inline-block', fontSize: 10 }}>
+                Signal: {interventions[0].trigger}
+              </span>
             </div>
-          ))}
+            <button className="intervention-dismiss" onClick={() => dismissIntervention(interventions[0].id)}>✕</button>
+          </div>
+          {/* Previous — collapsible */}
+          {interventions.length > 1 && (
+            <div className="interventions-history">
+              <button
+                className="btn btn-ghost btn-sm interventions-history-toggle"
+                onClick={() => setPrevExpanded((e) => !e)}
+              >
+                {prevExpanded ? '▲ Hide' : '▼ Show'} {interventions.length - 1} previous notification{interventions.length > 2 ? 's' : ''}
+              </button>
+              {prevExpanded && interventions.slice(1).map((iv) => (
+                <div key={iv.id} className={`intervention intervention-${iv.type} intervention-prev`}>
+                  <span className="intervention-icon">{iv.icon}</span>
+                  <div className="intervention-body">
+                    <h4>{iv.title}</h4>
+                    <p>{iv.body}</p>
+                    <span className="badge badge-purple" style={{ marginTop: 4, display: 'inline-block', fontSize: 10 }}>
+                      Signal: {iv.trigger}
+                    </span>
+                  </div>
+                  <button className="intervention-dismiss" onClick={() => dismissIntervention(iv.id)}>✕</button>
+                </div>
+              ))}
+            </div>
+          )}
         </div>
       )}
 
@@ -582,8 +727,97 @@ export default function AmazonPlayground() {
               </td>
               <td>⏳ Still shopping? nudge</td>
             </tr>
+            <tr>
+              <td>Hesitates on cancel page</td>
+              <td>
+                <code style={{ fontFamily: 'var(--font-mono)', fontSize: 11 }}>
+                  hesitation_detected
+                </code>
+              </td>
+              <td>🚫 "3 months free" retention offer</td>
+            </tr>
           </tbody>
         </table>
+      </div>
+
+      {/* Manual Testing Guide */}
+      <div className="card">
+        <div className="card-title">🧪 Manual Testing Guide</div>
+        <p style={{ color: 'var(--text-muted)', fontSize: 13, marginBottom: 10 }}>
+          Verify signals are real — trigger each intervention yourself without simulation buttons:
+        </p>
+        <div className="alert alert-info" style={{ marginBottom: 12, fontSize: 12 }}>
+          <strong>📊 Probabilistic engine, not hardcoded rules.</strong> Every signal is derived from
+          live mathematics: first-order Markov chain transition probabilities, Shannon entropy,
+          Bayesian (Dirichlet) smoothing, and z-scores against a pre-trained baseline.
+          The engine needs a warm-up period to build enough observations — signals may not fire
+          immediately and exact thresholds will vary across sessions as the model learns.
+          Results are expected to differ from the Quick Simulate buttons, which fast-forward
+          time to satisfy the statistical requirements deterministically.
+        </div>
+        <div className="manual-guide">
+          <ul className="manual-guide-list">
+            <li>
+              <span className="guide-signal">exit_intent</span>
+              <strong>Exit Intent</strong>
+              <div className="guide-steps">
+                Move your mouse cursor above the top edge of the browser viewport (toward the tab bar).
+                The browser's <code>mouseleave</code> event fires the signal. You should see the "10% off" overlay.
+              </div>
+            </li>
+            <li>
+              <span className="guide-signal">attention_return</span>
+              <strong>Tab Away &amp; Return</strong>
+              <div className="guide-steps">
+                Switch to another browser tab (Ctrl+Tab / Cmd+Tab), wait at least 2 seconds, then switch back.
+                The Page Visibility API detects the absence and fires "Welcome back!" on return.
+              </div>
+            </li>
+            <li>
+              <span className="guide-signal">dwell_time_anomaly</span>
+              <strong>Dwell Time Anomaly</strong>
+              <div className="guide-steps">
+                Click a product card, then stay on the page without clicking anything for 5+ seconds.
+                Click another product and wait again. After 3–4 products, the engine has enough samples to detect
+                abnormally long pauses and shows the "Free Shipping" tooltip.
+              </div>
+            </li>
+            <li>
+              <span className="guide-signal">high_entropy</span>
+              <strong>Rage Clicks</strong>
+              <div className="guide-steps">
+                Rapidly click between many different product cards (15+ quick clicks spread across all 6 products).
+                This spreads the transition probability mass and raises Shannon entropy, triggering the "Need help? Chat with us!" prompt.
+              </div>
+            </li>
+            <li>
+              <span className="guide-signal">trajectory_anomaly</span>
+              <strong>Unusual Navigation</strong>
+              <div className="guide-steps">
+                Navigate in an unusual order — click a product, go back to browse, jump to a completely different product,
+                go back again, then jump to payment. Unusual transitions that deviate from the e-commerce baseline trigger
+                the "Compare side by side?" suggestion.
+              </div>
+            </li>
+            <li>
+              <span className="guide-signal">user_idle</span>
+              <strong>Idle Detection</strong>
+              <div className="guide-steps">
+                Stop all mouse and keyboard activity for 30+ seconds. The engine detects inactivity and shows the
+                "Still shopping?" nudge.
+              </div>
+            </li>
+            <li>
+              <span className="guide-signal">hesitation_detected</span>
+              <strong>Checkout Hesitation</strong>
+              <div className="guide-steps">
+                Click a product → Add to Cart → Proceed to Payment, then hover over the form fields and pause for 5+ seconds.
+                Navigate back and forth between cart and payment. The combination of dwell time and unusual trajectory
+                triggers the "Money-back guarantee" reassurance.
+              </div>
+            </li>
+          </ul>
+        </div>
       </div>
     </div>
   );

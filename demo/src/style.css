@@ -150,6 +150,10 @@ body {
   grid-template-columns: var(--sidebar-w) 1fr var(--log-w);
   height: calc(100vh - var(--header-h));
   overflow: hidden;
+  transition: grid-template-columns 0.25s ease;
+}
+.layout.sidebar-collapsed {
+  grid-template-columns: 36px 1fr var(--log-w);
 }
 
 /* ─── Sidebar ───────────────────────────────────────────────────────────── */
@@ -158,6 +162,57 @@ body {
   border-right: 1px solid var(--border);
   overflow-y: auto;
   padding: 12px 8px;
+  position: relative;
+  transition: opacity 0.2s, width 0.25s;
+}
+.sidebar--hidden {
+  opacity: 0;
+  pointer-events: none;
+  width: 0;
+  padding: 0;
+  overflow: hidden;
+}
+.sidebar-toggle {
+  position: absolute;
+  top: 8px;
+  right: 6px;
+  background: var(--bg-3);
+  border: 1px solid var(--border);
+  color: var(--text-muted);
+  border-radius: 4px;
+  width: 22px;
+  height: 22px;
+  font-size: 10px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 2;
+}
+.sidebar-toggle:hover {
+  color: var(--text);
+  background: var(--bg-2);
+}
+.sidebar-expand {
+  position: fixed;
+  top: calc(var(--header-h) + 8px);
+  left: 6px;
+  background: var(--bg-3);
+  border: 1px solid var(--border);
+  color: var(--text-muted);
+  border-radius: 4px;
+  width: 24px;
+  height: 24px;
+  font-size: 10px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 10;
+}
+.sidebar-expand:hover {
+  color: var(--text);
+  background: var(--bg-2);
 }
 .nav-section-label {
   font-size: 10px;
@@ -277,6 +332,14 @@ body {
 }
 .btn-green:hover {
   background: rgba(34, 197, 94, 0.25);
+}
+.btn-warning {
+  background: rgba(245, 158, 11, 0.15);
+  color: #f59e0b;
+  border: 1px solid rgba(245, 158, 11, 0.3);
+}
+.btn-warning:hover {
+  background: rgba(245, 158, 11, 0.25);
 }
 .btn-ghost {
   background: none;
@@ -556,6 +619,38 @@ label {
   display: flex;
   flex-direction: column;
   overflow: hidden;
+  transition: opacity 0.2s, width 0.25s;
+}
+.event-log--hidden {
+  opacity: 0;
+  pointer-events: none;
+  width: 0;
+  padding: 0;
+  overflow: hidden;
+}
+.layout.log-collapsed {
+  grid-template-columns: var(--sidebar-w) 1fr 36px;
+}
+.layout.sidebar-collapsed.log-collapsed {
+  grid-template-columns: 36px 1fr 36px;
+}
+.log-expand {
+  position: fixed;
+  top: calc(var(--header-h) + 8px);
+  right: 6px;
+  background: var(--bg-3);
+  border: 1px solid var(--border);
+  color: var(--text-muted);
+  border-radius: 4px;
+  padding: 4px 8px;
+  font-size: 10px;
+  cursor: pointer;
+  z-index: 10;
+  white-space: nowrap;
+}
+.log-expand:hover {
+  color: var(--text);
+  background: var(--bg-2);
 }
 .event-log-header {
   padding: 12px 14px;
@@ -770,40 +865,38 @@ label {
   }
 }
 
-/* ─── Intent Meter ─────────────────────────────────────────────────────────── */
+/* ─── Intent Meter (draggable) ─────────────────────────────────────────────── */
 .intent-meter {
   position: fixed;
   right: var(--log-w);
   top: calc(var(--header-h) + 12px);
   z-index: 90;
-  display: flex;
-  align-items: flex-start;
+  will-change: transform;
 }
-.intent-meter--collapsed {
-  right: var(--log-w);
-}
-.intent-meter-toggle {
-  background: var(--bg-2);
-  border: 1px solid var(--border);
-  color: var(--text-muted);
-  font-size: 12px;
-  width: 22px;
-  height: 28px;
-  cursor: pointer;
-  border-radius: 4px 0 0 4px;
+.intent-meter-drag-handle {
   display: flex;
   align-items: center;
-  justify-content: center;
+  justify-content: space-between;
+  cursor: grab;
+  user-select: none;
+  padding: 4px 6px;
+  border-bottom: 1px solid var(--border);
+  border-radius: var(--radius) var(--radius) 0 0;
+  background: var(--bg-3);
 }
-.intent-meter-toggle:hover {
-  color: var(--text);
-  border-color: var(--accent);
+.intent-meter-drag-handle:active {
+  cursor: grabbing;
+}
+.drag-grip {
+  font-size: 12px;
+  color: var(--text-muted);
+  line-height: 1;
 }
 .intent-meter-body {
   background: var(--bg-2);
   border: 1px solid var(--border);
-  border-radius: 0 0 0 var(--radius);
-  padding: 10px 8px 12px;
+  border-radius: var(--radius);
+  padding: 0 8px 12px;
   width: 80px;
 }
 .intent-meter-title {
@@ -812,8 +905,6 @@ label {
   text-transform: uppercase;
   letter-spacing: 0.08em;
   color: var(--text-muted);
-  text-align: center;
-  margin-bottom: 10px;
 }
 .gauge-row {
   display: flex;
@@ -858,6 +949,36 @@ label {
   font-size: 9px;
   font-family: var(--font-mono);
   color: var(--text);
+}
+.gauge-sim-btn {
+  font-size: 10px;
+  background: var(--bg-3);
+  border: 1px solid var(--border);
+  color: var(--text-muted);
+  border-radius: 3px;
+  width: 20px;
+  height: 20px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  transition: 0.15s;
+  flex-shrink: 0;
+}
+.gauge-sim-btn:hover:not(:disabled) {
+  background: var(--accent);
+  color: var(--bg);
+  border-color: var(--accent);
+}
+.gauge-sim-btn:disabled {
+  opacity: 0.35;
+  cursor: not-allowed;
+}
+.btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+  filter: grayscale(0.3);
 }
 
 /* ─── Amazon Playground ─────────────────────────────────────────────────────── */
@@ -1005,6 +1126,11 @@ label {
   border: 1px solid rgba(59, 130, 246, 0.3);
   color: var(--blue);
 }
+.intervention-cancel-sub {
+  background: rgba(245, 158, 11, 0.12);
+  border: 1px solid rgba(245, 158, 11, 0.3);
+  color: #f59e0b;
+}
 .intervention-icon {
   font-size: 28px;
   flex-shrink: 0;
@@ -1031,4 +1157,67 @@ label {
 }
 .intervention-dismiss:hover {
   opacity: 1;
+}
+
+/* ─── Simulation button tooltips ────────────────────────────────────────────── */
+[data-tooltip] {
+  position: relative;
+}
+[data-tooltip]::after {
+  content: attr(data-tooltip);
+  position: absolute;
+  bottom: calc(100% + 8px);
+  left: 50%;
+  transform: translateX(-50%);
+  background: var(--bg-3);
+  color: var(--text);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 8px 12px;
+  font-size: 11px;
+  line-height: 1.4;
+  white-space: normal;
+  width: max-content;
+  max-width: 280px;
+  pointer-events: none;
+  opacity: 0;
+  transition: opacity 0.15s;
+  z-index: 100;
+  box-shadow: 0 4px 12px rgba(0,0,0,0.3);
+}
+[data-tooltip]:hover::after {
+  opacity: 1;
+}
+
+/* ─── Manual testing guide ──────────────────────────────────────────────────── */
+.manual-guide {
+  margin-top: 4px;
+}
+.manual-guide-list {
+  list-style: none;
+  padding: 0;
+}
+.manual-guide-list li {
+  padding: 10px 12px;
+  border-bottom: 1px solid var(--border);
+  font-size: 13px;
+  line-height: 1.5;
+}
+.manual-guide-list li:last-child {
+  border-bottom: none;
+}
+.manual-guide-list .guide-signal {
+  display: inline-block;
+  font-family: var(--font-mono);
+  font-size: 11px;
+  background: var(--bg-3);
+  padding: 2px 6px;
+  border-radius: 4px;
+  color: var(--accent-h);
+  margin-right: 6px;
+}
+.manual-guide-list .guide-steps {
+  color: var(--text-muted);
+  margin-top: 4px;
+  font-size: 12px;
 }

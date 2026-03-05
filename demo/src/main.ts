@@ -97,28 +97,79 @@ class ControllableLifecycleAdapter implements LifecycleAdapter {
 // ─── Controllable Timer Adapter ───────────────────────────────────────────────
 class ControllableTimerAdapter implements TimerAdapter {
   private offset = 0;
-  private realIds = new Map<number, ReturnType<typeof setTimeout>>();
   private nextId = 1;
+  private pending = new Map<
+    number,
+    { fn: () => void; firesAt: number; realId: ReturnType<typeof globalThis.setTimeout> }
+  >();
 
   setTimeout(fn: () => void, delay: number): number {
     const id = this.nextId++;
-    this.realIds.set(id, globalThis.setTimeout(fn, delay));
+    const firesAt = this.now() + delay;
+    const realId = globalThis.setTimeout(() => {
+      if (!this.pending.has(id)) return;
+      this.pending.delete(id);
+      fn();
+    }, delay);
+    this.pending.set(id, { fn, firesAt, realId });
     return id;
   }
   clearTimeout(id: number): void {
-    const r = this.realIds.get(id);
-    if (r !== undefined) globalThis.clearTimeout(r);
-    this.realIds.delete(id);
+    const entry = this.pending.get(id);
+    if (entry) {
+      globalThis.clearTimeout(entry.realId);
+      this.pending.delete(id);
+    }
   }
   now(): number {
     return performance.now() + this.offset;
   }
-  /** Simulate the passage of time without waiting. */
   fastForward(ms: number): void {
     this.offset += ms;
+    this.flushPending();
+  }
+  /** Undo accumulated offset after a simulation so normal interactions are unshifted. */
+  resetOffset(): void {
+    const oldNow = this.now();
+    this.offset = 0;
+    const newNow = this.now();
+    for (const [id, entry] of this.pending) {
+      globalThis.clearTimeout(entry.realId);
+      const remaining = Math.max(0, entry.firesAt - oldNow);
+      const newFiresAt = newNow + remaining;
+      const realId = globalThis.setTimeout(() => {
+        if (!this.pending.has(id)) return;
+        this.pending.delete(id);
+        entry.fn();
+      }, remaining);
+      this.pending.set(id, { fn: entry.fn, firesAt: newFiresAt, realId });
+    }
   }
   reset(): void {
+    for (const entry of this.pending.values()) globalThis.clearTimeout(entry.realId);
+    this.pending.clear();
     this.offset = 0;
+  }
+
+  private flushPending(): void {
+    let iterations = 0;
+    const MAX_FLUSH = 500;
+    while (iterations++ < MAX_FLUSH) {
+      const now = this.now();
+      let earliest: {
+        id: number;
+        entry: { fn: () => void; firesAt: number; realId: ReturnType<typeof globalThis.setTimeout> };
+      } | null = null;
+      for (const [id, entry] of this.pending) {
+        if (entry.firesAt <= now && (!earliest || entry.firesAt < earliest.entry.firesAt)) {
+          earliest = { id, entry };
+        }
+      }
+      if (!earliest) break;
+      globalThis.clearTimeout(earliest.entry.realId);
+      this.pending.delete(earliest.id);
+      earliest.entry.fn();
+    }
   }
 }
 
@@ -208,6 +259,11 @@ function logEvent(eventName: string, label: string, data?: unknown): void {
 
 document.getElementById('clear-log')!.addEventListener('click', () => {
   logEl.innerHTML = '<div class="log-empty">Log cleared.</div>';
+});
+
+document.getElementById('btn-reset-session')!.addEventListener('click', () => {
+  intent.destroy();
+  window.location.reload();
 });
 
 // ─── Demo registry ────────────────────────────────────────────────────────────
@@ -1566,13 +1622,18 @@ intent.<span class="fn">destroy</span>(); <span class="cmt">// closes BroadcastC
           <div class="card-title">Quick Simulate</div>
           <p style="color:var(--text-muted);font-size:13px;margin-bottom:10px">Trigger specific behaviors to see interventions:</p>
           <div class="btn-row">
-            <button class="btn btn-secondary" id="btn-browse-back-forth">🔄 Browse Back &amp; Forth</button>
-            <button class="btn btn-danger" id="btn-rage-click">😤 Rage-Click Products</button>
-            <button class="btn btn-secondary" id="btn-jump-payment">💳 Jump to Payment</button>
-            <button class="btn btn-green" id="btn-back-browse">🏠 Back to Browse</button>
+            <button class="btn btn-secondary" id="btn-browse-back-forth" data-tooltip="Simulates browsing 9 pages with 5s dwell each. Triggers: dwell_time_anomaly, trajectory_anomaly">🔄 Browse Back &amp; Forth</button>
+            <button class="btn btn-danger" id="btn-rage-click" data-tooltip="Simulates rapid switching between all products (100ms per click). Triggers: high_entropy">😤 Rage-Click Products</button>
+            <button class="btn btn-secondary" id="btn-exit-intent" data-tooltip="Fires the exit_intent lifecycle event. Triggers: exit_intent">🚪 Trigger Exit Intent</button>
+            <button class="btn btn-secondary" id="btn-tab-switch" data-tooltip="Simulates tab-switch (pause) and auto-return after 2s. Triggers: attention_return">👁 Tab Away &amp; Return</button>
+            <button class="btn btn-secondary" id="btn-jump-payment" data-tooltip="Navigates to the payment page. Linger there to trigger dwell_time_anomaly or hesitation_detected">💳 Jump to Payment</button>
+            <button class="btn btn-warning" id="btn-cancel-sub" data-tooltip="Simulates hesitant browsing through cancel pages with 4s dwell. Triggers: hesitation_detected">🚫 Cancel Subscription</button>
+            <button class="btn btn-secondary" id="btn-bot-activity" data-tooltip="Simulates rapid bot-like navigation with zero dwell time. Triggers: bot_detected">🤖 Bot Activity</button>
+            <button class="btn btn-green" id="btn-back-browse" data-tooltip="Returns to the product browse page. Navigation shortcut — no signal triggered">🏠 Back to Browse</button>
           </div>
           <p style="color:var(--text-muted);font-size:11px;margin-top:8px">
-            💡 Tip: Switch to another tab and return after 15s to trigger "Welcome Back". Move your mouse above the viewport for "Exit Intent".
+            💡 Tip: Or switch tabs / move mouse above the viewport for real browser-level signals.
+            Hover any button for details on what it simulates.
           </p>
         </div>
 
@@ -1618,8 +1679,88 @@ intent.<span class="fn">destroy</span>(); <span class="cmt">// closes BroadcastC
               <tr><td>Tab away, return after 15s+</td><td><code>attention_return</code></td><td>👋 Welcome back banner</td></tr>
               <tr><td>Hesitates on checkout form</td><td><code>hesitation_detected</code></td><td>🛡️ Money-back guarantee</td></tr>
               <tr><td>Goes idle for 30s+</td><td><code>user_idle</code></td><td>⏳ Still shopping? nudge</td></tr>
+              <tr><td>Hesitates on cancel page</td><td><code>hesitation_detected</code></td><td>🚫 "3 months free" retention offer</td></tr>
             </tbody>
           </table>
+        </div>
+
+        <div class="card">
+          <div class="card-title">🧪 Manual Testing Guide</div>
+          <p style="color:var(--text-muted);font-size:13px;margin-bottom:10px">
+            Verify signals are real — trigger each intervention yourself without simulation buttons:
+          </p>
+          <div class="alert alert-info" style="margin-bottom:12px;font-size:12px">
+            <strong>📊 Probabilistic engine, not hardcoded rules.</strong> Every signal is derived from
+            live mathematics: first-order Markov chain transition probabilities, Shannon entropy,
+            Bayesian (Dirichlet) smoothing, and z-scores against a pre-trained baseline.
+            The engine needs a warm-up period to build enough observations — signals may not fire
+            immediately and exact thresholds will vary across sessions as the model learns.
+            Results are expected to differ from the Quick Simulate buttons, which fast-forward
+            time to satisfy the statistical requirements deterministically.
+          </div>
+          <div class="manual-guide">
+            <ul class="manual-guide-list">
+              <li>
+                <span class="guide-signal">exit_intent</span>
+                <strong>Exit Intent</strong>
+                <div class="guide-steps">
+                  Move your mouse cursor above the top edge of the browser viewport (toward the tab bar).
+                  The browser's mouseleave event fires the signal. You should see the "10% off" overlay.
+                </div>
+              </li>
+              <li>
+                <span class="guide-signal">attention_return</span>
+                <strong>Tab Away &amp; Return</strong>
+                <div class="guide-steps">
+                  Switch to another browser tab (Ctrl+Tab / Cmd+Tab), wait at least 2 seconds, then switch back.
+                  The Page Visibility API detects the absence and fires "Welcome back!" on return.
+                </div>
+              </li>
+              <li>
+                <span class="guide-signal">dwell_time_anomaly</span>
+                <strong>Dwell Time Anomaly</strong>
+                <div class="guide-steps">
+                  Click a product card, then stay on the page without clicking anything for 5+ seconds.
+                  Click another product and wait again. After 3-4 products, the engine has enough samples to detect
+                  abnormally long pauses and shows the "Free Shipping" tooltip.
+                </div>
+              </li>
+              <li>
+                <span class="guide-signal">high_entropy</span>
+                <strong>Rage Clicks</strong>
+                <div class="guide-steps">
+                  Rapidly click between many different product cards (15+ quick clicks spread across all 6 products).
+                  This spreads the transition probability mass and raises Shannon entropy, triggering the "Need help? Chat with us!" prompt.
+                </div>
+              </li>
+              <li>
+                <span class="guide-signal">trajectory_anomaly</span>
+                <strong>Unusual Navigation</strong>
+                <div class="guide-steps">
+                  Navigate in an unusual order — click a product, go back to browse, jump to a completely different product,
+                  go back again, then jump to payment. Unusual transitions that deviate from the e-commerce baseline trigger
+                  the "Compare side by side?" suggestion.
+                </div>
+              </li>
+              <li>
+                <span class="guide-signal">user_idle</span>
+                <strong>Idle Detection</strong>
+                <div class="guide-steps">
+                  Stop all mouse and keyboard activity for 30+ seconds. The engine detects inactivity and shows the
+                  "Still shopping?" nudge.
+                </div>
+              </li>
+              <li>
+                <span class="guide-signal">hesitation_detected</span>
+                <strong>Checkout Hesitation</strong>
+                <div class="guide-steps">
+                  Click a product, Add to Cart, Proceed to Payment, then hover over the form fields and pause for 5+ seconds.
+                  Navigate back and forth between cart and payment. The combination of dwell time and unusual trajectory
+                  triggers the "Money-back guarantee" reassurance.
+                </div>
+              </li>
+            </ul>
+          </div>
         </div>
       `;
     },
@@ -1721,13 +1862,23 @@ intent.<span class="fn">destroy</span>(); <span class="cmt">// closes BroadcastC
         }),
         intent.on('hesitation_detected', (p: unknown) => {
           const payload = p as { state: string; dwellZScore: number; trajectoryZScore: number };
-          pushIntervention(
-            'guarantee',
-            '🛡️',
-            '100% money-back guarantee',
-            `Hesitation on "${payload.state}" — dwell z: ${payload.dwellZScore.toFixed(1)}, trajectory z: ${payload.trajectoryZScore.toFixed(1)}`,
-            'hesitation_detected',
-          );
+          if (payload.state.includes('cancel')) {
+            pushIntervention(
+              'cancel-sub',
+              '🚫',
+              "We'd hate to see you go — 3 months free!",
+              `Hesitation on "${payload.state}" — dwell z: ${payload.dwellZScore.toFixed(1)}, trajectory z: ${payload.trajectoryZScore.toFixed(1)}`,
+              'hesitation_detected',
+            );
+          } else {
+            pushIntervention(
+              'guarantee',
+              '🛡️',
+              '100% money-back guarantee',
+              `Hesitation on "${payload.state}" — dwell z: ${payload.dwellZScore.toFixed(1)}, trajectory z: ${payload.trajectoryZScore.toFixed(1)}`,
+              'hesitation_detected',
+            );
+          }
         }),
         intent.on('user_idle', () => {
           pushIntervention(
@@ -1771,28 +1922,107 @@ intent.<span class="fn">destroy</span>(); <span class="cmt">// closes BroadcastC
         }
       });
 
-      // Quick simulate buttons
+      // Quick simulate buttons — async with frame yields for reactivity
+      const simBtns = el.querySelectorAll<HTMLButtonElement>(
+        '#btn-browse-back-forth,#btn-rage-click,#btn-exit-intent,#btn-tab-switch,#btn-cancel-sub,#btn-jump-payment,#btn-bot-activity,#btn-back-browse'
+      );
+      function setPlaygroundBtns(disabled: boolean) {
+        simBtns.forEach((b) => (b.disabled = disabled));
+      }
+      async function runPlaygroundSim(fn: () => Promise<void>) {
+        if (_simRunning) return;
+        _simRunning = true;
+        _cooldownActive = false;
+        setPlaygroundBtns(true);
+        setSimButtons(true);
+        try { await fn(); } finally {
+          timer.resetOffset();
+          _simRunning = false;
+          setPlaygroundBtns(false);
+          setSimButtons(false);
+          _cooldownActive = true;
+          if (_cooldownTimer) clearTimeout(_cooldownTimer);
+          _cooldownTimer = setTimeout(() => { _cooldownActive = false; }, COOLDOWN_DURATION);
+        }
+      }
+
       el.querySelector('#btn-browse-back-forth')?.addEventListener('click', () => {
-        intent.track('/amazon/home');
-        intent.track('/amazon/deals');
-        intent.track('/amazon/home');
-        intent.track('/amazon/deals');
+        runPlaygroundSim(async () => {
+          const states = [
+            '/amazon/home', '/amazon/deals', '/product/headphones',
+            '/amazon/home', '/product/keyboard', '/amazon/deals',
+            '/amazon/home', '/product/monitor', '/amazon/home',
+          ];
+          for (let i = 0; i < states.length; i++) {
+            timer.fastForward(5000);
+            intent.track(states[i]);
+            if (i % 3 === 2) await yieldFrame();
+          }
+        });
       });
       el.querySelector('#btn-rage-click')?.addEventListener('click', () => {
-        const states = [
-          '/product/headphones',
-          '/product/keyboard',
-          '/product/monitor',
-          '/product/mouse',
-          '/product/stand',
-          '/product/webcam',
-        ];
-        for (let i = 0; i < 6; i++) {
-          setTimeout(() => intent.track(states[i % states.length]), i * 60);
-        }
+        runPlaygroundSim(async () => {
+          const productStates = [
+            '/product/headphones', '/product/keyboard', '/product/monitor',
+            '/product/mouse', '/product/stand', '/product/webcam',
+          ];
+          const hub = '/amazon/home';
+          for (let round = 0; round < 3; round++) {
+            for (const ps of productStates) {
+              timer.fastForward(100);
+              intent.track(hub);
+              timer.fastForward(100);
+              intent.track(ps);
+            }
+            await yieldFrame();
+          }
+        });
+      });
+      el.querySelector('#btn-exit-intent')?.addEventListener('click', () => {
+        lifecycle.triggerExitIntent();
+      });
+      el.querySelector('#btn-tab-switch')?.addEventListener('click', () => {
+        lifecycle.triggerPause();
+        globalThis.setTimeout(() => lifecycle.triggerResume(), 2000);
+      });
+      el.querySelector('#btn-cancel-sub')?.addEventListener('click', () => {
+        runPlaygroundSim(async () => {
+          const cancelPath = [
+            '/account/settings',
+            '/account/cancel-subscription',
+            '/account/cancel-subscription',
+            '/account/cancel-subscription/reason',
+            '/account/cancel-subscription',
+            '/account/cancel-subscription/confirm',
+            '/account/cancel-subscription',
+            '/account/cancel-subscription/confirm',
+          ];
+          for (let i = 0; i < cancelPath.length; i++) {
+            timer.fastForward(4000);
+            intent.track(cancelPath[i]);
+            if (i % 3 === 2) await yieldFrame();
+          }
+        });
       });
       el.querySelector('#btn-jump-payment')?.addEventListener('click', () => {
         intent.track('/amazon/checkout/payment');
+      });
+      el.querySelector('#btn-bot-activity')?.addEventListener('click', () => {
+        runPlaygroundSim(async () => {
+          const productStates = [
+            '/product/headphones', '/product/keyboard', '/product/monitor',
+            '/product/mouse', '/product/stand', '/product/webcam',
+          ];
+          for (let round = 0; round < 3; round++) {
+            for (const ps of productStates) {
+              intent.track(ps);
+            }
+            intent.track('/amazon/home');
+            intent.track('/amazon/deals');
+            intent.track('/amazon/cart');
+            await yieldFrame();
+          }
+        });
       });
       el.querySelector('#btn-back-browse')?.addEventListener('click', () => {
         intent.track('/amazon/home');
@@ -1851,6 +2081,10 @@ function buildEcommerceBaseline(): SerializedMarkovGraph {
 // ─── Intent Meter ─────────────────────────────────────────────────────────────
 const meterState = { rage: 0, anxiety: 0, hesitation: 0, bot: 0, idle: 0, exit: 0 };
 const METER_DECAY = 0.5;
+const COOLDOWN_DECAY = 3;
+const COOLDOWN_DURATION = 8_000; // ms of accelerated decay after a sim
+let _cooldownActive = false;
+let _cooldownTimer: ReturnType<typeof setTimeout> | null = null;
 
 function updateMeterGauge(name: string, value: number) {
   const v = Math.max(0, Math.min(100, value));
@@ -1886,9 +2120,10 @@ function getGaugeColor(name: string): string {
 
 // Decay meters
 setInterval(() => {
+  const amt = _cooldownActive ? COOLDOWN_DECAY : METER_DECAY;
   for (const key of ['rage', 'anxiety', 'hesitation', 'exit'] as const) {
     if ((meterState as Record<string, number>)[key] > 0) {
-      updateMeterGauge(key, (meterState as Record<string, number>)[key] - METER_DECAY);
+      updateMeterGauge(key, (meterState as Record<string, number>)[key] - amt);
     }
   }
   // Bot from telemetry
@@ -1918,15 +2153,143 @@ intent.on('exit_intent', () => updateMeterGauge('exit', 100));
 intent.on('user_idle', () => updateMeterGauge('idle', 100));
 intent.on('user_resumed', () => updateMeterGauge('idle', 0));
 
-// Toggle visibility
-document.getElementById('meter-toggle')!.addEventListener('click', () => {
+// Drag handle for meter repositioning
+{
   const meter = document.getElementById('intent-meter')!;
-  const body = document.getElementById('meter-body')!;
-  const btn = document.getElementById('meter-toggle')!;
-  const isVisible = body.style.display !== 'none';
-  body.style.display = isVisible ? 'none' : '';
-  btn.textContent = isVisible ? '▶' : '◀';
-  meter.classList.toggle('intent-meter--collapsed', isVisible);
+  const handle = document.getElementById('meter-drag-handle')!;
+  const translate = { x: 0, y: 0 };
+
+  handle.addEventListener('mousedown', (e) => {
+    e.preventDefault();
+    const startX = e.clientX;
+    const startY = e.clientY;
+    const origX = translate.x;
+    const origY = translate.y;
+
+    const onMove = (ev: MouseEvent) => {
+      translate.x = origX + ev.clientX - startX;
+      translate.y = origY + ev.clientY - startY;
+      meter.style.transform = `translate(${translate.x}px, ${translate.y}px)`;
+    };
+    const onUp = () => {
+      window.removeEventListener('mousemove', onMove);
+      window.removeEventListener('mouseup', onUp);
+    };
+    window.addEventListener('mousemove', onMove);
+    window.addEventListener('mouseup', onUp);
+  });
+}
+
+// Per-gauge Quick Simulate buttons
+const RAGE_SIM_STATES = ['/sim/rage/a', '/sim/rage/b', '/sim/rage/c', '/sim/rage/d', '/sim/rage/e', '/sim/rage/f'];
+
+const yieldFrame = () => new Promise<void>((r) => requestAnimationFrame(() => r()));
+let _simRunning = false;
+
+/** Guard against concurrent sims; disable all sim buttons while running. */
+function setSimButtons(disabled: boolean) {
+  for (const id of ['sim-rage', 'sim-anxiety', 'sim-hesitation', 'sim-bot', 'sim-idle', 'sim-exit']) {
+    const btn = document.getElementById(id) as HTMLButtonElement | null;
+    if (btn) btn.disabled = disabled;
+  }
+}
+
+async function runSim(fn: () => Promise<void>) {
+  if (_simRunning) return;
+  _simRunning = true;
+  _cooldownActive = false;
+  setSimButtons(true);
+  try {
+    await fn();
+  } finally {
+    timer.resetOffset();
+    _simRunning = false;
+    setSimButtons(false);
+    // Enter cooldown — accelerated decay settles gauges toward baseline
+    _cooldownActive = true;
+    if (_cooldownTimer) clearTimeout(_cooldownTimer);
+    _cooldownTimer = setTimeout(() => { _cooldownActive = false; }, COOLDOWN_DURATION);
+  }
+}
+
+document.getElementById('sim-rage')!.addEventListener('click', () => {
+  runSim(async () => {
+    const hub = '/sim/rage/hub';
+    for (let round = 0; round < 3; round++) {
+      for (const s of RAGE_SIM_STATES) {
+        timer.fastForward(100);
+        intent.track(hub);
+        timer.fastForward(100);
+        intent.track(s);
+      }
+      await yieldFrame();
+    }
+  });
+});
+
+document.getElementById('sim-anxiety')!.addEventListener('click', () => {
+  runSim(async () => {
+    const oddPath = [
+      '/sim/anxiety/checkout', '/sim/anxiety/faq',
+      '/sim/anxiety/refund-policy', '/sim/anxiety/checkout',
+      '/sim/anxiety/compare', '/sim/anxiety/checkout',
+      '/sim/anxiety/faq', '/sim/anxiety/compare',
+      '/sim/anxiety/refund-policy', '/sim/anxiety/checkout',
+      '/sim/anxiety/faq', '/sim/anxiety/compare',
+      '/sim/anxiety/checkout', '/sim/anxiety/refund-policy',
+      '/sim/anxiety/faq', '/sim/anxiety/compare',
+      '/sim/anxiety/checkout', '/sim/anxiety/faq',
+      '/sim/anxiety/refund-policy', '/sim/anxiety/compare',
+    ];
+    for (let i = 0; i < oddPath.length; i++) {
+      timer.fastForward(2000);
+      intent.track(oddPath[i]);
+      if (i % 5 === 4) await yieldFrame();
+    }
+  });
+});
+
+document.getElementById('sim-hesitation')!.addEventListener('click', () => {
+  runSim(async () => {
+    const a = '/sim/hes/browse';
+    const b = '/sim/hes/checkout';
+    for (let i = 0; i < 6; i++) {
+      timer.fastForward(3000);
+      intent.track(a);
+      timer.fastForward(3000);
+      intent.track(b);
+      if (i % 2 === 1) await yieldFrame();
+    }
+    await yieldFrame();
+    for (let i = 0; i < 2; i++) {
+      timer.fastForward(30000);
+      intent.track(a);
+      timer.fastForward(30000);
+      intent.track(b);
+      await yieldFrame();
+    }
+  });
+});
+
+document.getElementById('sim-bot')!.addEventListener('click', () => {
+  runSim(async () => {
+    for (let i = 0; i < 12; i++) {
+      intent.track(`/sim/bot/${i}`);
+    }
+  });
+});
+
+document.getElementById('sim-idle')!.addEventListener('click', () => {
+  runSim(async () => {
+    intent.track('/sim/idle/page');
+    timer.fastForward(130_000);
+  });
+});
+
+document.getElementById('sim-exit')!.addEventListener('click', () => {
+  runSim(async () => {
+    lifecycle.triggerExitIntent();
+  });
 });
 
 // ─── Navigation ───────────────────────────────────────────────────────────────
@@ -1955,6 +2318,44 @@ function navigateTo(demoKey: string): void {
 document.querySelectorAll<HTMLElement>('.nav-item').forEach((btn) => {
   btn.addEventListener('click', () => navigateTo(btn.dataset.demo!));
 });
+
+// Collapsible sidebar
+{
+  const sidebarEl = document.getElementById('sidebar')!;
+  const layoutEl = sidebarEl.parentElement!;
+  const collapseBtn = document.getElementById('sidebar-collapse')!;
+  const expandBtn = document.getElementById('sidebar-expand')!;
+
+  collapseBtn.addEventListener('click', () => {
+    sidebarEl.classList.add('sidebar--hidden');
+    layoutEl.classList.add('sidebar-collapsed');
+    expandBtn.style.display = '';
+  });
+  expandBtn.addEventListener('click', () => {
+    sidebarEl.classList.remove('sidebar--hidden');
+    layoutEl.classList.remove('sidebar-collapsed');
+    expandBtn.style.display = 'none';
+  });
+}
+
+// Collapsible event log
+{
+  const logEl = document.getElementById('event-log')!;
+  const layoutEl = logEl.parentElement!;
+  const collapseBtn = document.getElementById('log-collapse')!;
+  const expandBtn = document.getElementById('log-expand')!;
+
+  collapseBtn.addEventListener('click', () => {
+    logEl.classList.add('event-log--hidden');
+    layoutEl.classList.add('log-collapsed');
+    expandBtn.style.display = '';
+  });
+  expandBtn.addEventListener('click', () => {
+    logEl.classList.remove('event-log--hidden');
+    layoutEl.classList.remove('log-collapsed');
+    expandBtn.style.display = 'none';
+  });
+}
 
 // Initial render
 navigateTo('overview');

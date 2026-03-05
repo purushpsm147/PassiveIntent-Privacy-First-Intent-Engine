@@ -15,7 +15,7 @@
     "lint": "npm run lint --workspaces --if-present",
     "test": "npm run test --workspaces --if-present",
     "test:unit": "npm run test:unit --workspaces --if-present",
-    "test:coverage": "npm run test:coverage --workspaces --if-present",
+    "test:coverage": "npm run test:coverage -w @passiveintent/core && npm run test:coverage -w @passiveintent/react",
     "clean": "npm run clean --workspaces --if-present",
     "format": "prettier --write .",
     "format:check": "prettier --check .",

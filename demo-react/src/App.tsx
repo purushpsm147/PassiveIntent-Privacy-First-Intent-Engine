@@ -54,10 +54,11 @@ const PAGE_MAP: Record<DemoKey, React.ReactElement> = {
 
 export default function App() {
   const [active, setActive] = useState<DemoKey>('overview');
+  const [resetKey, setResetKey] = useState(0);
 
   return (
-    <IntentProvider>
-      <Shell active={active} onNavigate={setActive}>
+    <IntentProvider key={resetKey}>
+      <Shell active={active} onNavigate={setActive} onReset={() => setResetKey((k) => k + 1)}>
         {PAGE_MAP[active]}
       </Shell>
     </IntentProvider>

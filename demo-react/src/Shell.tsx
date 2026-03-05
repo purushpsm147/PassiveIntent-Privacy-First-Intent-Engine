@@ -1,4 +1,4 @@
-import React, { type ReactNode } from 'react';
+import React, { useState, type ReactNode } from 'react';
 import { useIntent } from './IntentContext';
 import IntentMeter from './components/IntentMeter';
 import type { DemoKey } from './App';
@@ -50,18 +50,21 @@ const NAV: Array<{ section: string; items: NavItem[] }> = [
   },
   {
     section: 'Playground',
-    items: [{ key: 'amazon-playground', label: '🛒 Amazon Playground' }],
+    items: [{ key: 'amazon-playground', label: '🛒 E-commerce Playground' }],
   },
 ];
 
 interface Props {
   active: DemoKey;
   onNavigate: (key: DemoKey) => void;
+  onReset: () => void;
   children: ReactNode;
 }
 
-export default function Shell({ active, onNavigate, children }: Props) {
+export default function Shell({ active, onNavigate, onReset, children }: Props) {
   const { logEntries, clearLog } = useIntent();
+  const [sidebarOpen, setSidebarOpen] = useState(true);
+  const [logOpen, setLogOpen] = useState(true);
 
   return (
     <div id="app">
@@ -77,6 +80,13 @@ export default function Shell({ active, onNavigate, children }: Props) {
           <span className="badge badge-green">v1.0.0</span>
           <span className="badge badge-blue">React 18</span>
           <span className="badge badge-purple">@passiveintent/react</span>
+          <button
+            className="btn btn-ghost btn-sm"
+            onClick={onReset}
+            title="Destroy the current IntentManager and start a completely fresh session — clears all learned transitions, bot state, trajectory, and gauges."
+          >
+            🔄 Reset Session
+          </button>
           <a
             href="https://github.com/purushpsm147/PassiveIntent-Privacy-First-Intent-Engine"
             target="_blank"
@@ -91,9 +101,16 @@ export default function Shell({ active, onNavigate, children }: Props) {
         </div>
       </header>
 
-      <div className="layout">
+      <div className={`layout${sidebarOpen ? '' : ' sidebar-collapsed'}${logOpen ? '' : ' log-collapsed'}`}>
         {/* Sidebar */}
-        <nav className="sidebar">
+        <nav className={`sidebar${sidebarOpen ? '' : ' sidebar--hidden'}`}>
+          <button
+            className="sidebar-toggle"
+            onClick={() => setSidebarOpen(false)}
+            title="Collapse sidebar"
+          >
+            ◀
+          </button>
           {NAV.map(({ section, items }) => (
             <React.Fragment key={section}>
               <div className="nav-section-label">{section}</div>
@@ -110,6 +127,16 @@ export default function Shell({ active, onNavigate, children }: Props) {
           ))}
         </nav>
 
+        {!sidebarOpen && (
+          <button
+            className="sidebar-expand"
+            onClick={() => setSidebarOpen(true)}
+            title="Expand sidebar"
+          >
+            ▶
+          </button>
+        )}
+
         {/* Main content */}
         <main className="content">{children}</main>
 
@@ -117,12 +144,21 @@ export default function Shell({ active, onNavigate, children }: Props) {
         <IntentMeter />
 
         {/* Live event log */}
-        <aside className="event-log">
+        <aside className={`event-log${logOpen ? '' : ' event-log--hidden'}`}>
           <div className="event-log-header">
             <span>📡 Live Event Log</span>
-            <button className="btn btn-ghost btn-sm" onClick={clearLog}>
-              Clear
-            </button>
+            <div style={{ display: 'flex', gap: 4 }}>
+              <button className="btn btn-ghost btn-sm" onClick={clearLog}>
+                Clear
+              </button>
+              <button
+                className="btn btn-ghost btn-sm"
+                onClick={() => setLogOpen(false)}
+                title="Collapse log"
+              >
+                ▶
+              </button>
+            </div>
           </div>
           <div className="event-log-entries">
             {logEntries.length === 0 ? (
@@ -132,6 +168,15 @@ export default function Shell({ active, onNavigate, children }: Props) {
             )}
           </div>
         </aside>
+        {!logOpen && (
+          <button
+            className="log-expand"
+            onClick={() => setLogOpen(true)}
+            title="Expand event log"
+          >
+            ◀ Log
+          </button>
+        )}
       </div>
     </div>
   );

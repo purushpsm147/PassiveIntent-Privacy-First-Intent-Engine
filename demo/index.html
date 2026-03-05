@@ -26,6 +26,7 @@
           <span class="badge badge-green">v1.0.0</span>
           <span class="badge badge-blue">~11 kB gzip</span>
           <span class="badge badge-purple">Zero Egress</span>
+          <button id="btn-reset-session" class="btn btn-ghost btn-sm" title="Destroy the current engine and reload — clears all learned transitions, bot state, trajectory, and gauges.">🔄 Reset Session</button>
           <a
             href="https://github.com/purushpsm147/PassiveIntent-Privacy-First-Intent-Engine"
             target="_blank"
@@ -45,6 +46,7 @@
       <div class="layout">
         <!-- Sidebar nav -->
         <nav class="sidebar" id="sidebar">
+          <button class="sidebar-toggle" id="sidebar-collapse" title="Collapse sidebar">◀</button>
           <div class="nav-section-label">Getting Started</div>
           <button class="nav-item active" data-demo="overview">📊 Overview &amp; Telemetry</button>
           <button class="nav-item" data-demo="basic-tracking">📍 Basic Tracking</button>
@@ -71,8 +73,10 @@
           <button class="nav-item" data-demo="cross-tab">📡 Cross-Tab Sync</button>
 
           <div class="nav-section-label">Playground</div>
-          <button class="nav-item" data-demo="amazon-playground">🛒 Amazon Playground</button>
+          <button class="nav-item" data-demo="amazon-playground">🛒 E-commerce Playground</button>
         </nav>
+
+        <button class="sidebar-expand" id="sidebar-expand" title="Expand sidebar" style="display:none">▶</button>
 
         <!-- Demo area -->
         <main class="content" id="content">
@@ -81,44 +85,52 @@
 
         <!-- Intent Meter -->
         <div id="intent-meter" class="intent-meter">
-          <button id="meter-toggle" class="intent-meter-toggle">◀</button>
           <div id="meter-body" class="intent-meter-body">
-            <div class="intent-meter-title">Intent Meter</div>
+            <div id="meter-drag-handle" class="intent-meter-drag-handle" title="Drag to reposition">
+              <span class="intent-meter-title">Intent Meter</span>
+              <span class="drag-grip">⠿</span>
+            </div>
             <div class="gauge-row">
               <span class="gauge-emoji">😤</span>
               <div class="gauge-track"><div class="gauge-fill" id="gauge-rage"></div></div>
               <span class="gauge-label">Rage</span>
               <span class="gauge-value" id="gauge-rage-val">0%</span>
+              <button class="gauge-sim-btn" id="sim-rage" title="Simulate Rage">⚡</button>
             </div>
             <div class="gauge-row">
               <span class="gauge-emoji">😰</span>
               <div class="gauge-track"><div class="gauge-fill" id="gauge-anxiety"></div></div>
               <span class="gauge-label">Anxiety</span>
               <span class="gauge-value" id="gauge-anxiety-val">0%</span>
+              <button class="gauge-sim-btn" id="sim-anxiety" title="Simulate Anxiety">⚡</button>
             </div>
             <div class="gauge-row">
               <span class="gauge-emoji">🤔</span>
               <div class="gauge-track"><div class="gauge-fill" id="gauge-hesitation"></div></div>
               <span class="gauge-label">Hesitation</span>
               <span class="gauge-value" id="gauge-hesitation-val">0%</span>
+              <button class="gauge-sim-btn" id="sim-hesitation" title="Simulate Hesitation">⚡</button>
             </div>
             <div class="gauge-row">
               <span class="gauge-emoji">🤖</span>
               <div class="gauge-track"><div class="gauge-fill" id="gauge-bot"></div></div>
               <span class="gauge-label">Bot</span>
               <span class="gauge-value" id="gauge-bot-val">0%</span>
+              <button class="gauge-sim-btn" id="sim-bot" title="Simulate Bot">⚡</button>
             </div>
             <div class="gauge-row">
               <span class="gauge-emoji">💤</span>
               <div class="gauge-track"><div class="gauge-fill" id="gauge-idle"></div></div>
               <span class="gauge-label">Idle</span>
               <span class="gauge-value" id="gauge-idle-val">0%</span>
+              <button class="gauge-sim-btn" id="sim-idle" title="Simulate Idle">⚡</button>
             </div>
             <div class="gauge-row">
               <span class="gauge-emoji">🚪</span>
               <div class="gauge-track"><div class="gauge-fill" id="gauge-exit"></div></div>
               <span class="gauge-label">Exit</span>
               <span class="gauge-value" id="gauge-exit-val">0%</span>
+              <button class="gauge-sim-btn" id="sim-exit" title="Simulate Exit">⚡</button>
             </div>
           </div>
         </div>
@@ -127,12 +139,16 @@
         <aside class="event-log" id="event-log">
           <div class="event-log-header">
             <span>📡 Live Event Log</span>
-            <button id="clear-log" class="btn btn-ghost btn-sm">Clear</button>
+            <div style="display:flex;gap:4px">
+              <button id="clear-log" class="btn btn-ghost btn-sm">Clear</button>
+              <button id="log-collapse" class="btn btn-ghost btn-sm" title="Collapse log">▶</button>
+            </div>
           </div>
           <div class="event-log-entries" id="log-entries">
             <div class="log-empty">Events will appear here as you interact with the demos.</div>
           </div>
         </aside>
+        <button class="log-expand" id="log-expand" title="Expand event log" style="display:none">◀ Log</button>
       </div>
     </div>
 
