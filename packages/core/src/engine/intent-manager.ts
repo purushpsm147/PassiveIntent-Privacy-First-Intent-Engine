@@ -55,6 +55,7 @@ export class IntentManager {
   private readonly timer: TimerAdapter;
   private readonly onError?: (error: PassiveIntentError) => void;
   private readonly botProtection: boolean;
+  private readonly stateNormalizer?: (state: string) => string;
 
   /* Pluggable feature policies (deterministic order) */
   private readonly policies: EnginePolicy[];
@@ -86,6 +87,7 @@ export class IntentManager {
     this.timer = config.timer ?? new BrowserTimerAdapter();
     this.onError = config.onError;
     this.botProtection = opts.botProtection;
+    this.stateNormalizer = config.stateNormalizer;
 
     // Session ID — local-only, never transmitted.
     this.sessionId =
@@ -284,7 +286,7 @@ export class IntentManager {
    *
    * The `state` argument is automatically normalized via `normalizeRouteState()`
    * before any processing.  This means you can pass raw URL strings directly —
-   * query strings, hash fragments, trailing slashes, UUIDs, and MongoDB
+   * query strings, hash fragments, trailing slashes, UUIDs, numeric IDs and MongoDB
    * ObjectIDs are all stripped or replaced so the engine always receives a
    * stable, canonical state label.
    *
@@ -295,8 +297,28 @@ export class IntentManager {
    */
   track(state: string): void {
     // Normalise first: strip query strings, hash fragments, trailing slashes,
-    // and replace dynamic ID segments (UUIDs, MongoDB ObjectIDs) with ':id'.
+    // and replace dynamic ID segments (UUIDs, MongoDB ObjectIDs, numeric IDs) with ':id'.
     state = normalizeRouteState(state);
+
+    // Apply optional custom normalizer (e.g. for SEO slugs).
+    if (this.stateNormalizer) {
+      try {
+        const normalized = this.stateNormalizer(state);
+        const coerced = String(normalized);
+        // Empty string is a deliberate "skip this state" signal from the
+        // normalizer — drop silently without firing a VALIDATION error.
+        if (coerced === '') return;
+        state = coerced;
+      } catch (err) {
+        if (this.onError) {
+          this.onError({
+            code: 'VALIDATION',
+            message: `IntentManager.track(): stateNormalizer threw: ${err instanceof Error ? err.message : String(err)}`,
+          });
+        }
+        return;
+      }
+    }
 
     // Guard: '' is reserved internally as a tombstone marker.
     // Silently drop and surface a non-fatal error rather than crashing the host.
@@ -364,6 +386,19 @@ export class IntentManager {
   };
 
   private runGraphAndSignalStage = (ctx: TrackContext): void => {
+    // Skip graph updates when the session is flagged as a bot.
+    // This prevents automation / scrapers from poisoning the Markov
+    // transition probabilities that drive real-user predictions.
+    if (this.botProtection && this.signalEngine.suspected) {
+      // Bloom updates from runBloomStage still need to be persisted even when
+      // graph writes are skipped.  hasSeen() is a public API that should stay
+      // consistent across session reloads: if a URL was visited (even during a
+      // suspected-bot burst), it should remain "seen" after the page reloads.
+      // Only the Markov graph is protected from bot poisoning, not bloom membership.
+      if (ctx.isNewToBloom) this.persistenceCoordinator.markDirty();
+      return;
+    }
+
     if (ctx.from) {
       const incrementStart = this.benchmark.now();
       this.graph.incrementTransition(ctx.from, ctx.state);
@@ -587,6 +622,15 @@ export class IntentManager {
         });
       }
       return this.counters.get(key) ?? 0;
+    }
+    if (!this.counters.has(key) && this.counters.size >= 50) {
+      if (this.onError) {
+        this.onError({
+          code: 'LIMIT_EXCEEDED',
+          message: 'IntentManager.incrementCounter(): max unique counter keys (50) reached',
+        });
+      }
+      return 0;
     }
     const next = (this.counters.get(key) ?? 0) + by;
     this.counters.set(key, next);
