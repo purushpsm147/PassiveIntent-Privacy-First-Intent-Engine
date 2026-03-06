@@ -2,7 +2,9 @@
   "name": "passiveintent-monorepo",
   "private": true,
   "workspaces": [
-    "packages/*"
+    "packages/*",
+    "demo",
+    "demo-react"
   ],
   "engines": {
     "node": ">=20"
@@ -13,13 +15,18 @@
     "lint": "npm run lint --workspaces --if-present",
     "test": "npm run test --workspaces --if-present",
     "test:unit": "npm run test:unit --workspaces --if-present",
-    "test:coverage": "npm run test:coverage --workspaces --if-present",
+    "test:coverage": "npm run test:coverage -w @passiveintent/core && npm run test:coverage -w @passiveintent/react",
     "clean": "npm run clean --workspaces --if-present",
     "format": "prettier --write .",
-    "format:check": "prettier --check ."
+    "format:check": "prettier --check .",
+    "dev:demo": "npm run dev -w passiveintent-demo",
+    "dev:react": "npm run dev -w passiveintent-demo-react",
+    "build:packages": "npm run build -w @passiveintent/core && npm run build -w @passiveintent/react",
+    "dev": "npm run build:packages && concurrently \"npm run dev:demo\" \"npm run dev:react\""
   },
   "devDependencies": {
     "c8": "^10.1.3",
+    "concurrently": "^9.2.1",
     "cypress": "^13.15.2",
     "prettier": "^3.4.2",
     "tsup": "^8.5.1",

@@ -9,9 +9,11 @@
 
 [![Coverage](https://img.shields.io/badge/coverage-passing-brightgreen)](#run-tests)
 [![Bundle Size](https://img.shields.io/bundlephobia/minzip/@passiveintent/core)](https://bundlephobia.com/package/@passiveintent/core)
-[![Open in StackBlitz](https://developer.stackblitz.com/img/open_in_stackblitz_small.svg)](https://stackblitz.com/github/purushpsm147/PassiveIntent-Privacy-First-Intent-Engine)
+[![npm](https://img.shields.io/npm/v/@passiveintent/core)](https://www.npmjs.com/package/@passiveintent/core)
+[![Vanilla JS demo](https://developer.stackblitz.com/img/open_in_stackblitz_small.svg)](https://stackblitz.com/github/purushpsm147/PassiveIntent-Privacy-First-Intent-Engine/tree/main/demo)
+[![React demo](https://developer.stackblitz.com/img/open_in_stackblitz_small.svg)](https://stackblitz.com/github/purushpsm147/PassiveIntent-Privacy-First-Intent-Engine/tree/main/demo-react)
 
-**PassiveIntent is a 6 kB, zero-egress intent engine that detects user hesitation and frustration in real-time.**
+**PassiveIntent is a ~11 kB gzip, zero-egress intent engine that detects user hesitation and frustration in real-time.**
 Catch rage-clicks, prevent checkout abandonment, and trigger personalized UI interventions in `< 2ms`—all entirely within the browser. Because zero behavioral data leaves the device by default, PassiveIntent can **reduce cookie-consent and GDPR overhead** for intent detection, subject to your full implementation and legal review.
 
 _(Under the hood, it uses a highly-optimized sparse Markov graph and Bloom filters to model probabilistic intent locally.)_
@@ -23,7 +25,7 @@ _(Under the hood, it uses a highly-optimized sparse Markov graph and Bloom filte
 - **Detect True Hesitation:** Evaluates user reading speed and dwell-time anomalies dynamically, allowing you to trigger "Free Shipping" tooltips exactly when a user hesitates at checkout.
 - **Cold-Start Friendly Math:** Unlike brittle rule engines that overreact to brand-new users, PassiveIntent can apply Bayesian Laplace smoothing (`smoothingAlpha`) so Day-1 organic traffic is handled gracefully instead of being penalized by sparse-history spikes.
 - **Bot & Scraper Resilient:** Built-in `EntropyGuard` automatically detects impossibly fast or robotic click cadences, preventing bots from triggering your interventions.
-- **Zero Performance Hit:** Capped at 500 tracked states, compiles to a tiny 6 kB footprint, and uses dirty-flag persistence to skip unnecessary writes.
+- **Zero Performance Hit:** Capped at 500 tracked states, compiles to a tiny ~11 kB gzip footprint, and uses dirty-flag persistence to skip unnecessary writes.
 - **SPA-Ready Lifecycle:** SSR-safe adapters and a clean `destroy()` API make it drop-in compatible with Next.js, Vue, Angular, and React Router.
 - **Comparison Shopper Awareness:** Automatically detects users who leave and return after ≥ 15 seconds, firing an `attention_return` event so you can greet them with a personalized welcome-back offer.
 - **Idle-State Detection:** Tracks interaction silence with a lightweight polling loop and fires `user_idle` / `user_resumed` events, letting you dim overlays or pause expensive animations without any extra timers.

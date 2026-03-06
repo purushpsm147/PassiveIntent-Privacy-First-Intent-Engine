@@ -1,0 +1,174 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>PassiveIntent — Interactive Demo</title>
+    <link
+      rel="icon"
+      type="image/svg+xml"
+      href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🧠</text></svg>"
+    />
+    <link rel="stylesheet" href="/src/style.css" />
+  </head>
+  <body>
+    <div id="app">
+      <!-- Header -->
+      <header class="header">
+        <div class="header-left">
+          <span class="logo">🧠</span>
+          <div>
+            <h1 class="header-title">PassiveIntent</h1>
+            <span class="header-sub">Interactive Feature Demo</span>
+          </div>
+        </div>
+        <div class="header-right">
+          <span class="badge badge-green">v1.0.0</span>
+          <span class="badge badge-blue">~11 kB gzip</span>
+          <span class="badge badge-purple">Zero Egress</span>
+          <button
+            id="btn-reset-session"
+            class="btn btn-ghost btn-sm"
+            title="Destroy the current engine and reload — clears all learned transitions, bot state, trajectory, and gauges."
+          >
+            🔄 Reset Session
+          </button>
+          <a
+            href="https://github.com/purushpsm147/PassiveIntent-Privacy-First-Intent-Engine"
+            target="_blank"
+            class="gh-link"
+          >
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor">
+              <path
+                d="M12 0C5.37 0 0 5.37 0 12c0 5.31 3.435 9.795 8.205 11.385.6.105.825-.255.825-.57 0-.285-.015-1.23-.015-2.235-3.015.555-3.795-.735-4.035-1.41-.135-.345-.72-1.41-1.23-1.695-.42-.225-1.02-.78-.015-.795.945-.015 1.62.87 1.845 1.23 1.08 1.815 2.805 1.305 3.495.99.105-.78.42-1.305.765-1.605-2.67-.3-5.46-1.335-5.46-5.925 0-1.305.465-2.385 1.23-3.225-.12-.3-.54-1.53.12-3.18 0 0 1.005-.315 3.3 1.23.96-.27 1.98-.405 3-.405s2.04.135 3 .405c2.295-1.56 3.3-1.23 3.3-1.23.66 1.65.24 2.88.12 3.18.765.84 1.23 1.905 1.23 3.225 0 4.605-2.805 5.625-5.475 5.925.435.375.81 1.095.81 2.22 0 1.605-.015 2.895-.015 3.3 0 .315.225.69.825.57A12.02 12.02 0 0024 12c0-6.63-5.37-12-12-12z"
+              />
+            </svg>
+            GitHub
+          </a>
+        </div>
+      </header>
+
+      <!-- Main layout -->
+      <div class="layout">
+        <!-- Sidebar nav -->
+        <nav class="sidebar" id="sidebar">
+          <button class="sidebar-toggle" id="sidebar-collapse" title="Collapse sidebar">◀</button>
+          <div class="nav-section-label">Getting Started</div>
+          <button class="nav-item active" data-demo="overview">📊 Overview &amp; Telemetry</button>
+          <button class="nav-item" data-demo="basic-tracking">📍 Basic Tracking</button>
+
+          <div class="nav-section-label">Behavioral Signals</div>
+          <button class="nav-item" data-demo="high-entropy">⚡ High Entropy</button>
+          <button class="nav-item" data-demo="dwell-time">⏱ Dwell Time Anomaly</button>
+          <button class="nav-item" data-demo="trajectory">🛤 Trajectory Anomaly</button>
+          <button class="nav-item" data-demo="hesitation">🤔 Hesitation Detection</button>
+
+          <div class="nav-section-label">Lifecycle Events</div>
+          <button class="nav-item" data-demo="attention-return">👁 Attention Return</button>
+          <button class="nav-item" data-demo="idle-detection">💤 Idle Detection</button>
+          <button class="nav-item" data-demo="exit-intent">🚪 Exit Intent</button>
+
+          <div class="nav-section-label">Intelligence</div>
+          <button class="nav-item" data-demo="bloom-filter">🌸 Bloom Filter</button>
+          <button class="nav-item" data-demo="markov-graph">🕸 Markov Predictions</button>
+          <button class="nav-item" data-demo="bot-detection">🤖 Bot Detection</button>
+
+          <div class="nav-section-label">Business Logic</div>
+          <button class="nav-item" data-demo="conversion">💰 Conversion Tracking</button>
+          <button class="nav-item" data-demo="counters">🔢 Session Counters</button>
+          <button class="nav-item" data-demo="cross-tab">📡 Cross-Tab Sync</button>
+
+          <div class="nav-section-label">Playground</div>
+          <button class="nav-item" data-demo="amazon-playground">🛒 E-commerce Playground</button>
+        </nav>
+
+        <button
+          class="sidebar-expand"
+          id="sidebar-expand"
+          title="Expand sidebar"
+          style="display: none"
+        >
+          ▶
+        </button>
+
+        <!-- Demo area -->
+        <main class="content" id="content">
+          <!-- Content injected by JS -->
+        </main>
+
+        <!-- Intent Meter -->
+        <div id="intent-meter" class="intent-meter">
+          <div id="meter-body" class="intent-meter-body">
+            <div id="meter-drag-handle" class="intent-meter-drag-handle" title="Drag to reposition">
+              <span class="intent-meter-title">Intent Meter</span>
+              <span class="drag-grip">⠿</span>
+            </div>
+            <div class="gauge-row">
+              <span class="gauge-emoji">😤</span>
+              <div class="gauge-track"><div class="gauge-fill" id="gauge-rage"></div></div>
+              <span class="gauge-label">Rage</span>
+              <span class="gauge-value" id="gauge-rage-val">0%</span>
+              <button class="gauge-sim-btn" id="sim-rage" title="Simulate Rage">⚡</button>
+            </div>
+            <div class="gauge-row">
+              <span class="gauge-emoji">😰</span>
+              <div class="gauge-track"><div class="gauge-fill" id="gauge-anxiety"></div></div>
+              <span class="gauge-label">Anxiety</span>
+              <span class="gauge-value" id="gauge-anxiety-val">0%</span>
+              <button class="gauge-sim-btn" id="sim-anxiety" title="Simulate Anxiety">⚡</button>
+            </div>
+            <div class="gauge-row">
+              <span class="gauge-emoji">🤔</span>
+              <div class="gauge-track"><div class="gauge-fill" id="gauge-hesitation"></div></div>
+              <span class="gauge-label">Hesitation</span>
+              <span class="gauge-value" id="gauge-hesitation-val">0%</span>
+              <button class="gauge-sim-btn" id="sim-hesitation" title="Simulate Hesitation">
+                ⚡
+              </button>
+            </div>
+            <div class="gauge-row">
+              <span class="gauge-emoji">🤖</span>
+              <div class="gauge-track"><div class="gauge-fill" id="gauge-bot"></div></div>
+              <span class="gauge-label">Bot</span>
+              <span class="gauge-value" id="gauge-bot-val">0%</span>
+              <button class="gauge-sim-btn" id="sim-bot" title="Simulate Bot">⚡</button>
+            </div>
+            <div class="gauge-row">
+              <span class="gauge-emoji">💤</span>
+              <div class="gauge-track"><div class="gauge-fill" id="gauge-idle"></div></div>
+              <span class="gauge-label">Idle</span>
+              <span class="gauge-value" id="gauge-idle-val">0%</span>
+              <button class="gauge-sim-btn" id="sim-idle" title="Simulate Idle">⚡</button>
+            </div>
+            <div class="gauge-row">
+              <span class="gauge-emoji">🚪</span>
+              <div class="gauge-track"><div class="gauge-fill" id="gauge-exit"></div></div>
+              <span class="gauge-label">Exit</span>
+              <span class="gauge-value" id="gauge-exit-val">0%</span>
+              <button class="gauge-sim-btn" id="sim-exit" title="Simulate Exit">⚡</button>
+            </div>
+          </div>
+        </div>
+
+        <!-- Event log panel -->
+        <aside class="event-log" id="event-log">
+          <div class="event-log-header">
+            <span>📡 Live Event Log</span>
+            <div style="display: flex; gap: 4px">
+              <button id="clear-log" class="btn btn-ghost btn-sm">Clear</button>
+              <button id="log-collapse" class="btn btn-ghost btn-sm" title="Collapse log">▶</button>
+            </div>
+          </div>
+          <div class="event-log-entries" id="log-entries">
+            <div class="log-empty">Events will appear here as you interact with the demos.</div>
+          </div>
+        </aside>
+        <button class="log-expand" id="log-expand" title="Expand event log" style="display: none">
+          ◀ Log
+        </button>
+      </div>
+    </div>
+
+    <script type="module" src="/src/main.ts"></script>
+  </body>
+</html>

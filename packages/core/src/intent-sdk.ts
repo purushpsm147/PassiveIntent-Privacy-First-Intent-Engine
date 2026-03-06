@@ -70,6 +70,7 @@ export type {
   AttentionReturnPayload,
   UserIdlePayload,
   UserResumedPayload,
+  ExitIntentPayload,
   ConversionPayload,
   PassiveIntentTelemetry,
   BloomFilterConfig,

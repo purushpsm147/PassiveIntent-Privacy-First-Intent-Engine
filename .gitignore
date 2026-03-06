@@ -11,3 +11,4 @@ Product Roadmap/
 # Packages under private development — remove these lines when ready to release
 packages/adaptive-ui/
 packages/security/
+PUBLISHING.md
