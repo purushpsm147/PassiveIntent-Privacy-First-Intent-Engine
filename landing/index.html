@@ -35,6 +35,7 @@
         <span>PassiveIntent</span>
       </a>
       <nav>
+        <a href="#demo">Demo</a>
         <a href="#why">Why</a>
         <a href="#how">How</a>
         <a href="#gdpr">GDPR</a>
@@ -165,6 +166,13 @@
         <p class="pricing-note">
           Important: these claims apply when your tracked states remain anonymous and you do not
           send personal data in custom events.
+          <a
+            href="./PassiveIntent_Zero_Egress_Attestation.pdf"
+            target="_blank"
+            rel="noopener noreferrer"
+            >Download our Zero Egress Attestation (PDF)</a
+          >
+          for your AppSec team.
         </p>
       </section>
 
@@ -190,6 +198,111 @@
             <h3>Privacy-First Defaults</h3>
             <p>No PII capture and no third-party clickstream shipping by default.</p>
           </article>
+        </div>
+      </section>
+
+      <section id="demo" class="section reveal demo-section">
+        <div class="section-head">
+          <p class="eyebrow">Try it live</p>
+          <h2>Zero setup — runs entirely in your browser</h2>
+          <p class="demo-subhead">
+            No install. No sign-up. Click a tab and interact with a real PassiveIntent engine
+            tracking navigation, detecting hesitation, and firing intent signals in real time.
+          </p>
+        </div>
+        <div class="demo-toolbar">
+          <div class="demo-tabs" role="tablist" aria-label="Choose a demo implementation">
+            <button
+              id="demo-tab-vanilla"
+              class="demo-tab active"
+              type="button"
+              role="tab"
+              aria-selected="true"
+              aria-controls="demo-vanilla"
+              data-target="demo-vanilla"
+              tabindex="0"
+            >
+              Vanilla JS
+            </button>
+            <button
+              id="demo-tab-react"
+              class="demo-tab"
+              type="button"
+              role="tab"
+              aria-selected="false"
+              aria-controls="demo-react"
+              data-target="demo-react"
+              tabindex="-1"
+            >
+              React
+            </button>
+          </div>
+          <span class="demo-live-badge">&#9679; Live</span>
+        </div>
+        <div
+          id="demo-vanilla"
+          class="demo-embed"
+          role="tabpanel"
+          aria-labelledby="demo-tab-vanilla"
+        >
+          <!--
+            sandbox rationale (Vanilla JS embed):
+              allow-scripts    – required: WebContainer boots a Node.js runtime in the browser via
+                                 a Service Worker; the iframe cannot function without script execution.
+              allow-same-origin – required: SharedArrayBuffer (used by WebContainer for multi-threaded
+                                 builds) only works under Cross-Origin Isolation. The iframe must be
+                                 able to read its own COEP/COOP response headers, which requires
+                                 same-origin access to its own origin.
+              allow-popups     – omitted: this is a preview-only embed (view=preview); the demo app
+                                 does not call window.open(). The "↗ Open in StackBlitz" affordance
+                                 is an <a> element outside the iframe and needs no iframe permission.
+              allow-popups-to-escape-sandbox – omitted: would allow any popup opened by iframe
+                                 content to run fully outside the sandbox with no restrictions.
+                                 Unnecessary here and significantly increases attack surface.
+          -->
+          <iframe
+            src="https://stackblitz.com/github/passiveintent/core/tree/main/demo?embed=1&hideNavigation=1&view=preview"
+            title="PassiveIntent Vanilla JS demo"
+            loading="lazy"
+            sandbox="allow-scripts allow-same-origin"
+            allow="cross-origin-isolated"
+          ></iframe>
+          <a
+            class="demo-open-link"
+            href="https://stackblitz.com/github/passiveintent/core/tree/main/demo"
+            target="_blank"
+            rel="noopener noreferrer"
+            >↗ Open in StackBlitz</a
+          >
+        </div>
+        <div
+          id="demo-react"
+          class="demo-embed"
+          role="tabpanel"
+          aria-labelledby="demo-tab-react"
+          hidden
+        >
+          <!--
+            sandbox rationale (React embed):
+              allow-scripts    – required: same as Vanilla embed; WebContainer needs script execution.
+              allow-same-origin – required: same as Vanilla embed; SharedArrayBuffer / COOP/COEP.
+              allow-popups     – omitted: preview-only embed; no window.open() in the demo app.
+              allow-popups-to-escape-sandbox – omitted: unnecessary and dangerous (see Vanilla note).
+          -->
+          <iframe
+            src="https://stackblitz.com/github/passiveintent/core/tree/main/demo-react?embed=1&hideNavigation=1&view=preview"
+            title="PassiveIntent React demo"
+            loading="lazy"
+            sandbox="allow-scripts allow-same-origin"
+            allow="cross-origin-isolated"
+          ></iframe>
+          <a
+            class="demo-open-link"
+            href="https://stackblitz.com/github/passiveintent/core/tree/main/demo-react"
+            target="_blank"
+            rel="noopener noreferrer"
+            >↗ Open in StackBlitz</a
+          >
         </div>
       </section>
 
@@ -379,21 +492,44 @@
             <h3>Free</h3>
             <p class="price">$0</p>
             <p>AGPLv3 for OSS, students, and internal evaluation.</p>
+            <a
+              class="btn btn-ghost"
+              href="https://github.com/passiveintent/core"
+              target="_blank"
+              rel="noopener noreferrer"
+              >Get Started</a
+            >
           </article>
           <article class="price-card featured">
             <span class="tag">Most Chosen</span>
             <h3>Startup</h3>
             <p class="price">$599<span>/year</span></p>
             <p>Up to 3 commercial projects with priority async support.</p>
+            <a
+              class="btn btn-primary"
+              href="mailto:support@passiveintent.dev?subject=Commercial%20License%20Inquiry%20-%20Startup%20Tier"
+              >Contact for License</a
+            >
           </article>
           <article class="price-card">
             <h3>Growth</h3>
             <p class="price">$1,999<span>/year</span></p>
             <p>Unlimited internal projects for one organization.</p>
+            <a
+              class="btn btn-ghost"
+              href="mailto:support@passiveintent.dev?subject=Commercial%20License%20Inquiry%20%E2%80%94%20Growth%20Tier%20(%241%2C999%2Fyr)"
+              >Buy Growth Tier ($1,999)</a
+            >
           </article>
         </div>
         <p class="pricing-note">
-          For enterprise legal review, OEM redistribution, or custom scope,
+          Need to clear this with procurement?
+          <a
+            href="./PassiveIntent_AGPL_Commercial_Exemption.pdf"
+            target="_blank"
+            rel="noopener noreferrer"
+            >Download the Commercial License Exemption Brief (PDF)</a
+          >. For OEM redistribution or custom scope,
           <a href="mailto:support@passiveintent.dev">contact sales</a>.
         </p>
       </section>

@@ -14,8 +14,8 @@
 [![Bundle size](https://img.shields.io/bundlephobia/minzip/@passiveintent/core)](https://bundlephobia.com/package/@passiveintent/core)
 [![npm @passiveintent/react](https://img.shields.io/npm/v/@passiveintent/react.svg)](https://www.npmjs.com/package/@passiveintent/react)
 [![Bundle size](https://img.shields.io/bundlephobia/minzip/@passiveintent/react)](https://bundlephobia.com/package/@passiveintent/react)
-[![Open Vanilla demo in StackBlitz](https://developer.stackblitz.com/img/open_in_stackblitz_small.svg)](https://stackblitz.com/github/passiveintent/core/tree/main/demo)
-[![Open React demo in StackBlitz](https://developer.stackblitz.com/img/open_in_stackblitz_small.svg)](https://stackblitz.com/github/passiveintent/core/tree/main/demo-react)
+[![Open Vanilla JS demo in StackBlitz](https://img.shields.io/badge/StackBlitz-Vanilla%20JS-1389FD?logo=stackblitz&logoColor=white)](https://stackblitz.com/github/passiveintent/core/tree/main/demo)
+[![Open React demo in StackBlitz](https://img.shields.io/badge/StackBlitz-React-1389FD?logo=stackblitz&logoColor=white)](https://stackblitz.com/github/passiveintent/core/tree/main/demo-react)
 
 **Website:** [passiveintent.dev](https://passiveintent.dev)
 

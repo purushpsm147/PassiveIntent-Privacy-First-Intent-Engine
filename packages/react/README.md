@@ -2,7 +2,7 @@
 
 > React 18+ wrapper for [`@passiveintent/core`](../core/README.md) — drop-in `usePassiveIntent` hook with Strict Mode safety and SSR support.
 
-[![Open in StackBlitz](https://developer.stackblitz.com/img/open_in_stackblitz_small.svg)](https://stackblitz.com/github/passiveintent/core/tree/main/demo-react)
+[![Open React demo in StackBlitz](https://img.shields.io/badge/StackBlitz-React-1389FD?logo=stackblitz&logoColor=white)](https://stackblitz.com/github/passiveintent/core/tree/main/demo-react)
 
 ---
 
