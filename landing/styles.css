@@ -326,7 +326,37 @@ nav a:hover {
   margin-top: 0;
 }
 
-.coming-link {
+.demo-tabs {
+  display: flex;
+  gap: 8px;
+  margin-bottom: 16px;
+}
+
+.demo-tab {
+  padding: 6px 18px;
+  border-radius: 999px;
+  border: 1px solid var(--border);
+  background: transparent;
+  color: var(--muted);
+  font-family: 'Space Grotesk', sans-serif;
+  font-size: 0.9rem;
+  cursor: pointer;
+  transition: border-color 0.2s, color 0.2s;
+}
+
+.demo-tab.active {
+  border-color: var(--primary);
+  color: var(--primary);
+}
+
+.demo-embed iframe {
+  width: 100%;
+  height: 600px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+}
+
+
   display: inline-block;
   margin-top: 10px;
   color: var(--secondary);

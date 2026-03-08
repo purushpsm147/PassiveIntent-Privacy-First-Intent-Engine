@@ -10,8 +10,8 @@
 [![Coverage](https://img.shields.io/badge/coverage-passing-brightgreen)](#run-tests)
 [![Bundle Size](https://img.shields.io/bundlephobia/minzip/@passiveintent/core)](https://bundlephobia.com/package/@passiveintent/core)
 [![npm](https://img.shields.io/npm/v/@passiveintent/core)](https://www.npmjs.com/package/@passiveintent/core)
-[![Vanilla JS demo](https://developer.stackblitz.com/img/open_in_stackblitz_small.svg)](https://stackblitz.com/github/passiveintent/core/tree/main/demo)
-[![React demo](https://developer.stackblitz.com/img/open_in_stackblitz_small.svg)](https://stackblitz.com/github/passiveintent/core/tree/main/demo-react)
+[![Open Vanilla JS demo in StackBlitz](https://img.shields.io/badge/StackBlitz-Vanilla%20JS-1389FD?logo=stackblitz&logoColor=white)](https://stackblitz.com/github/passiveintent/core/tree/main/demo)
+[![Open React demo in StackBlitz](https://img.shields.io/badge/StackBlitz-React-1389FD?logo=stackblitz&logoColor=white)](https://stackblitz.com/github/passiveintent/core/tree/main/demo-react)
 
 **PassiveIntent is a ~11 kB gzip, zero-egress intent engine that detects user hesitation and frustration in real-time.**
 Catch rage-clicks, prevent checkout abandonment, and trigger personalized UI interventions in `< 2ms`—all entirely within the browser. Because zero behavioral data leaves the device by default, PassiveIntent can **reduce cookie-consent and GDPR overhead** for intent detection, subject to your full implementation and legal review.

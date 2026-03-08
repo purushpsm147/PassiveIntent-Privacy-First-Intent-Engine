@@ -35,6 +35,7 @@
         <span>PassiveIntent</span>
       </a>
       <nav>
+        <a href="#demo">Demo</a>
         <a href="#why">Why</a>
         <a href="#how">How</a>
         <a href="#gdpr">GDPR</a>
@@ -190,6 +191,33 @@
             <h3>Privacy-First Defaults</h3>
             <p>No PII capture and no third-party clickstream shipping by default.</p>
           </article>
+        </div>
+      </section>
+
+      <section id="demo" class="section reveal">
+        <div class="section-head">
+          <p class="eyebrow">Try it live</p>
+          <h2>Zero setup — runs entirely in your browser</h2>
+        </div>
+        <div class="demo-tabs">
+          <button class="demo-tab active" data-target="demo-vanilla">Vanilla JS</button>
+          <button class="demo-tab" data-target="demo-react">React</button>
+        </div>
+        <div id="demo-vanilla" class="demo-embed">
+          <iframe
+            src="https://stackblitz.com/github/passiveintent/core/tree/main/demo?embed=1&hideNavigation=1&view=preview"
+            title="PassiveIntent Vanilla JS demo"
+            loading="lazy"
+            allow="cross-origin-isolated"
+          ></iframe>
+        </div>
+        <div id="demo-react" class="demo-embed" hidden>
+          <iframe
+            src="https://stackblitz.com/github/passiveintent/core/tree/main/demo-react?embed=1&hideNavigation=1&view=preview"
+            title="PassiveIntent React demo"
+            loading="lazy"
+            allow="cross-origin-isolated"
+          ></iframe>
         </div>
       </section>
 

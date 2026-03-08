@@ -17,3 +17,14 @@ const observer = new IntersectionObserver(
 );
 
 revealItems.forEach((el) => observer.observe(el));
+
+document.querySelectorAll('.demo-tab').forEach((tab) => {
+  tab.addEventListener('click', () => {
+    document.querySelectorAll('.demo-tab').forEach((t) => t.classList.remove('active'));
+    tab.classList.add('active');
+    const target = tab.dataset.target;
+    document.querySelectorAll('.demo-embed').forEach((panel) => {
+      panel.hidden = panel.id !== target;
+    });
+  });
+});
