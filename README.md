@@ -37,18 +37,26 @@ Full documentation for each package lives inside the package directory:
 ```
 .
 ├── package.json               # monorepo root — npm workspaces
+├── package-lock.json
 ├── tsconfig.base.json         # shared TypeScript base config
 ├── .prettierrc
+├── .prettierignore
 ├── .editorconfig
-├── CONTRIBUTING.md
-├── SECURITY.md
-├── CHANGELOG.md
-├── PRICING.md
-├── FUTURE_FEATURES.md
+├── .gitignore
+├── coderabbit.yaml
 ├── BINARY_CODEC_SPEC.md
+├── CALIBRATION_GUIDE.md
+├── CHANGELOG.md
+├── CONTRIBUTING.md
+├── FUTURE_FEATURES.md
 ├── LICENSE
+├── PRICING.md
+├── PUBLISHING.md
+├── README.md
+├── SECURITY.md
 ├── .github/
 │   ├── CODEOWNERS
+│   ├── FUNDING.yml
 │   ├── PULL_REQUEST_TEMPLATE.md
 │   ├── ISSUE_TEMPLATE/
 │   └── workflows/
@@ -57,9 +65,15 @@ Full documentation for each package lives inside the package directory:
 │       ├── ci.react.yml       # build / test for @passiveintent/react
 │       ├── release-gate.yml   # full pre-release validation gates
 │       └── perf-matrix.core.yml
+├── demo/                      # vanilla JS demo app
+├── demo-react/                # React demo app
+├── landing/                   # landing page (passiveintent.dev)
+├── Product Roadmap/           # GTM, sales & technical roadmap docs
 └── packages/
     ├── core/                  # published as @passiveintent/core
-    └── react/                 # published as @passiveintent/react
+    ├── react/                 # published as @passiveintent/react
+    ├── adaptive-ui/           # adaptive UI package
+    └── security/              # security package
 ```
 
 ---
