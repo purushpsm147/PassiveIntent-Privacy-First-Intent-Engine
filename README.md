@@ -73,8 +73,6 @@ Full documentation for each package lives inside the package directory:
 └── packages/
     ├── core/                  # published as @passiveintent/core
     ├── react/                 # published as @passiveintent/react
-    ├── adaptive-ui/           # adaptive UI package
-    └── security/              # security package
 ```
 
 ---
