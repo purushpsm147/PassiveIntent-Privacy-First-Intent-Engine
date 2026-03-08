@@ -1,5 +1,5 @@
 ﻿<!--
-  Copyright (c) 2026 Purushottam <purushpsm147@yahoo.co.in>
+  Copyright (c) 2026 Purushottam <purushottam@passiveintent.dev>
 
   This source code is licensed under the AGPL-3.0-only license found in the
   LICENSE file in the root directory of this source tree.
@@ -116,11 +116,11 @@ Some native mobile SDK competitors harvest OS-level sensor data — acceleromete
 
 This is not a limitation — it is the design. Users cannot be profiled without their application explicitly opting in to each tracked state.
 
-### 6 kB Footprint vs. Heavy Native SDK Integration
+### ~11 kB gzip Footprint vs. Heavy Native SDK Integration
 
 Native edge AI SDKs typically require platform-specific binary dependencies (iOS CocoaPod, Android AAR), background entitlements, and multi-megabyte model files downloaded at runtime.
 
-PassiveIntent ships as a single **≈ 6 kB gzip tree-shakeable ESM module** with zero runtime dependencies. It works identically in:
+PassiveIntent ships as a single **≈ 11 kB gzip tree-shakeable ESM module** with zero runtime dependencies. It works identically in:
 
 - **Web browsers** (Chrome, Firefox, Safari, Edge) — no install prompt, no permission dialog, no app store review
 - **SSR frameworks** (Next.js, Nuxt, Remix, SvelteKit) — via `MemoryStorageAdapter`, no `typeof window` guard required
@@ -159,7 +159,7 @@ All of this happens inside the user’s browser. No analytics endpoint. No finge
 | Property                      | Detail                                                                                                                                                                                                                                                                                                                                                                                                  |
 | ----------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | **Zero data egress**          | Every computation runs on the device. Nothing leaves the browser.                                                                                                                                                                                                                                                                                                                                       |
-| **Tiny footprint**            | Minified bundle ≈ 6 kB gzip. Bloom filter default: 256 bytes. Serialized graph: ~1.4 kB for 100 states.                                                                                                                                                                                                                                                                                                 |
+| **Tiny footprint**            | Minified bundle ≈ 11 kB gzip (39.7 kB raw, 9.8 kB brotli). Bloom filter default: 256 bytes. Serialized graph: ~1.4 kB for 100 states.                                                                                                                                                                                                                                                                   |
 | **Sub-millisecond hot path**  | `track()` averages **0.0019 ms** at steady state (p99 < 0.005 ms).                                                                                                                                                                                                                                                                                                                                      |
 | **SSR-safe**                  | All browser globals are behind `StorageAdapter` / `TimerAdapter` interfaces. Works in Next.js, Nuxt, Remix, and Cloudflare Workers without a `typeof window` guard.                                                                                                                                                                                                                                     |
 | **Isomorphic adapters**       | Ship your own storage and timer implementations for testing, Redis, or any other backing store.                                                                                                                                                                                                                                                                                                         |
@@ -2663,7 +2663,7 @@ dist/index.cjs    — CommonJS, minified, source map included
 dist/index.d.ts   — TypeScript declaration file
 ```
 
-The entire SDK — `IntentManager`, `MarkovGraph`, `BloomFilter`, adapters, and the event emitter — fits comfortably under **6 kB gzip**. There are zero runtime dependencies.
+The entire SDK — `IntentManager`, `MarkovGraph`, `BloomFilter`, adapters, and the event emitter — weighs **~11 kB gzip** (~10.9 kB gzip / ~9.8 kB brotli, fully minified). There are zero runtime dependencies.
 
 If you only use `BloomFilter` and `MarkovGraph` directly (no `IntentManager`), tree-shaking will drop the orchestration layer, the event emitter, adapters, and benchmark recorder — bringing the footprint below 3 kB gzip.
 
@@ -2852,12 +2852,45 @@ This pattern does not require a consent banner, does not require a Data Processi
 
 ---
 
+## 🛡️ Threat Model & Security Boundary
+
+Because PassiveIntent operates 100% locally on the client-side, the traditional cloud security model (API keys, SSL/TLS transit, database encryption) does not apply. Instead, we secure the data mathematically.
+
+### 1. The Network Threat (MitM)
+
+Traditional behavioral analytics stream payloads to servers (`POST /events`), vulnerable to interception or ad-blocker disruption.
+
+**Our Mitigation:** **Zero Egress.** The engine performs all collection, mathematical modeling (Markov Chains), and intervention dispatch locally. There is no network transit to intercept.
+
+### 2. The Rogue Script Threat (XSS)
+
+If the host website suffers a Cross-Site Scripting (XSS) attack, the rogue script shares the execution context and can read `localStorage`.
+
+**Our Mitigation:** **Identifier minimization, not cryptography.**
+If a rogue script steals the PassiveIntent `localStorage` payload, it acquires two things:
+
+1. **A Binary Bloom Filter:** A bitset of FNV-1a hashes. It is mathematically impossible to un-hash this bitset to determine which pages the user visited.
+2. **A Serialized Markov Graph:** It contains normalized state labels and aggregate transition counts. The engine strips unstable identifiers (UUIDs, ObjectIDs, query parameters) before persistence, but route-level history remains visible to any script already running in the page origin.
+   This reduces direct identifier exposure, but it does not protect against an in-origin XSS attacker reading normalized behavioral history.
+
+### 3. Cross-Tab Injection
+
+The engine synchronizes counters and events across multiple open tabs.
+
+**Our Mitigation:** Tab synchronization leverages the native Web `BroadcastChannel` API. This API is strictly governed by the browser's **Same-Origin Policy**. Scripts running on other domains (or malicious IFrames) cannot intercept or inject events into the BroadcastChannel sync channel.
+
+### 4. Host Responsibility (CSP)
+
+PassiveIntent provides data-structure immunity, but it cannot prevent a compromised DOM. It is the responsibility of the host enterprise to implement a strict **Content Security Policy (CSP)** and serve the SDK via HTTPS with Subresource Integrity (SRI) tags to prevent the execution of malicious scripts.
+
+---
+
 ## License
 
 This project is licensed under **AGPL-3.0-only**.
 
-```
-Copyright (c) 2026 Purushottam <purushpsm147@yahoo.co.in>
+```text
+Copyright (c) 2026 Purushottam <purushottam@passiveintent.dev>
 ```
 
 The AGPL-3.0 requires that if you distribute software incorporating this library — including running it as a network service — you must make the **complete source code** of your application available under the same license.
@@ -2870,7 +2903,7 @@ The AGPL-3.0 requires that if you distribute software incorporating this library
 | Internal company tooling (not distributed)     | No copyleft obligation triggered                           |
 | Commercial SaaS / products served to end-users | Must provide source access, or obtain a commercial license |
 
-To obtain a commercial license that removes the copyleft requirement, contact the author at **purushpsm147@yahoo.co.in**.
+To obtain a commercial license that removes the copyleft requirement, contact the author at **support@passiveintent.dev**.
 
 For the authoritative license text, see [LICENSE](../LICENSE).
 

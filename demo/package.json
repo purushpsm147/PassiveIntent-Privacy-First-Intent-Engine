@@ -1,0 +1,19 @@
+{
+  "name": "passiveintent-demo",
+  "private": true,
+  "version": "1.0.0",
+  "description": "Interactive StackBlitz demo for @passiveintent/core — all features, recipes, and APIs.",
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "tsc && vite build",
+    "preview": "vite preview"
+  },
+  "dependencies": {
+    "@passiveintent/core": "^1.0.0"
+  },
+  "devDependencies": {
+    "typescript": "^5.6.3",
+    "vite": "^7.3.1"
+  }
+}

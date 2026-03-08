@@ -493,6 +493,46 @@ details p {
   transform: translateY(0);
 }
 
+.byob-intro {
+  margin: 0 0 20px;
+  color: var(--muted);
+  max-width: 720px;
+  line-height: 1.7;
+}
+
+.byob-grid {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.byob-card h3 {
+  margin: 0;
+}
+
+.byob-card p {
+  margin: 10px 0 0;
+  color: var(--muted);
+}
+
+.byob-card--media {
+  border-color: rgba(255, 184, 108, 0.45);
+}
+
+.byob-card--strict {
+  border-color: rgba(86, 226, 240, 0.45);
+}
+
+.chip-media {
+  border-color: rgba(255, 184, 108, 0.5);
+  color: var(--secondary);
+  background: rgba(255, 184, 108, 0.14);
+}
+
+.chip-strict {
+  border-color: rgba(86, 226, 240, 0.5);
+  color: var(--primary);
+  background: rgba(86, 226, 240, 0.14);
+}
+
 @media (max-width: 920px) {
   .hero-grid,
   .metric-grid,
@@ -501,6 +541,7 @@ details p {
   .step-grid,
   .pricing-grid,
   .cards,
+  .byob-grid,
   .code-section {
     grid-template-columns: 1fr;
   }

@@ -20,7 +20,7 @@ notifications:
   email:
     enabled: true
     recipients:
-      - purushpsm147@yahoo.co.in
+      - purushottam@passiveintent.dev
 
 # Optional: customize as needed for your workflow
 language: 'en-US'
@@ -32,7 +32,7 @@ reviews:
     You are an expert Principal Engineer reviewing a highly constrained, privacy-first intent engine. 
     Before making ANY suggestion, you must strictly adhere to these invariants:
     1. ZERO EGRESS: This library must never make a network request. Never suggest fetch, XHR, or sending telemetry.
-    2. BUNDLE SIZE: The core bundle is strictly capped at 6kB. Never suggest importing external npm packages (like lodash, uuid, etc.). Use native browser APIs only.
+    2. BUNDLE SIZE: The core bundle is strictly capped at 11kB gzip (~11kB minzipped). Never suggest importing external npm packages (like lodash, uuid, etc.). Use native browser APIs only.
     3. MAIN THREAD LATENCY: The tracking loop must execute in < 2ms. Do not suggest heavy array mapping, deep cloning, or recursive functions that could block the UI thread.
     4. NO BROWSER PERMISSIONS: Do not suggest using geolocation, camera, or heavy sensor APIs.
     Focus your review on memory leaks, XSS vulnerabilities, asynchronous race conditions, and mathematical logic bugs.
