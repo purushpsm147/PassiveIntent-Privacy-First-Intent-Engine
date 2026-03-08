@@ -313,11 +313,17 @@ nav a:hover {
   background: rgba(255, 184, 108, 0.14);
 }
 
-.integration-card a {
+.integration-card .card-actions a {
   display: inline-block;
   margin-top: 10px;
   color: var(--primary);
   text-decoration: none;
+}
+
+.integration-card .card-badges a {
+  display: inline-flex;
+  align-items: center;
+  margin-top: 0;
 }
 
 .coming-link {

@@ -10,7 +10,12 @@
 [![License: AGPL-3.0-only](https://img.shields.io/badge/license-AGPL--3.0--only-blue.svg)](./LICENSE)
 [![TypeScript](https://img.shields.io/badge/TypeScript-5.6-3178c6.svg)](https://www.typescriptlang.org/)
 [![CLA assistant](https://cla-assistant.io/readme/badge/passiveintent/core)](https://cla-assistant.io/passiveintent/core)
-[![Open in StackBlitz](https://developer.stackblitz.com/img/open_in_stackblitz_small.svg)](https://stackblitz.com/github/passiveintent/core)
+[![npm @passiveintent/core](https://img.shields.io/npm/v/@passiveintent/core.svg)](https://www.npmjs.com/package/@passiveintent/core)
+[![Bundle size](https://img.shields.io/bundlephobia/minzip/@passiveintent/core)](https://bundlephobia.com/package/@passiveintent/core)
+[![npm @passiveintent/react](https://img.shields.io/npm/v/@passiveintent/react.svg)](https://www.npmjs.com/package/@passiveintent/react)
+[![Bundle size](https://img.shields.io/bundlephobia/minzip/@passiveintent/react)](https://bundlephobia.com/package/@passiveintent/react)
+[![Open Vanilla demo in StackBlitz](https://developer.stackblitz.com/img/open_in_stackblitz_small.svg)](https://stackblitz.com/github/passiveintent/core/tree/main/demo)
+[![Open React demo in StackBlitz](https://developer.stackblitz.com/img/open_in_stackblitz_small.svg)](https://stackblitz.com/github/passiveintent/core/tree/main/demo-react)
 
 **Website:** [passiveintent.dev](https://passiveintent.dev)
 
@@ -20,10 +25,10 @@ This repository is structured as an **npm workspaces monorepo** containing all P
 
 ## Packages
 
-| Package                                    | Version                                                                                                   | Description                                       |
-| ------------------------------------------ | --------------------------------------------------------------------------------------------------------- | ------------------------------------------------- |
-| [`@passiveintent/core`](./packages/core)   | [![npm](https://img.shields.io/badge/npm-coming%20soon-lightgrey)](https://github.com/passiveintent/core) | Privacy-first, on-device behavioral intent engine |
-| [`@passiveintent/react`](./packages/react) | [![npm](https://img.shields.io/badge/npm-coming%20soon-lightgrey)](https://github.com/passiveintent/core) | React 18+ hook wrapper for `@passiveintent/core`  |
+| Package                                    | Version                                                                                                             | Description                                       |
+| ------------------------------------------ | ------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------- |
+| [`@passiveintent/core`](./packages/core)   | [![npm](https://img.shields.io/npm/v/@passiveintent/core.svg)](https://www.npmjs.com/package/@passiveintent/core)   | Privacy-first, on-device behavioral intent engine |
+| [`@passiveintent/react`](./packages/react) | [![npm](https://img.shields.io/npm/v/@passiveintent/react.svg)](https://www.npmjs.com/package/@passiveintent/react) | React 18+ hook wrapper for `@passiveintent/core`  |
 
 Full documentation for each package lives inside the package directory:
 
