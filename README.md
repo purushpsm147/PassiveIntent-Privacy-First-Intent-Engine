@@ -25,8 +25,8 @@ This repository is structured as an **npm workspaces monorepo** containing all P
 
 ## Packages
 
-| Package                                    | Version                                                                                                   | Description                                       |
-| ------------------------------------------ | --------------------------------------------------------------------------------------------------------- | ------------------------------------------------- |
+| Package                                    | Version                                                                                                             | Description                                       |
+| ------------------------------------------ | ------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------- |
 | [`@passiveintent/core`](./packages/core)   | [![npm](https://img.shields.io/npm/v/@passiveintent/core.svg)](https://www.npmjs.com/package/@passiveintent/core)   | Privacy-first, on-device behavioral intent engine |
 | [`@passiveintent/react`](./packages/react) | [![npm](https://img.shields.io/npm/v/@passiveintent/react.svg)](https://www.npmjs.com/package/@passiveintent/react) | React 18+ hook wrapper for `@passiveintent/core`  |
 
