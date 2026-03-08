@@ -210,14 +210,36 @@
             tracking navigation, detecting hesitation, and firing intent signals in real time.
           </p>
         </div>
-        <div class="demo-toolbar">
-          <div class="demo-tabs">
-            <button class="demo-tab active" data-target="demo-vanilla">Vanilla JS</button>
-            <button class="demo-tab" data-target="demo-react">React</button>
-          </div>
-          <span class="demo-live-badge">&#9679; Live</span>
+        <div class="demo-toolbar" role="tablist">
+          <button
+          id="demo-tab-vanilla"
+          class="demo-tab active"
+          type="button"
+          role="tab"
+          aria-selected="true"
+          aria-controls="demo-vanilla"
+          data-target="demo-vanilla"
+          >
+          Vanilla JS
+          </button>
+          <button
+          id="demo-tab-react"
+          class="demo-tab"
+          type="button"
+          role="tab"
+          aria-selected="false"
+          aria-controls="demo-react"
+          data-target="demo-react"
+          >
+          React
+          </button>
         </div>
-        <div id="demo-vanilla" class="demo-embed">
+        <div
+          id="demo-vanilla"
+          class="demo-embed"
+          role="tabpanel"
+          aria-labelledby="demo-tab-vanilla"
+        >
           <iframe
             src="https://stackblitz.com/github/passiveintent/core/tree/main/demo?embed=1&hideNavigation=1&view=preview"
             title="PassiveIntent Vanilla JS demo"
@@ -233,7 +255,13 @@
             >↗ Open in StackBlitz</a
           >
         </div>
-        <div id="demo-react" class="demo-embed" hidden>
+        <div
+          id="demo-react"
+          class="demo-embed"
+          role="tabpanel"
+          aria-labelledby="demo-tab-react"
+          hidden
+        >
           <iframe
             src="https://stackblitz.com/github/passiveintent/core/tree/main/demo-react?embed=1&hideNavigation=1&view=preview"
             title="PassiveIntent React demo"
