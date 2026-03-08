@@ -20,7 +20,7 @@ _(Under the hood, it uses a highly-optimized sparse Markov graph and Bloom filte
 
 ## Why PassiveIntent?
 
-- **No Cookie Banners Required:** 100% local execution. No network requests, no PII sent to servers. Perfectly compliant with GDPR and CCPA.
+- **No Cookie Banners Required:** 100% local execution. No network requests, no PII sent to servers. Designed to help you meet GDPR and CCPA requirements when used with appropriate configuration and legal review.
 - **Sub-Millisecond Reactions:** Catch frustrated users _before_ they close the tab. Traditional analytics take minutes to process rage-clicks; PassiveIntent triggers in `< 2ms`.
 - **Detect True Hesitation:** Evaluates user reading speed and dwell-time anomalies dynamically, allowing you to trigger "Free Shipping" tooltips exactly when a user hesitates at checkout.
 - **Cold-Start Friendly Math:** Unlike brittle rule engines that overreact to brand-new users, PassiveIntent can apply Bayesian Laplace smoothing (`smoothingAlpha`) so Day-1 organic traffic is handled gracefully instead of being penalized by sparse-history spikes.

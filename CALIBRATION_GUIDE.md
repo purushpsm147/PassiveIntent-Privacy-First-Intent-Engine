@@ -46,35 +46,48 @@ Every website has a "Perfect Path" — the sequence of states a highly-intent us
 ### Configuring Your Baseline
 
 ```typescript
-import { createIntentEngine } from '@passiveintent/core';
+import { IntentManager, MarkovGraph } from '@passiveintent/core';
 
-const engine = createIntentEngine({
-  // Define the states the Markov model should track.
-  // Use abstract labels — not raw URLs — for robustness across locale variants.
-  states: ['home', 'product', 'cart', 'checkout', 'confirmation'],
+// Build the baseline graph representing the "Perfect Path."
+// The engine uses this for trajectory anomaly detection.
+const baselineGraph = new MarkovGraph({ maxStates: 50 });
+const perfectPath = ['home', 'product', 'cart', 'checkout'];
+for (let i = 0; i < perfectPath.length - 1; i++) {
+  baselineGraph.incrementTransition(perfectPath[i], perfectPath[i + 1]);
+}
 
-  // Define which transitions represent the "Perfect Path."
-  // The engine assigns higher prior probabilities to these edges.
-  baseline: {
-    perfectPath: ['home', 'product', 'cart', 'checkout'],
-    idleThresholdMs: 20_000, // 20 s idle = potential abandonment (e-commerce)
-    highEntropyStates: ['cart', 'checkout'],
+const engine = new IntentManager({
+  storageKey: 'my-ecommerce-app',
+  graph: {
+    // Normalized entropy threshold [0, 1] above which `high_entropy` fires.
+    // Lower = more sensitive to indecisive browsing on product/cart pages.
+    highEntropyThreshold: 0.75,
   },
+  // Serialize the trained baseline graph for trajectory anomaly scoring.
+  baseline: baselineGraph.toJSON(),
 });
 ```
 
 For a SaaS topology:
 
 ```typescript
-const engine = createIntentEngine({
-  states: ['dashboard', 'reports', 'settings', 'billing', 'upgrade'],
+import { IntentManager, MarkovGraph } from '@passiveintent/core';
 
-  baseline: {
-    // Cyclical return to 'dashboard' is normal — do not penalize it.
-    perfectPath: ['dashboard', 'billing', 'upgrade'],
-    idleThresholdMs: 120_000, // 2 min idle is normal research behavior (SaaS)
-    highEntropyStates: ['billing', 'upgrade'],
+// Baseline only captures the high-intent upgrade path.
+// Cyclical return to 'dashboard' is normal — do not include it.
+const saasBaseline = new MarkovGraph({ maxStates: 50 });
+const saasPath = ['dashboard', 'billing', 'upgrade'];
+for (let i = 0; i < saasPath.length - 1; i++) {
+  saasBaseline.incrementTransition(saasPath[i], saasPath[i + 1]);
+}
+
+const engine = new IntentManager({
+  storageKey: 'my-saas-app',
+  graph: {
+    // Higher threshold: exploratory SaaS sessions are naturally high-entropy.
+    highEntropyThreshold: 0.85,
   },
+  baseline: saasBaseline.toJSON(),
 });
 ```
 
@@ -133,16 +146,17 @@ console.log(result);
 Feed the output directly into the engine configuration:
 
 ```typescript
-const engine = createIntentEngine({
-  // ... state and baseline config ...
+const engine = new IntentManager({
+  // ... baseline graph config from previous step ...
 
-  calibration: {
-    baselineMeanLL: -3.47,
-    baselineStdLL: 0.91,
+  // Top-level convenience aliases — values come directly from runCalibration().
+  baselineMeanLL: -3.47,
+  baselineStdLL: 0.91,
 
+  graph: {
     // Fire when a session drops 1.8 standard deviations below your site's normal.
     // This is your site's -1.8σ — not some generic industry number.
-    zScoreThreshold: -1.8,
+    divergenceThreshold: 1.8,
   },
 });
 ```

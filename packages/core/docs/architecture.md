@@ -2854,7 +2854,7 @@ This pattern does not require a consent banner, does not require a Data Processi
 
 ## 🛡️ Threat Model & Security Boundary
 
-Because PassiveIntentt operates 100% locally on the client-side, the traditional cloud security model (API keys, SSL/TLS transit, database encryption) does not apply. Instead, we secure the data mathematically.
+Because PassiveIntent operates 100% locally on the client-side, the traditional cloud security model (API keys, SSL/TLS transit, database encryption) does not apply. Instead, we secure the data mathematically.
 
 ### 1. The Network Threat (MitM)
 
@@ -2866,20 +2866,18 @@ Traditional behavioral analytics stream payloads to servers (`POST /events`), vu
 
 If the host website suffers a Cross-Site Scripting (XSS) attack, the rogue script shares the execution context and can read `localStorage`.
 
-**Our Mitigation:** **Cryptographic Anonymization.**
-
+**Our Mitigation:** **Identifier minimization, not cryptography.**
 If a rogue script steals the PassiveIntent `localStorage` payload, it acquires two things:
 
 1. **A Binary Bloom Filter:** A bitset of FNV-1a hashes. It is mathematically impossible to un-hash this bitset to determine which pages the user visited.
-2. **A Sparse Markov Matrix:** A map of `Uint16` integers representing generalized transition probabilities. The engine aggressively strips PII (UUIDs, ObjectIDs, query parameters) via the `RouteNormalizer` before indexing.
-
-The attacker receives mathematical noise, not user identities or behavioral history.
+2. **A Serialized Markov Graph:** It contains normalized state labels and aggregate transition counts. The engine strips unstable identifiers (UUIDs, ObjectIDs, query parameters) before persistence, but route-level history remains visible to any script already running in the page origin.
+   This reduces direct identifier exposure, but it does not protect against an in-origin XSS attacker reading normalized behavioral history.
 
 ### 3. Cross-Tab Injection
 
 The engine synchronizes counters and events across multiple open tabs.
 
-**Our Mitigation:** Tab synchronization leverages the native Web `BroadcastChannel` API. This API is strictly governed by the browser's **Same-Origin Policy**. Scripts running on other domains (or malicious IFrames) cannot intercept or inject events into the telepathy channel.
+**Our Mitigation:** Tab synchronization leverages the native Web `BroadcastChannel` API. This API is strictly governed by the browser's **Same-Origin Policy**. Scripts running on other domains (or malicious IFrames) cannot intercept or inject events into the BroadcastChannel sync channel.
 
 ### 4. Host Responsibility (CSP)
 
@@ -2891,7 +2889,7 @@ PassiveIntent provides data-structure immunity, but it cannot prevent a compromi
 
 This project is licensed under **AGPL-3.0-only**.
 
-```
+```text
 Copyright (c) 2026 Purushottam <purushottam@passiveintent.dev>
 ```
 

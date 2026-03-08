@@ -325,6 +325,7 @@ export default function IntentMeter() {
               className="gauge-sim-btn"
               onClick={g.onSimulate}
               disabled={simulating}
+              aria-label={`Simulate ${g.label}`}
               title={simulating ? 'Simulation running…' : `Simulate ${g.label}`}
             >
               ⚡
