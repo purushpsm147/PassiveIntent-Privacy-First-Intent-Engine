@@ -251,11 +251,20 @@ function logEvent(eventName: string, label: string, data?: unknown): void {
   const cssClass = `log-${eventName.replace(/_/g, '-')}`;
   const entry = document.createElement('div');
   entry.className = `log-entry ${cssClass} log-default`;
-  entry.innerHTML = `
-    <span class="evt-time">${new Date().toLocaleTimeString()}</span>
-    <span class="evt-name">${label}</span>
-    <span class="evt-data">${JSON.stringify(data, null, 2)}</span>
-  `;
+
+  const timeSpan = document.createElement('span');
+  timeSpan.className = 'evt-time';
+  timeSpan.textContent = new Date().toLocaleTimeString();
+
+  const nameSpan = document.createElement('span');
+  nameSpan.className = 'evt-name';
+  nameSpan.textContent = label;
+
+  const dataSpan = document.createElement('span');
+  dataSpan.className = 'evt-data';
+  dataSpan.textContent = JSON.stringify(data, null, 2);
+
+  entry.append(timeSpan, nameSpan, dataSpan);
   logEl.prepend(entry);
   // Keep log bounded
   while (logEl.children.length > 80) logEl.removeChild(logEl.lastChild!);
@@ -1062,7 +1071,7 @@ intent.<span class="fn">on</span>(<span class="str">'user_resumed'</span>, ({ <s
 
 <span class="kw">const</span> bf = <span class="kw">new</span> <span class="type">BloomFilter</span>(cfg.bitSize, cfg.hashCount);
 bf.<span class="fn">add</span>(<span class="str">'user@example.com'</span>);
-bf.<span class="fn">check</span>(<span class="str">'user@example.com'</span>); <span class="cmt">// → true (definitely seen)</span>
+bf.<span class="fn">check</span>(<span class="str">'user@example.com'</span>); <span class="cmt">// → true (probably seen)</span>
 bf.<span class="fn">check</span>(<span class="str">'other@example.com'</span>); <span class="cmt">// → false (probably not seen)</span>
 
 <span class="cmt">// Compact serialization</span>
@@ -1189,6 +1198,7 @@ g.<span class="fn">getLikelyNextStates</span>(<span class="str">'/home'</span>, 
         const threshold = parseFloat(
           el.querySelector<HTMLInputElement>('#predict-threshold')!.value,
         );
+        intent.track(state);
         const preds = intent.predictNextStates(threshold, (s) => !s.startsWith('/admin'));
         if (!preds.length) {
           el.querySelector<HTMLElement>('#predict-result')!.innerHTML =
@@ -1370,6 +1380,7 @@ intent.<span class="fn">trackConversion</span>({ type: <span class="str">'purcha
       el.querySelector('#btn-track-conversion')!.addEventListener('click', () => {
         const type = el.querySelector<HTMLSelectElement>('#conv-type')!.value;
         const value = parseFloat(el.querySelector<HTMLInputElement>('#conv-value')!.value);
+        if (!Number.isFinite(value)) return;
         const currency = el.querySelector<HTMLInputElement>('#conv-currency')!.value;
         intent.trackConversion({ type, value, currency });
       });
@@ -2092,7 +2103,15 @@ intent.<span class="fn">destroy</span>(); <span class="cmt">// closes BroadcastC
           label: 'Media / Editorial',
           emoji: '📰',
           desc: 'High-variance exploration. Predictable next-article transitions enable prefetching.',
-          states: ['/home', '/article/tech', '/article/sports', '/article/politics', '/article/opinion', '/search', '/subscribe'],
+          states: [
+            '/home',
+            '/article/tech',
+            '/article/sports',
+            '/article/politics',
+            '/article/opinion',
+            '/search',
+            '/subscribe',
+          ],
           perfectPath: ['/home', '/article/tech', '/subscribe'],
           meanLL: '-3.47',
           stdLL: '2.1',
@@ -2276,7 +2295,9 @@ intent.<span class="fn">destroy</span>(); <span class="cmt">// closes BroadcastC
     setup(el) {
       const archetypes = [
         {
-          key: 'ecommerce', label: 'E-commerce Checkout', emoji: '🛒',
+          key: 'ecommerce',
+          label: 'E-commerce Checkout',
+          emoji: '🛒',
           desc: 'Linear converging funnel. Low tolerance for deviation.',
           states: ['/home', '/products', '/product/item', '/cart', '/checkout', '/thank-you'],
           perfectPath: ['/home', '/products', '/product/item', '/cart', '/checkout', '/thank-you'],
@@ -2285,10 +2306,17 @@ intent.<span class="fn">destroy</span>(); <span class="cmt">// closes BroadcastC
             ['/home', '/products', '/cart', '/checkout', '/thank-you'],
             ['/products', '/product/item', '/cart', '/checkout', '/thank-you'],
           ],
-          sessions: 200, meanLL: -1.4, stdLL: 0.35, zThreshold: -1.8, idleMs: 20000, variance: 'moderate',
+          sessions: 200,
+          meanLL: -1.4,
+          stdLL: 0.35,
+          zThreshold: -1.8,
+          idleMs: 20000,
+          variance: 'moderate',
         },
         {
-          key: 'saas', label: 'SaaS Dashboard', emoji: '📊',
+          key: 'saas',
+          label: 'SaaS Dashboard',
+          emoji: '📊',
           desc: 'Cyclical hub-and-spoke. Billing visits signal upgrade intent.',
           states: ['/dashboard', '/reports', '/settings', '/billing', '/upgrade', '/docs'],
           perfectPath: ['/dashboard', '/billing', '/upgrade'],
@@ -2298,12 +2326,27 @@ intent.<span class="fn">destroy</span>(); <span class="cmt">// closes BroadcastC
             ['/dashboard', '/docs', '/dashboard', '/billing', '/upgrade'],
             ['/dashboard', '/settings', '/billing', '/dashboard'],
           ],
-          sessions: 300, meanLL: -2.8, stdLL: 0.52, zThreshold: -2.0, idleMs: 120000, variance: 'low',
+          sessions: 300,
+          meanLL: -2.8,
+          stdLL: 0.52,
+          zThreshold: -2.0,
+          idleMs: 120000,
+          variance: 'low',
         },
         {
-          key: 'media', label: 'Media / Editorial', emoji: '📰',
+          key: 'media',
+          label: 'Media / Editorial',
+          emoji: '📰',
           desc: 'High-variance exploration. Predictable transitions enable prefetching.',
-          states: ['/home', '/article/tech', '/article/sports', '/article/politics', '/article/opinion', '/search', '/subscribe'],
+          states: [
+            '/home',
+            '/article/tech',
+            '/article/sports',
+            '/article/politics',
+            '/article/opinion',
+            '/search',
+            '/subscribe',
+          ],
           perfectPath: ['/home', '/article/tech', '/subscribe'],
           funnels: [
             ['/home', '/article/tech', '/article/sports', '/article/opinion', '/home'],
@@ -2312,7 +2355,12 @@ intent.<span class="fn">destroy</span>(); <span class="cmt">// closes BroadcastC
             ['/article/sports', '/article/tech', '/article/politics', '/home', '/article/opinion'],
             ['/home', '/article/tech', '/article/sports', '/home', '/subscribe'],
           ],
-          sessions: 500, meanLL: -3.47, stdLL: 2.1, zThreshold: -1.5, idleMs: 180000, variance: 'high',
+          sessions: 500,
+          meanLL: -3.47,
+          stdLL: 2.1,
+          zThreshold: -1.5,
+          idleMs: 180000,
+          variance: 'high',
         },
       ];
 
@@ -2333,11 +2381,14 @@ intent.<span class="fn">destroy</span>(); <span class="cmt">// closes BroadcastC
         indieBtn.className = `btn ${p === 'indie' ? 'btn-primary' : 'btn-secondary'}`;
         entBtn.className = `btn ${p === 'enterprise' ? 'btn-primary' : 'btn-secondary'}`;
         entSection.style.display = p === 'enterprise' ? '' : 'none';
-        descEl.innerHTML = p === 'indie'
-          ? '<strong>Start from Zero:</strong> No baseline graph is loaded. The engine starts empty and learns from live sessions. Anomaly detection becomes reliable after ~50–90 sessions.'
-          : '<strong>Inject Historical Data:</strong> Compile historical analytics data into a pre-trained baseline. Anomaly detection is accurate from session 1.';
+        descEl.innerHTML =
+          p === 'indie'
+            ? '<strong>Start from Zero:</strong> No baseline graph is loaded. The engine starts empty and learns from live sessions. Anomaly detection becomes reliable after ~50–90 sessions.'
+            : '<strong>Inject Historical Data:</strong> Compile historical analytics data into a pre-trained baseline. Anomaly detection is accurate from session 1.';
         el.querySelector<HTMLElement>('#sim-title')!.textContent =
-          p === 'indie' ? 'Live Simulation — Real-Time Learning' : `Live Simulation — ${activeArch.label} Traffic`;
+          p === 'indie'
+            ? 'Live Simulation — Real-Time Learning'
+            : `Live Simulation — ${activeArch.label} Traffic`;
         el.querySelector<HTMLElement>('#sim-desc')!.textContent =
           p === 'indie'
             ? 'Walk paths to build the Markov graph from scratch. Each click is a data point — the engine has no prior knowledge.'
@@ -2362,18 +2413,23 @@ intent.<span class="fn">destroy</span>(); <span class="cmt">// closes BroadcastC
         el.querySelector<HTMLElement>('#val-meanLL')!.textContent = String(arch.meanLL);
         (el.querySelector('#slider-stdLL') as HTMLInputElement).value = String(arch.stdLL);
         el.querySelector<HTMLElement>('#val-stdLL')!.textContent = String(arch.stdLL);
-        (el.querySelector('#slider-zThreshold') as HTMLInputElement).value = String(arch.zThreshold);
+        (el.querySelector('#slider-zThreshold') as HTMLInputElement).value = String(
+          arch.zThreshold,
+        );
         el.querySelector<HTMLElement>('#val-zThreshold')!.textContent = String(arch.zThreshold);
         (el.querySelector('#slider-idle') as HTMLInputElement).value = String(arch.idleMs);
         el.querySelector<HTMLElement>('#val-idle')!.textContent = `${arch.idleMs / 1000}s`;
         el.querySelector<HTMLElement>('#gen-session-count')!.textContent = String(arch.sessions);
         el.querySelector<HTMLElement>('#gen-metrics')!.innerHTML = '';
         el.querySelector<HTMLElement>('#gen-transitions')!.innerHTML = '';
-        el.querySelector<HTMLElement>('#sim-title')!.textContent = `Live Simulation — ${arch.label} Traffic`;
+        el.querySelector<HTMLElement>('#sim-title')!.textContent =
+          `Live Simulation — ${arch.label} Traffic`;
 
         // Rebuild state chips
         const chipsEl = el.querySelector<HTMLElement>('#byob-state-chips')!;
-        chipsEl.innerHTML = arch.states.map((s) => `<span class="state-chip" data-byob-track="${s}">${s}</span>`).join('');
+        chipsEl.innerHTML = arch.states
+          .map((s) => `<span class="state-chip" data-byob-track="${s}">${s}</span>`)
+          .join('');
         chipsEl.querySelectorAll<HTMLElement>('[data-byob-track]').forEach((chip) => {
           chip.addEventListener('click', () => {
             intent.track(chip.dataset.byobTrack!);
@@ -2391,7 +2447,9 @@ intent.<span class="fn">destroy</span>(); <span class="cmt">// closes BroadcastC
         const zVal = (el.querySelector('#slider-zThreshold') as HTMLInputElement).value;
         const codeEl = el.querySelector<HTMLElement>('#byob-config-code')!;
         if (persona === 'indie') {
-          codeEl.innerHTML = codeBlock('Config — zero baseline (start from zero)', `<span class="cmt">// Zero-baseline mode: engine learns purely from live traffic</span>
+          codeEl.innerHTML = codeBlock(
+            'Config — zero baseline (start from zero)',
+            `<span class="cmt">// Zero-baseline mode: engine learns purely from live traffic</span>
 <span class="kw">const</span> engine = <span class="kw">new</span> <span class="fn">IntentManager</span>({
   storageKey: <span class="str">'my-app'</span>,
   <span class="cmt">// No baseline — engine learns from live sessions</span>
@@ -2400,9 +2458,12 @@ intent.<span class="fn">destroy</span>(); <span class="cmt">// closes BroadcastC
     divergenceThreshold: <span class="num">2.5</span>,
   },
   dwellTime: { enabled: <span class="kw">true</span>, minSamples: <span class="num">3</span> },
-});`);
+});`,
+          );
         } else {
-          codeEl.innerHTML = codeBlock('Config — pre-trained baseline (inject historical data)', `<span class="cmt">// Inject-baseline mode: pre-trained graph loaded at initialization</span>
+          codeEl.innerHTML = codeBlock(
+            'Config — pre-trained baseline (inject historical data)',
+            `<span class="cmt">// Inject-baseline mode: pre-trained graph loaded at initialization</span>
 <span class="kw">import</span> baseline <span class="kw">from</span> <span class="str">'./baseline.json'</span>;
 
 <span class="kw">const</span> engine = <span class="kw">new</span> <span class="fn">IntentManager</span>({
@@ -2415,13 +2476,18 @@ intent.<span class="fn">destroy</span>(); <span class="cmt">// closes BroadcastC
     divergenceThreshold:  <span class="num">${Math.abs(parseFloat(zVal)).toFixed(1)}</span>,
   },
   dwellTime: { enabled: <span class="kw">true</span>, minSamples: <span class="num">3</span>, zScoreThreshold: <span class="num">2.0</span> },
-});`);
+});`,
+          );
         }
       }
 
       // Persona buttons
-      el.querySelector('#btn-persona-indie')!.addEventListener('click', () => updatePersona('indie'));
-      el.querySelector('#btn-persona-enterprise')!.addEventListener('click', () => updatePersona('enterprise'));
+      el.querySelector('#btn-persona-indie')!.addEventListener('click', () =>
+        updatePersona('indie'),
+      );
+      el.querySelector('#btn-persona-enterprise')!.addEventListener('click', () =>
+        updatePersona('enterprise'),
+      );
 
       // Archetype buttons
       el.querySelectorAll<HTMLElement>('[data-archetype]').forEach((btn) => {
@@ -2435,19 +2501,25 @@ intent.<span class="fn">destroy</span>(); <span class="cmt">// closes BroadcastC
         ['slider-zThreshold', 'val-zThreshold'],
       ] as const) {
         el.querySelector(`#${sliderId}`)!.addEventListener('input', (e) => {
-          el.querySelector<HTMLElement>(`#${valId}`)!.textContent = (e.target as HTMLInputElement).value;
+          el.querySelector<HTMLElement>(`#${valId}`)!.textContent = (
+            e.target as HTMLInputElement
+          ).value;
           updateConfig();
         });
       }
       el.querySelector('#slider-idle')!.addEventListener('input', (e) => {
-        el.querySelector<HTMLElement>('#val-idle')!.textContent = `${parseInt((e.target as HTMLInputElement).value) / 1000}s`;
+        el.querySelector<HTMLElement>('#val-idle')!.textContent =
+          `${parseInt((e.target as HTMLInputElement).value) / 1000}s`;
       });
 
       // Baseline toggle
       el.querySelector('#btn-toggle-baseline')!.addEventListener('click', () => {
         baselineOn = !baselineOn;
-        el.querySelector<HTMLElement>('#btn-toggle-baseline')!.textContent = baselineOn ? '✓ Baseline ON' : '✗ Baseline OFF';
-        el.querySelector<HTMLElement>('#btn-toggle-baseline')!.className = `btn btn-sm ${baselineOn ? 'btn-green' : 'btn-ghost'}`;
+        el.querySelector<HTMLElement>('#btn-toggle-baseline')!.textContent = baselineOn
+          ? '✓ Baseline ON'
+          : '✗ Baseline OFF';
+        el.querySelector<HTMLElement>('#btn-toggle-baseline')!.className =
+          `btn btn-sm ${baselineOn ? 'btn-green' : 'btn-ghost'}`;
         el.querySelector<HTMLElement>('#baseline-toggle-label')!.textContent = baselineOn
           ? 'Pre-trained graph injected — anomaly detection active from session 1.'
           : 'No baseline — engine must learn from scratch (cold-start).';
@@ -2475,7 +2547,8 @@ intent.<span class="fn">destroy</span>(); <span class="cmt">// closes BroadcastC
         const lls: number[] = [];
         for (let s = 0; s < activeArch.sessions; s++) {
           const funnel = activeArch.funnels[s % activeArch.funnels.length];
-          let sessionLL = 0, steps = 0;
+          let sessionLL = 0,
+            steps = 0;
           for (let j = 0; j < funnel.length - 1; j++) {
             const fromIdx = graph.states.indexOf(funnel[j]);
             const toIdx = graph.states.indexOf(funnel[j + 1]);
@@ -2516,20 +2589,25 @@ intent.<span class="fn">destroy</span>(); <span class="cmt">// closes BroadcastC
           </div>`;
 
         // Show top transitions
-        const transHtml = graph.rows.slice(0, 6).map(([fromIdx, , transitions]) => {
-          const from = graph.states[fromIdx];
-          if (!from) return '';
-          const top = [...transitions].sort(([, a], [, b]) => b - a).slice(0, 3);
-          const total = transitions.reduce((sum, [, c]) => sum + c, 0);
-          const labels = top.map(([toIdx, c]) => {
-            const pct = total > 0 ? ((c / total) * 100).toFixed(0) : '0';
-            return `${graph.states[toIdx]}(${pct}%)`;
-          }).join(', ');
-          return `<div class="progress-row">
+        const transHtml = graph.rows
+          .slice(0, 6)
+          .map(([fromIdx, , transitions]) => {
+            const from = graph.states[fromIdx];
+            if (!from) return '';
+            const top = [...transitions].sort(([, a], [, b]) => b - a).slice(0, 3);
+            const total = transitions.reduce((sum, [, c]) => sum + c, 0);
+            const labels = top
+              .map(([toIdx, c]) => {
+                const pct = total > 0 ? ((c / total) * 100).toFixed(0) : '0';
+                return `${graph.states[toIdx]}(${pct}%)`;
+              })
+              .join(', ');
+            return `<div class="progress-row">
             <span class="progress-label" style="font-family:var(--font-mono);font-size:11px">${from}</span>
             <span style="font-size:11px;color:var(--text-muted)">→ ${labels}</span>
           </div>`;
-        }).join('');
+          })
+          .join('');
         el.querySelector<HTMLElement>('#gen-transitions')!.innerHTML = transHtml
           ? `<div class="card-title" style="font-size:13px">Top transitions</div>${transHtml}`
           : '';
@@ -2547,9 +2625,13 @@ intent.<span class="fn">destroy</span>(); <span class="cmt">// closes BroadcastC
       el.querySelector('#btn-byob-walk-anomalous')!.addEventListener('click', () => {
         const anomPath = [
           activeArch.states[activeArch.states.length - 1],
-          activeArch.states[0], '/404', '/error',
-          activeArch.states[2] ?? activeArch.states[0], '/support',
-          activeArch.states[0], '/404',
+          activeArch.states[0],
+          '/404',
+          '/error',
+          activeArch.states[2] ?? activeArch.states[0],
+          '/support',
+          activeArch.states[0],
+          '/404',
         ];
         anomPath.forEach((s) => intent.track(s));
         trackCount += anomPath.length;
@@ -2581,17 +2663,23 @@ intent.<span class="fn">destroy</span>(); <span class="cmt">// closes BroadcastC
       const unsubs = [
         intent.on('trajectory_anomaly', (p) => {
           const payload = p as { stateTo?: string; zScore?: number };
-          anomalyFeed.unshift(`🚨 Trajectory anomaly → ${payload.stateTo} (z=${payload.zScore?.toFixed(2)})`);
+          anomalyFeed.unshift(
+            `🚨 Trajectory anomaly → ${payload.stateTo} (z=${payload.zScore?.toFixed(2)})`,
+          );
           renderAnomalies();
         }),
         intent.on('high_entropy', (p) => {
           const payload = p as { state?: string; normalizedEntropy?: number };
-          anomalyFeed.unshift(`⚡ High entropy at ${payload.state} (H=${payload.normalizedEntropy?.toFixed(3)})`);
+          anomalyFeed.unshift(
+            `⚡ High entropy at ${payload.state} (H=${payload.normalizedEntropy?.toFixed(3)})`,
+          );
           renderAnomalies();
         }),
         intent.on('dwell_time_anomaly', (p) => {
           const payload = p as { state?: string; zScore?: number };
-          anomalyFeed.unshift(`⏱ Dwell anomaly at ${payload.state} (z=${payload.zScore?.toFixed(2)})`);
+          anomalyFeed.unshift(
+            `⏱ Dwell anomaly at ${payload.state} (z=${payload.zScore?.toFixed(2)})`,
+          );
           renderAnomalies();
         }),
       ];
@@ -2604,7 +2692,11 @@ intent.<span class="fn">destroy</span>(); <span class="cmt">// closes BroadcastC
           card.style.display = '';
           feed.innerHTML = items
             .map((msg) => {
-              const cls = msg.startsWith('🚨') ? 'alert-error' : msg.startsWith('⚡') ? 'alert-warning' : 'alert-info';
+              const cls = msg.startsWith('🚨')
+                ? 'alert-error'
+                : msg.startsWith('⚡')
+                  ? 'alert-warning'
+                  : 'alert-info';
               return `<div class="alert ${cls}" style="margin-bottom:6px;font-size:13px">${msg}</div>`;
             })
             .join('');

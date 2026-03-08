@@ -227,10 +227,10 @@ export default function BYOBaseline() {
       on('dwell_time_anomaly', (p: unknown) => {
         const payload = p as { state?: string; zScore?: number };
         setAnomalies((prev) =>
-          [
-            `⏱ Dwell anomaly at ${payload.state} (z=${payload.zScore?.toFixed(2)})`,
-            ...prev,
-          ].slice(0, 10),
+          [`⏱ Dwell anomaly at ${payload.state} (z=${payload.zScore?.toFixed(2)})`, ...prev].slice(
+            0,
+            10,
+          ),
         );
       }),
     ];
@@ -358,7 +358,7 @@ export default function BYOBaseline() {
           <button
             className={`btn ${persona === 'enterprise' ? 'btn-primary' : 'btn-secondary'}`}
             onClick={() => setPersona('enterprise')}
-            title="Compile historical session data (Mixpanel, GA4, Amplitude) into a pre-trained Markov graph and inject it at initialization. The engine knows your &quot;normal&quot; path from day one — no cold-start period. Required for high-stakes funnels where day-1 accuracy matters."
+            title='Compile historical session data (Mixpanel, GA4, Amplitude) into a pre-trained Markov graph and inject it at initialization. The engine knows your "normal" path from day one — no cold-start period. Required for high-stakes funnels where day-1 accuracy matters.'
           >
             📦 Inject Historical Data
           </button>
@@ -411,7 +411,9 @@ export default function BYOBaseline() {
                 lineHeight: 1.7,
               }}
             >
-              <strong>{archetype.emoji} {archetype.label}</strong>
+              <strong>
+                {archetype.emoji} {archetype.label}
+              </strong>
               <br />
               {archetype.description}
               <br />
@@ -445,8 +447,13 @@ export default function BYOBaseline() {
               {/* baselineMeanLL */}
               <div>
                 <label
-                  style={{ display: 'block', fontSize: 12, color: 'var(--text-muted)', marginBottom: 4 }}
-                  title="The average log-likelihood of a &quot;normal&quot; session path through your Markov graph. Computed by running your most common user journeys through the trained graph and averaging their per-step log probs. More negative = users follow less-probable paths on average. E-commerce funnels are tight (-1.4); media sites are loose (-3.47)."
+                  style={{
+                    display: 'block',
+                    fontSize: 12,
+                    color: 'var(--text-muted)',
+                    marginBottom: 4,
+                  }}
+                  title='The average log-likelihood of a "normal" session path through your Markov graph. Computed by running your most common user journeys through the trained graph and averaging their per-step log probs. More negative = users follow less-probable paths on average. E-commerce funnels are tight (-1.4); media sites are loose (-3.47).'
                 >
                   baselineMeanLL ⓘ: <strong style={{ color: 'var(--accent-h)' }}>{meanLL}</strong>
                 </label>
@@ -460,7 +467,14 @@ export default function BYOBaseline() {
                   style={{ width: '100%' }}
                   title="Average log-likelihood of a normal session. Drag left for stricter funnels, right for exploratory/high-variance sites."
                 />
-                <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 10, color: 'var(--text-muted)' }}>
+                <div
+                  style={{
+                    display: 'flex',
+                    justifyContent: 'space-between',
+                    fontSize: 10,
+                    color: 'var(--text-muted)',
+                  }}
+                >
                   <span>-6.0 (strict funnel)</span>
                   <span>0.0 (permissive)</span>
                 </div>
@@ -469,7 +483,12 @@ export default function BYOBaseline() {
               {/* baselineStdLL */}
               <div>
                 <label
-                  style={{ display: 'block', fontSize: 12, color: 'var(--text-muted)', marginBottom: 4 }}
+                  style={{
+                    display: 'block',
+                    fontSize: 12,
+                    color: 'var(--text-muted)',
+                    marginBottom: 4,
+                  }}
                   title="Standard deviation of log-likelihoods across baseline sessions. Low stdLL (e.g. 0.35) means your users follow a tight, predictable path — any deviation is significant. High stdLL (e.g. 2.1) means exploration is normal and the anomaly bar must be wider to avoid alert storms. Used as the denominator in the Z-score formula."
                 >
                   baselineStdLL ⓘ: <strong style={{ color: 'var(--accent-h)' }}>{stdLL}</strong>
@@ -484,7 +503,14 @@ export default function BYOBaseline() {
                   style={{ width: '100%' }}
                   title="Standard deviation of session log-likelihoods. Low = tight funnel, high = exploratory site. The engine divides (sessionLL - meanLL) / stdLL to compute the Z-score."
                 />
-                <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 10, color: 'var(--text-muted)' }}>
+                <div
+                  style={{
+                    display: 'flex',
+                    justifyContent: 'space-between',
+                    fontSize: 10,
+                    color: 'var(--text-muted)',
+                  }}
+                >
                   <span>0.05 (tight funnel)</span>
                   <span>4.0 (high variance)</span>
                 </div>
@@ -493,10 +519,16 @@ export default function BYOBaseline() {
               {/* zScoreThreshold */}
               <div>
                 <label
-                  style={{ display: 'block', fontSize: 12, color: 'var(--text-muted)', marginBottom: 4 }}
+                  style={{
+                    display: 'block',
+                    fontSize: 12,
+                    color: 'var(--text-muted)',
+                    marginBottom: 4,
+                  }}
                   title="Z = (sessionLL - baselineMeanLL) / baselineStdLL. When Z drops below this threshold the session is flagged as anomalous. -1.8 ≈ bottom 3.6% of sessions. -2.0 ≈ bottom 2.3%. Too close to 0 = alert storm; too far negative = misses real anomalies. Tune with your P5 percentile as a starting point."
                 >
-                  zScoreThreshold ⓘ: <strong style={{ color: 'var(--yellow)' }}>{zThreshold}</strong>
+                  zScoreThreshold ⓘ:{' '}
+                  <strong style={{ color: 'var(--yellow)' }}>{zThreshold}</strong>
                 </label>
                 <input
                   type="range"
@@ -508,7 +540,14 @@ export default function BYOBaseline() {
                   style={{ width: '100%' }}
                   title="Anomaly trigger threshold. Formula: Z = (sessionLL - meanLL) / stdLL. Fire when Z < this value. Start at your P5 calibration output, then tighten if too noisy."
                 />
-                <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 10, color: 'var(--text-muted)' }}>
+                <div
+                  style={{
+                    display: 'flex',
+                    justifyContent: 'space-between',
+                    fontSize: 10,
+                    color: 'var(--text-muted)',
+                  }}
+                >
                   <span>-4.0 (rarely fires)</span>
                   <span>-0.5 (hair-trigger)</span>
                 </div>
@@ -517,11 +556,18 @@ export default function BYOBaseline() {
               {/* idleThresholdMs */}
               <div>
                 <label
-                  style={{ display: 'block', fontSize: 12, color: 'var(--text-muted)', marginBottom: 4 }}
+                  style={{
+                    display: 'block',
+                    fontSize: 12,
+                    color: 'var(--text-muted)',
+                    marginBottom: 4,
+                  }}
                   title="How long without any tracked event before the engine considers a session idle and emits an idle_detected event. Short for checkout funnels (20s of inactivity = hesitation signal). Long for media/editorial (users read articles for minutes). Set based on your median time-on-page from analytics."
                 >
                   idleThresholdMs ⓘ:{' '}
-                  <strong style={{ color: 'var(--accent-h)' }}>{(idleMs / 1000).toFixed(0)}s</strong>
+                  <strong style={{ color: 'var(--accent-h)' }}>
+                    {(idleMs / 1000).toFixed(0)}s
+                  </strong>
                 </label>
                 <input
                   type="range"
@@ -533,7 +579,14 @@ export default function BYOBaseline() {
                   style={{ width: '100%' }}
                   title="Milliseconds of inactivity before idle_detected fires. Set to your site's median time-on-page. Too short = false positives; too long = misses real hesitation."
                 />
-                <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 10, color: 'var(--text-muted)' }}>
+                <div
+                  style={{
+                    display: 'flex',
+                    justifyContent: 'space-between',
+                    fontSize: 10,
+                    color: 'var(--text-muted)',
+                  }}
+                >
                   <span>5s (checkout)</span>
                   <span>300s (media / docs)</span>
                 </div>
@@ -552,9 +605,11 @@ export default function BYOBaseline() {
               <button
                 className={`btn btn-sm ${useBaseline ? 'btn-green' : 'btn-ghost'}`}
                 onClick={() => setUseBaseline(!useBaseline)}
-                title={useBaseline
-                  ? 'The pre-compiled baseline graph is passed to IntentManager at init. Anomaly detection is immediately calibrated — no warm-up period needed. Toggle OFF to simulate a cold-start (blank graph).'
-                  : 'Baseline is disabled. The engine starts with an empty graph and must observe real sessions before anomaly detection becomes meaningful. Click to re-enable.'}
+                title={
+                  useBaseline
+                    ? 'The pre-compiled baseline graph is passed to IntentManager at init. Anomaly detection is immediately calibrated — no warm-up period needed. Toggle OFF to simulate a cold-start (blank graph).'
+                    : 'Baseline is disabled. The engine starts with an empty graph and must observe real sessions before anomaly detection becomes meaningful. Click to re-enable.'
+                }
               >
                 {useBaseline ? '✓ Baseline ON' : '✗ Baseline OFF'}
               </button>
@@ -571,8 +626,8 @@ export default function BYOBaseline() {
             <div className="card-title">Generate Baseline from Simulated History</div>
             <p style={{ color: 'var(--text-muted)', fontSize: 13, marginBottom: 12 }}>
               Simulates <strong>{archetype.sessionsToSimulate}</strong> historical sessions through
-              the <strong>{archetype.label}</strong> funnels and computes calibration parameters.
-              In production, you&apos;d run this against a Mixpanel / Amplitude / GA4 export.
+              the <strong>{archetype.label}</strong> funnels and computes calibration parameters. In
+              production, you&apos;d run this against a Mixpanel / Amplitude / GA4 export.
             </p>
             <button className="btn btn-primary" onClick={handleGenerate}>
               ⚙️ Generate Baseline ({archetype.sessionsToSimulate} sessions)
@@ -588,7 +643,7 @@ export default function BYOBaseline() {
                 <MetricCard
                   value={
                     generatedGraph
-                      ? `${generatedGraph.states.length} states / ${generatedGraph.rows.length} edges`
+                      ? `${generatedGraph.states.length} states / ${generatedGraph.rows.reduce((sum, r) => sum + r[2].length, 0)} edges`
                       : '—'
                   }
                   label="Graph Size"
@@ -708,7 +763,9 @@ export default function BYOBaseline() {
 
       {/* ── Comparison Table ────────────────────────────────────────────────── */}
       <div className="card">
-        <div className="card-title">Archetype Comparison — Why One Threshold Doesn&apos;t Fit All</div>
+        <div className="card-title">
+          Archetype Comparison — Why One Threshold Doesn&apos;t Fit All
+        </div>
         <table className="data-table">
           <thead>
             <tr>
@@ -739,7 +796,17 @@ export default function BYOBaseline() {
               <td>baselineStdLL</td>
               {ARCHETYPES.map((a) => (
                 <td key={a.key}>
-                  <code style={{ fontFamily: 'var(--font-mono)', color: a.varianceProfile === 'high' ? 'var(--yellow)' : a.varianceProfile === 'low' ? 'var(--green)' : 'var(--accent-h)' }}>
+                  <code
+                    style={{
+                      fontFamily: 'var(--font-mono)',
+                      color:
+                        a.varianceProfile === 'high'
+                          ? 'var(--yellow)'
+                          : a.varianceProfile === 'low'
+                            ? 'var(--green)'
+                            : 'var(--accent-h)',
+                    }}
+                  >
                     {a.defaultStdLL}
                   </code>
                 </td>
@@ -790,7 +857,11 @@ export default function BYOBaseline() {
 
       {/* ── Config Code Preview ────────────────────────────────────────────── */}
       <CodeBlock
-        label={persona === 'indie' ? 'Config — zero baseline (start from zero)' : 'Config — pre-trained baseline (inject historical data)'}
+        label={
+          persona === 'indie'
+            ? 'Config — zero baseline (start from zero)'
+            : 'Config — pre-trained baseline (inject historical data)'
+        }
         code={configCode}
       />
 

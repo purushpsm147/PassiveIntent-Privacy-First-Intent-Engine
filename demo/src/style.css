@@ -585,6 +585,17 @@ label {
   transform: translateX(18px);
   background: var(--accent-h);
 }
+.toggle input:focus + .toggle-slider {
+  outline: 2px solid var(--accent-h);
+  outline-offset: 2px;
+}
+.toggle input:focus:not(:focus-visible) + .toggle-slider {
+  outline: none;
+}
+.toggle input:focus-visible + .toggle-slider {
+  outline: 2px solid var(--accent-h);
+  outline-offset: 2px;
+}
 
 /* ─── Alert/result boxes ─────────────────────────────────────────────────── */
 .alert {

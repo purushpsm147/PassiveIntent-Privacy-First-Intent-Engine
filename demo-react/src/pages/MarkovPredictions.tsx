@@ -17,7 +17,7 @@ export default function MarkovPredictions() {
   const [predictions, setPredictions] = useState<{ state: string; probability: number }[]>([]);
 
   // Standalone MarkovGraph panel
-  const [graph] = useState(() => new MarkovGraph({ maxStates: 50 }));
+  const [graph, setGraph] = useState(() => new MarkovGraph({ maxStates: 50 }));
   const [graphBuilt, setGraphBuilt] = useState(false);
   const [serialized, setSerialized] = useState<string | null>(null);
   const [binaryInfo, setBinaryInfo] = useState<string | null>(null);
@@ -42,11 +42,13 @@ export default function MarkovPredictions() {
       ['/home', '/pricing', '/checkout/payment', '/thank-you'],
       ['/home', '/products', '/product/widget', '/cart', '/checkout/payment', '/thank-you'],
     ];
+    const newGraph = new MarkovGraph({ maxStates: 50 });
     paths.forEach((path) => {
       for (let i = 0; i < path.length - 1; i++) {
-        graph.incrementTransition(path[i], path[i + 1]);
+        newGraph.incrementTransition(path[i], path[i + 1]);
       }
     });
+    setGraph(newGraph);
     setGraphBuilt(true);
     setSerialized(null);
     setBinaryInfo(null);

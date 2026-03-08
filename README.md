@@ -1,5 +1,5 @@
 <!--
-  Copyright (c) 2026 Purushottam <purushpsm147@yahoo.co.in>
+  Copyright (c) 2026 Purushottam <purushottam@passiveintent.dev>
 
   This source code is licensed under the AGPL-3.0-only license found in the
   LICENSE file in the root directory of this source tree.
@@ -91,15 +91,15 @@ PassiveIntent's statistical model is different. It normalizes every anomaly scor
 
 $$Z = \frac{LL_{observed} - \mu_{your\,site}}{\sigma_{your\,site}}$$
 
-A Z-score of `-2.0` means the same thing on every deployment: *two standard deviations below your site's own normal*. An enterprise SaaS with low behavioral variance and a media site with high variance both produce reliable, low-false-positive signals — without you touching a single threshold.
+A Z-score of `-2.0` means the same thing on every deployment: _two standard deviations below your site's own normal_. An enterprise SaaS with low behavioral variance and a media site with high variance both produce reliable, low-false-positive signals — without you touching a single threshold.
 
 The calibration system rests on three pillars:
 
-| Pillar | What it solves |
-|---|---|
-| **Domain Baseline** | Trains the Markov model on your site's unique navigation topology (linear funnel vs. cyclical dashboard). |
+| Pillar                      | What it solves                                                                                                           |
+| --------------------------- | ------------------------------------------------------------------------------------------------------------------------ |
+| **Domain Baseline**         | Trains the Markov model on your site's unique navigation topology (linear funnel vs. cyclical dashboard).                |
 | **Statistical Calibration** | Extracts your site's `baselineMeanLL` and `baselineStdLL` so Z-score thresholds are portable across any traffic profile. |
-| **Intervention Mapping** | Wires mathematical anomalies to concrete, timed business actions — chat escalation, discount triggers, prefetch hints. |
+| **Intervention Mapping**    | Wires mathematical anomalies to concrete, timed business actions — chat escalation, discount triggers, prefetch hints.   |
 
 **→ Read the full guide:** [CALIBRATION_GUIDE.md](./CALIBRATION_GUIDE.md)
 
@@ -107,12 +107,12 @@ The calibration system rests on three pillars:
 
 ## 🔒 Enterprise-Grade Privacy & Security
 
-UI Telepathy flips the traditional analytics threat model. By executing entirely in the browser, it provides **Zero Egress** behavioral tracking.
+PassiveIntent flips the traditional analytics threat model. By executing entirely in the browser, it provides **Zero Egress** behavioral tracking.
 
-* **Zero Network Egress:** The engine does not make HTTP requests. Behavioral data never leaves the user's device, making Man-in-the-Middle (MitM) interception impossible.
-* **Cryptographic Irreversibility:** We do not store browsing history. State visits are hashed into a fixed-size Bloom Filter using FNV-1a. Even if a host application suffers an XSS attack, the stolen memory payload cannot be reverse-engineered into a list of visited URLs.
-* **PII Eradication:** The native `RouteNormalizer` aggressively strips UUIDs, MongoDB ObjectIDs, and query strings before any math occurs, ensuring no Personally Identifiable Information ever enters the Markov matrix.
-* **GDPR & CCPA Safe:** Because no PII is stored and no data is transmitted to third-party servers, UI Telepathy operates entirely outside the scope of traditional cookie-consent and data-processing liabilities.
+- **Zero Network Egress:** The engine does not make HTTP requests. Behavioral data never leaves the user's device, making Man-in-the-Middle (MitM) interception impossible.
+- **Cryptographic Irreversibility:** We do not store browsing history. State visits are hashed into a fixed-size Bloom Filter using FNV-1a. Even if a host application suffers an XSS attack, the stolen memory payload cannot be reverse-engineered into a list of visited URLs.
+- **PII Eradication:** The native `RouteNormalizer` aggressively strips UUIDs, MongoDB ObjectIDs, and query strings before any math occurs, ensuring no Personally Identifiable Information ever enters the Markov matrix.
+- **GDPR & CCPA Safe:** Because no PII is stored and no data is transmitted to third-party servers, PassiveIntent operates entirely outside the scope of traditional cookie-consent and data-processing liabilities.
 
 ---
 

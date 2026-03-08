@@ -39,6 +39,7 @@ const NAV: Array<{ section: string; items: NavItem[] }> = [
       { key: 'bloom-filter', label: '🌸 Bloom Filter' },
       { key: 'markov-graph', label: '🕸 Markov Predictions' },
       { key: 'bot-detection', label: '🤖 Bot Detection' },
+      { key: 'cross-tab', label: '📡 Cross-Tab Sync' },
     ],
   },
   {
@@ -94,7 +95,7 @@ export default function Shell({ active, onNavigate, onReset, children }: Props) 
           <a
             href="https://github.com/purushpsm147/PassiveIntent-Privacy-First-Intent-Engine"
             target="_blank"
-            rel="noreferrer"
+            rel="noopener noreferrer"
             className="gh-link"
           >
             <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor">
@@ -184,13 +185,21 @@ export default function Shell({ active, onNavigate, onReset, children }: Props) 
   );
 }
 
+function safeSerialize(data: unknown): string {
+  try {
+    return JSON.stringify(data, null, 2);
+  } catch {
+    return '<unserializable payload>';
+  }
+}
+
 function LogEntry({ entry }: { entry: import('./IntentContext').LogEntry }) {
   const cssClass = `log-${entry.eventName.replace(/_/g, '-')}`;
   return (
     <div className={`log-entry ${cssClass} log-default`}>
       <span className="evt-time">{entry.time}</span>
       <span className="evt-name">{entry.eventName.replace(/_/g, ' ')}</span>
-      <span className="evt-data">{JSON.stringify(entry.data, null, 2)}</span>
+      <span className="evt-data">{safeSerialize(entry.data)}</span>
     </div>
   );
 }

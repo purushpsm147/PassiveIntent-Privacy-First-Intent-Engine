@@ -17,6 +17,7 @@ import Conversion from './pages/Conversion';
 import Counters from './pages/Counters';
 import AmazonPlayground from './pages/AmazonPlayground';
 import BYOBaseline from './pages/BYOBaseline';
+import CrossTabSync from './pages/CrossTabSync';
 
 export type DemoKey =
   | 'overview'
@@ -34,25 +35,27 @@ export type DemoKey =
   | 'conversion'
   | 'counters'
   | 'amazon-playground'
-  | 'byob';
+  | 'byob'
+  | 'cross-tab';
 
 const PAGE_MAP: Record<DemoKey, React.ComponentType> = {
-  'overview':          Overview,
-  'basic-tracking':    BasicTracking,
-  'high-entropy':      HighEntropy,
-  'dwell-time':        DwellTime,
-  'trajectory':        Trajectory,
-  'hesitation':        Hesitation,
-  'attention-return':  AttentionReturn,
-  'idle-detection':    IdleDetection,
-  'exit-intent':       ExitIntent,
-  'bloom-filter':      BloomFilterPage,
-  'markov-graph':      MarkovPredictions,
-  'bot-detection':     BotDetection,
-  'conversion':        Conversion,
-  'counters':          Counters,
+  overview: Overview,
+  'basic-tracking': BasicTracking,
+  'high-entropy': HighEntropy,
+  'dwell-time': DwellTime,
+  trajectory: Trajectory,
+  hesitation: Hesitation,
+  'attention-return': AttentionReturn,
+  'idle-detection': IdleDetection,
+  'exit-intent': ExitIntent,
+  'bloom-filter': BloomFilterPage,
+  'markov-graph': MarkovPredictions,
+  'bot-detection': BotDetection,
+  conversion: Conversion,
+  counters: Counters,
   'amazon-playground': AmazonPlayground,
-  'byob':              BYOBaseline,
+  byob: BYOBaseline,
+  'cross-tab': CrossTabSync,
 };
 
 export default function App() {

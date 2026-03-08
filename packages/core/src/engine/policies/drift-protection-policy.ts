@@ -1,5 +1,5 @@
 /**
- * Copyright (c) 2026 Purushottam <purushpsm147@yahoo.co.in>
+ * Copyright (c) 2026 Purushottam <purushottam@passiveintent.devt.devt.dev>
  *
  * This source code is licensed under the AGPL-3.0-only license found in the
  * LICENSE file in the root directory of this source tree.

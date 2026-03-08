@@ -144,8 +144,8 @@ export default function Trajectory() {
 });
 
 <span class="fn">useEffect</span>(() => {
-  <span class="kw">return</span> <span class="fn">on</span>(<span class="str">'trajectory_anomaly'</span>, ({ <span class="prop">state</span>, <span class="prop">zScore</span> }) => {
-    <span class="kw">if</span> (zScore > <span class="num">2.5</span>) analytics.<span class="fn">trackAbandonment</span>(state);
+  <span class="kw">return</span> <span class="fn">on</span>(<span class="str">'trajectory_anomaly'</span>, ({ <span class="prop">stateTo</span>, <span class="prop">zScore</span> }) => {
+    <span class="kw">if</span> (zScore > <span class="num">2.5</span>) analytics.<span class="fn">trackAbandonment</span>(stateTo);
   });
 }, [on]);`}
       />

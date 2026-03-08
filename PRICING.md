@@ -1,5 +1,5 @@
 <!--
-  Copyright (c) 2026 Purushottam <purushpsm147@yahoo.co.in>
+  Copyright (c) 2026 Purushottam <purushottam@passiveintent.dev>
 
   This source code is licensed under the AGPL-3.0-only license found in the
   LICENSE file in the root directory of this source tree.
@@ -9,7 +9,7 @@
 
 PassiveIntent is **free and open-source** under AGPLv3 for open-source projects, hobby projects, and non-commercial use. For commercial use without the AGPLv3 copyleft obligations, purchase a commercial license below.
 
-> **Contact:** [purushpsm147@yahoo.co.in](mailto:purushpsm147@yahoo.co.in) · [successfulindian147@gmail.com](mailto:successfulindian147@gmail.com)
+> **Contact:** [support@passiveintent.dev](mailto:support@passiveintent.dev)
 
 ## Tiers
 

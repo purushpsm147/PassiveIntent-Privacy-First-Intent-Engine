@@ -1,5 +1,5 @@
 <!--
-  Copyright (c) 2026 Purushottam <purushpsm147@yahoo.co.in>
+  Copyright (c) 2026 Purushottam <purushottam@passiveintent.dev>
 
   This source code is licensed under the AGPL-3.0-only license found in the
   LICENSE file in the root directory of this source tree.
@@ -17,11 +17,11 @@ Generic intent engines ship with fixed thresholds tuned on aggregate, cross-indu
 
 PassiveIntent's calibration system is built on three compounding pillars:
 
-| Pillar | Concept | Why It Matters |
-|---|---|---|
-| **1. Domain Baseline** | The Topography | Every site has a structurally unique "Perfect Path." Anomaly detection is meaningless without knowing what normal looks like. |
+| Pillar                         | Concept          | Why It Matters                                                                                                                                                                         |
+| ------------------------------ | ---------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **1. Domain Baseline**         | The Topography   | Every site has a structurally unique "Perfect Path." Anomaly detection is meaningless without knowing what normal looks like.                                                          |
 | **2. Statistical Calibration** | The Z-Score Moat | Your site's log-likelihood distribution has a unique mean and variance. A single Z-score cutoff applied universally produces catastrophic false-positive rates on high-variance sites. |
-| **3. Intervention Mapping** | The ROI | Mathematical anomalies have zero business value unless they are mapped to a concrete, timed action that recovers revenue or engagement. |
+| **3. Intervention Mapping**    | The ROI          | Mathematical anomalies have zero business value unless they are mapped to a concrete, timed action that recovers revenue or engagement.                                                |
 
 ---
 
@@ -33,15 +33,15 @@ Every website has a "Perfect Path" — the sequence of states a highly-intent us
 
 ### Baseline Architecture Comparison
 
-| Dimension | E-commerce Baseline | SaaS Dashboard Baseline |
-|---|---|---|
-| **Path structure** | Linear, converging | Cyclical, hub-and-spoke |
-| **Perfect Path example** | `/home → /product → /cart → /checkout` | `/dashboard → /reports → /settings → /dashboard` |
-| **High-intent signal** | Forward progression toward `/checkout` | Repeated engagement with `/billing` or `/upgrade` |
-| **Anomaly type to watch** | Backward navigation; drop to `/home` from `/cart` | Stagnation on `/pricing`; exit from `/billing` |
-| **Markov chain topology** | Directed acyclic graph (DAG) | Directed cyclic graph (DCG) |
-| **Session length profile** | Short, focused (< 5 min typical) | Long, exploratory (10–40 min typical) |
-| **Idle detection threshold** | Low (< 30 s signals abandonment) | High (2–5 min idle is normal research behavior) |
+| Dimension                    | E-commerce Baseline                               | SaaS Dashboard Baseline                           |
+| ---------------------------- | ------------------------------------------------- | ------------------------------------------------- |
+| **Path structure**           | Linear, converging                                | Cyclical, hub-and-spoke                           |
+| **Perfect Path example**     | `/home → /product → /cart → /checkout`            | `/dashboard → /reports → /settings → /dashboard`  |
+| **High-intent signal**       | Forward progression toward `/checkout`            | Repeated engagement with `/billing` or `/upgrade` |
+| **Anomaly type to watch**    | Backward navigation; drop to `/home` from `/cart` | Stagnation on `/pricing`; exit from `/billing`    |
+| **Markov chain topology**    | Directed acyclic graph (DAG)                      | Directed cyclic graph (DCG)                       |
+| **Session length profile**   | Short, focused (< 5 min typical)                  | Long, exploratory (10–40 min typical)             |
+| **Idle detection threshold** | Low (< 30 s signals abandonment)                  | High (2–5 min idle is normal research behavior)   |
 
 ### Configuring Your Baseline
 
@@ -57,7 +57,7 @@ const engine = createIntentEngine({
   // The engine assigns higher prior probabilities to these edges.
   baseline: {
     perfectPath: ['home', 'product', 'cart', 'checkout'],
-    idleThresholdMs: 20_000,        // 20 s idle = potential abandonment (e-commerce)
+    idleThresholdMs: 20_000, // 20 s idle = potential abandonment (e-commerce)
     highEntropyStates: ['cart', 'checkout'],
   },
 });
@@ -72,7 +72,7 @@ const engine = createIntentEngine({
   baseline: {
     // Cyclical return to 'dashboard' is normal — do not penalize it.
     perfectPath: ['dashboard', 'billing', 'upgrade'],
-    idleThresholdMs: 120_000,       // 2 min idle is normal research behavior (SaaS)
+    idleThresholdMs: 120_000, // 2 min idle is normal research behavior (SaaS)
     highEntropyStates: ['billing', 'upgrade'],
   },
 });
@@ -88,11 +88,11 @@ The log-likelihood score produced by the Markov model represents how probable th
 
 This fails in production for a structural reason:
 
-| Site Type | Log-Likelihood Distribution | Effect of Fixed `-2.0` Threshold |
-|---|---|---|
-| **Strict enterprise SaaS** | Narrow distribution, low σ (e.g., σ ≈ 0.4) | Threshold is far in the tail — almost never fires. Interventions are missed. |
-| **High-traffic media / editorial** | Wide distribution, high σ (e.g., σ ≈ 2.1) | Threshold is near the mean — fires constantly. False positives destroy UX. |
-| **E-commerce (mixed intent)** | Moderate distribution (e.g., σ ≈ 0.9) | Threshold works coincidentally — but breaks on seasonal traffic shifts. |
+| Site Type                          | Log-Likelihood Distribution                | Effect of Fixed `-2.0` Threshold                                             |
+| ---------------------------------- | ------------------------------------------ | ---------------------------------------------------------------------------- |
+| **Strict enterprise SaaS**         | Narrow distribution, low σ (e.g., σ ≈ 0.4) | Threshold is far in the tail — almost never fires. Interventions are missed. |
+| **High-traffic media / editorial** | Wide distribution, high σ (e.g., σ ≈ 2.1)  | Threshold is near the mean — fires constantly. False positives destroy UX.   |
+| **E-commerce (mixed intent)**      | Moderate distribution (e.g., σ ≈ 0.9)      | Threshold works coincidentally — but breaks on seasonal traffic shifts.      |
 
 A single number calibrated on one site will be structurally wrong on every other site.
 
@@ -103,11 +103,12 @@ PassiveIntent normalizes raw log-likelihood scores against the site's own observ
 $$Z = \frac{LL_{observed} - \mu_{baseline}}{\sigma_{baseline}}$$
 
 Where:
+
 - $LL_{observed}$ is the current session's log-likelihood score
 - $\mu_{baseline}$ is the mean log-likelihood of your site's normal sessions (`baselineMeanLL`)
 - $\sigma_{baseline}$ is the standard deviation of that distribution (`baselineStdLL`)
 
-A Z-score of `-2.0` now means the same thing on every site: *this session is 2 standard deviations below your site's own normal.* The threshold is portable. The calibration is not.
+A Z-score of `-2.0` now means the same thing on every site: _this session is 2 standard deviations below your site's own normal._ The threshold is portable. The calibration is not.
 
 ### Running the Calibration Script
 
@@ -137,7 +138,7 @@ const engine = createIntentEngine({
 
   calibration: {
     baselineMeanLL: -3.47,
-    baselineStdLL:  0.91,
+    baselineStdLL: 0.91,
 
     // Fire when a session drops 1.8 standard deviations below your site's normal.
     // This is your site's -1.8σ — not some generic industry number.
@@ -148,12 +149,12 @@ const engine = createIntentEngine({
 
 ### Recalibration Cadence
 
-| Event | Action |
-|---|---|
-| Initial deployment | Run calibration on first 500–1,000 sessions. |
-| Major navigation redesign | Recalibrate immediately — topology change invalidates the prior. |
+| Event                                       | Action                                                                            |
+| ------------------------------------------- | --------------------------------------------------------------------------------- |
+| Initial deployment                          | Run calibration on first 500–1,000 sessions.                                      |
+| Major navigation redesign                   | Recalibrate immediately — topology change invalidates the prior.                  |
 | Seasonal traffic shift (e.g., Black Friday) | Recalibrate or use a time-windowed rolling mean if traffic profiles diverge >15%. |
-| New market / locale launch | Recalibrate per locale if navigation behavior differs materially. |
+| New market / locale launch                  | Recalibrate per locale if navigation behavior differs materially.                 |
 
 ---
 
@@ -170,8 +171,8 @@ A statistically significant anomaly is not business value. Business value is the
 **Intervention:** Proactively surface a "Talk to a Product Specialist" live chat widget — bypassing the standard chatbot queue.
 
 ```typescript
-engine.on('entropyAlert', (signal) => {
-  if (signal.currentState === 'product' && signal.entropy > 0.72) {
+engine.on('high_entropy', (signal) => {
+  if (signal.state === 'product' && signal.normalizedEntropy > 0.72) {
     chatWidget.escalateToPriorityQueue({
       message: 'Need help choosing? A specialist is available now.',
       triggerSource: 'passiveintent_entropy',
@@ -193,8 +194,8 @@ engine.on('entropyAlert', (signal) => {
 **Intervention:** Trigger a time-limited 10% discount modal, presented as a one-time offer, surfaced only to this statistically-identified high-intent cohort.
 
 ```typescript
-engine.on('trajectoryAnomaly', (signal) => {
-  if (signal.currentState === 'billing' && signal.visitCount >= 3) {
+engine.on('trajectory_anomaly', (signal) => {
+  if (signal.stateTo === 'billing' && signal.zScore > 2.5) {
     discountEngine.showLimitedOffer({
       discountPercent: 10,
       expiryMinutes: 30,
@@ -216,12 +217,18 @@ engine.on('trajectoryAnomaly', (signal) => {
 
 **Intervention:** Prefetch and pre-render the predicted next article into the browser cache before the user clicks.
 
+> **Planned feature — not yet available.** Dedicated `highProbabilityPrediction` event emission is on the roadmap. Today, call `intent.predictNextStates(threshold, sanitize)` after each `track()` call to get `{ state, probability }[]` and trigger prefetching from your own handler.
+
 ```typescript
-engine.on('highProbabilityPrediction', (signal) => {
-  if (signal.probability > 0.65 && signal.predictedNextState) {
-    const nextUrl = stateToUrlMap[signal.predictedNextState];
-    prefetchLink(nextUrl);           // <link rel="prefetch">
-    prerenderPage(nextUrl);          // Navigation API prerender hint
+// Current API — poll predictNextStates after each navigation
+engine.on('state_change', () => {
+  const predictions = intent.predictNextStates(0.65);
+  for (const { state, probability } of predictions) {
+    if (probability > 0.65) {
+      const nextUrl = stateToUrlMap[state];
+      prefetchLink(nextUrl); // <link rel="prefetch">
+      prerenderPage(nextUrl); // Navigation API prerender hint
+    }
   }
 });
 ```
@@ -234,17 +241,17 @@ engine.on('highProbabilityPrediction', (signal) => {
 
 Use this checklist before declaring a PassiveIntent deployment production-ready.
 
-| Step | Description | Status |
-|---|---|---|
-| ☐ State taxonomy defined | Abstract state labels mapped to your URL/route patterns | — |
-| ☐ Perfect Path documented | Linear or cyclical baseline path confirmed with product team | — |
-| ☐ Idle threshold set | Validated against real session recordings, not guessed | — |
-| ☐ Calibration sample collected | Minimum 500 production sessions logged | — |
-| ☐ `baselineMeanLL` extracted | Computed via `runCalibration()` utility | — |
-| ☐ `baselineStdLL` extracted | Computed via `runCalibration()` utility | — |
-| ☐ `zScoreThreshold` tuned | Back-tested against labeled sessions (false-positive rate < 5%) | — |
-| ☐ Intervention handlers wired | Each anomaly event type mapped to a concrete business action | — |
-| ☐ Recalibration schedule set | Calendar reminder for post-redesign and seasonal recalibration | — |
+| Step                           | Description                                                     | Status |
+| ------------------------------ | --------------------------------------------------------------- | ------ |
+| ☐ State taxonomy defined       | Abstract state labels mapped to your URL/route patterns         | —      |
+| ☐ Perfect Path documented      | Linear or cyclical baseline path confirmed with product team    | —      |
+| ☐ Idle threshold set           | Validated against real session recordings, not guessed          | —      |
+| ☐ Calibration sample collected | Minimum 500 production sessions logged                          | —      |
+| ☐ `baselineMeanLL` extracted   | Computed via `runCalibration()` utility                         | —      |
+| ☐ `baselineStdLL` extracted    | Computed via `runCalibration()` utility                         | —      |
+| ☐ `zScoreThreshold` tuned      | Back-tested against labeled sessions (false-positive rate < 5%) | —      |
+| ☐ Intervention handlers wired  | Each anomaly event type mapped to a concrete business action    | —      |
+| ☐ Recalibration schedule set   | Calendar reminder for post-redesign and seasonal recalibration  | —      |
 
 ---
 

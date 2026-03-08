@@ -439,7 +439,7 @@ export default function AmazonPlayground() {
           </button>
           <button
             className="btn btn-secondary"
-            onClick={() => track('/amazon/checkout/payment')}
+            onClick={goToPayment}
             disabled={simulating}
             data-tooltip="Navigates to the payment page. Linger there to trigger dwell_time_anomaly or hesitation_detected"
           >
@@ -568,7 +568,16 @@ export default function AmazonPlayground() {
               <div
                 key={p.id}
                 className={`product-card${selectedProduct?.id === p.id ? ' active' : ''}`}
+                role="button"
+                tabIndex={0}
+                aria-pressed={selectedProduct?.id === p.id}
                 onClick={() => selectProduct(p)}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter' || e.key === ' ') {
+                    e.preventDefault();
+                    selectProduct(p);
+                  }
+                }}
               >
                 <div className="product-img">{p.emoji}</div>
                 <div className="product-name">{p.name}</div>

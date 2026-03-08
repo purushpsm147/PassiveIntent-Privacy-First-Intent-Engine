@@ -18,6 +18,10 @@
     />
     <link rel="stylesheet" href="./styles.css" />
     <style>
+      :root {
+        --fg: var(--text, #ecf3ff);
+        --accent: var(--primary, #4dd0e1);
+      }
       .legal-page {
         max-width: 740px;
         margin: 0 auto;
@@ -100,7 +104,7 @@
       .disclaimer {
         font-size: 0.82rem !important;
         font-family: 'IBM Plex Mono', monospace;
-        background: rgba(255,255,255,0.03);
+        background: rgba(255, 255, 255, 0.03);
         border: 1px solid var(--border);
         border-radius: 8px;
         padding: 16px;
@@ -174,9 +178,9 @@
         <p>PassiveIntent operates on a dual-licensing model:</p>
         <ul>
           <li>
-            <strong>Open Source (AGPL-3.0):</strong> By default, the software is provided under
-            the GNU Affero General Public License v3.0. Any use, modification, or distribution
-            under this tier must strictly adhere to the AGPL-3.0 copyleft requirements.
+            <strong>Open Source (AGPL-3.0):</strong> By default, the software is provided under the
+            GNU Affero General Public License v3.0. Any use, modification, or distribution under
+            this tier must strictly adhere to the AGPL-3.0 copyleft requirements.
           </li>
           <li>
             <strong>Commercial Exemption License:</strong> Purchasing a Commercial License (Indie,
@@ -207,8 +211,8 @@
         <ul>
           <li>Sub-license, resell, or white-label PassiveIntent.</li>
           <li>
-            Wrap PassiveIntent into a standalone API, SDK, Shopify App, or B2B application where
-            the primary value derived by your end-user is the intent-tracking functionality itself.
+            Wrap PassiveIntent into a standalone API, SDK, Shopify App, or B2B application where the
+            primary value derived by your end-user is the intent-tracking functionality itself.
           </li>
           <li>
             Offer PassiveIntent as a managed service or SaaS product to third parties without an
@@ -224,14 +228,14 @@
         <p>
           All payments are processed securely through our authorized
           <strong>Merchant of Record</strong>. Due to the non-returnable nature of downloadable
-          software and license exemptions, <strong>all sales are final</strong>. Refunds are
-          granted strictly at our discretion or as required by applicable consumer law.
+          software and license exemptions, <strong>all sales are final</strong>. Refunds are granted
+          strictly at our discretion or as required by applicable consumer law.
         </p>
 
         <h2>5. Intellectual Property</h2>
         <p>
-          <strong>PassiveIntent Technologies LLP</strong> retains all copyright, title, and
-          interest in the software. Purchasing a commercial license grants you a
+          <strong>PassiveIntent Technologies LLP</strong> retains all copyright, title, and interest
+          in the software. Purchasing a commercial license grants you a
           <strong>usage right</strong>, not an ownership transfer.
         </p>
 
@@ -239,10 +243,10 @@
         <p class="disclaimer">
           THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED,
           INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR
-          PURPOSE, AND NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE
-          LIABLE FOR ANY CLAIM, DAMAGES, OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT,
-          TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR
-          OTHER DEALINGS IN THE SOFTWARE.
+          PURPOSE, AND NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE
+          FOR ANY CLAIM, DAMAGES, OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR
+          OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
+          DEALINGS IN THE SOFTWARE.
         </p>
 
         <h2>7. Contact Information</h2>
@@ -258,7 +262,9 @@
         PassiveIntent &copy; <span id="year"></span> &middot; Privacy-first intent engine for
         conversion teams
       </p>
-      <div style="display:flex;gap:20px;flex-wrap:wrap;justify-content:center;margin-top:8px">
+      <div
+        style="display: flex; gap: 20px; flex-wrap: wrap; justify-content: center; margin-top: 8px"
+      >
         <a href="./privacy.html">Privacy Policy</a>
         <a href="./terms.html">Terms of Service</a>
         <a

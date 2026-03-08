@@ -20,7 +20,7 @@ notifications:
   email:
     enabled: true
     recipients:
-      - purushpsm147@yahoo.co.in
+      - purushottam@passiveintent.dev
 
 # Optional: customize as needed for your workflow
 language: 'en-US'

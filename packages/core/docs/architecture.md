@@ -1,5 +1,5 @@
 ﻿<!--
-  Copyright (c) 2026 Purushottam <purushpsm147@yahoo.co.in>
+  Copyright (c) 2026 Purushottam <purushottam@passiveintent.dev>
 
   This source code is licensed under the AGPL-3.0-only license found in the
   LICENSE file in the root directory of this source tree.
@@ -2854,7 +2854,7 @@ This pattern does not require a consent banner, does not require a Data Processi
 
 ## 🛡️ Threat Model & Security Boundary
 
-Because UI Telepathy operates 100% locally on the client-side, the traditional cloud security model (API keys, SSL/TLS transit, database encryption) does not apply. Instead, we secure the data mathematically.
+Because PassiveIntentt operates 100% locally on the client-side, the traditional cloud security model (API keys, SSL/TLS transit, database encryption) does not apply. Instead, we secure the data mathematically.
 
 ### 1. The Network Threat (MitM)
 
@@ -2868,7 +2868,7 @@ If the host website suffers a Cross-Site Scripting (XSS) attack, the rogue scrip
 
 **Our Mitigation:** **Cryptographic Anonymization.**
 
-If a rogue script steals the UI Telepathy `localStorage` payload, it acquires two things:
+If a rogue script steals the PassiveIntent `localStorage` payload, it acquires two things:
 
 1. **A Binary Bloom Filter:** A bitset of FNV-1a hashes. It is mathematically impossible to un-hash this bitset to determine which pages the user visited.
 2. **A Sparse Markov Matrix:** A map of `Uint16` integers representing generalized transition probabilities. The engine aggressively strips PII (UUIDs, ObjectIDs, query parameters) via the `RouteNormalizer` before indexing.
@@ -2883,7 +2883,7 @@ The engine synchronizes counters and events across multiple open tabs.
 
 ### 4. Host Responsibility (CSP)
 
-UI Telepathy provides data-structure immunity, but it cannot prevent a compromised DOM. It is the responsibility of the host enterprise to implement a strict **Content Security Policy (CSP)** and serve the SDK via HTTPS with Subresource Integrity (SRI) tags to prevent the execution of malicious scripts.
+PassiveIntent provides data-structure immunity, but it cannot prevent a compromised DOM. It is the responsibility of the host enterprise to implement a strict **Content Security Policy (CSP)** and serve the SDK via HTTPS with Subresource Integrity (SRI) tags to prevent the execution of malicious scripts.
 
 ---
 
@@ -2892,7 +2892,7 @@ UI Telepathy provides data-structure immunity, but it cannot prevent a compromis
 This project is licensed under **AGPL-3.0-only**.
 
 ```
-Copyright (c) 2026 Purushottam <purushpsm147@yahoo.co.in>
+Copyright (c) 2026 Purushottam <purushottam@passiveintent.dev>
 ```
 
 The AGPL-3.0 requires that if you distribute software incorporating this library — including running it as a network service — you must make the **complete source code** of your application available under the same license.
@@ -2905,7 +2905,7 @@ The AGPL-3.0 requires that if you distribute software incorporating this library
 | Internal company tooling (not distributed)     | No copyleft obligation triggered                           |
 | Commercial SaaS / products served to end-users | Must provide source access, or obtain a commercial license |
 
-To obtain a commercial license that removes the copyleft requirement, contact the author at **purushpsm147@yahoo.co.in**.
+To obtain a commercial license that removes the copyleft requirement, contact the author at **support@passiveintent.dev**.
 
 For the authoritative license text, see [LICENSE](../LICENSE).
 

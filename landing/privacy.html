@@ -18,6 +18,10 @@
     />
     <link rel="stylesheet" href="./styles.css" />
     <style>
+      :root {
+        --fg: var(--text, #ecf3ff);
+        --accent: var(--primary, #4dd0e1);
+      }
       .legal-page {
         max-width: 740px;
         margin: 0 auto;
@@ -155,8 +159,9 @@
 
         <h2>2. The PassiveIntent Engine (Zero-Egress Guarantee)</h2>
         <p>
-          PassiveIntent is engineered as a <strong>privacy-first, zero-egress behavioral engine</strong>.
-          If you deploy the <code>@passiveintent/core</code> SDK on your application, we
+          PassiveIntent is engineered as a
+          <strong>privacy-first, zero-egress behavioral engine</strong>. If you deploy the
+          <code>@passiveintent/core</code> SDK on your application, we
           <strong>do not collect, receive, or process any of your end-users' data</strong>. The
           software executes entirely within the local client environment and makes
           <strong>zero network requests</strong> to our servers.
@@ -169,18 +174,18 @@
         </p>
         <ul>
           <li>
-            <strong>Contact Information:</strong> If you contact us via email, we collect your
-            email address and communication history.
+            <strong>Contact Information:</strong> If you contact us via email, we collect your email
+            address and communication history.
           </li>
           <li>
             <strong>Billing Information:</strong> When you purchase a commercial license, your
-            payment is processed securely by our Merchant of Record (e.g., Lemon Squeezy). We do
-            not collect or store your raw credit card details. We only receive your name, email,
-            company name, and billing address for license generation and tax compliance.
+            payment is processed securely by our Merchant of Record (e.g., Lemon Squeezy). We do not
+            collect or store your raw credit card details. We only receive your name, email, company
+            name, and billing address for license generation and tax compliance.
           </li>
           <li>
-            <strong>Website Analytics:</strong> We may collect basic, anonymized telemetry
-            regarding website traffic to improve our developer documentation and marketing.
+            <strong>Website Analytics:</strong> We may collect basic, anonymized telemetry regarding
+            website traffic to improve our developer documentation and marketing.
           </li>
         </ul>
 
@@ -193,9 +198,9 @@
 
         <h2>5. Third-Party Services</h2>
         <p>
-          We use a <strong>Merchant of Record</strong> (Lemon Squeezy / Paddle) to handle all
-          global tax compliance, invoicing, and payment processing. By purchasing a license, your
-          billing data is subject to their respective privacy policies.
+          We use a <strong>Merchant of Record</strong> (Lemon Squeezy / Paddle) to handle all global
+          tax compliance, invoicing, and payment processing. By purchasing a license, your billing
+          data is subject to their respective privacy policies.
         </p>
 
         <h2>6. Contact Us</h2>
@@ -211,7 +216,9 @@
         PassiveIntent &copy; <span id="year"></span> &middot; Privacy-first intent engine for
         conversion teams
       </p>
-      <div style="display:flex;gap:20px;flex-wrap:wrap;justify-content:center;margin-top:8px">
+      <div
+        style="display: flex; gap: 20px; flex-wrap: wrap; justify-content: center; margin-top: 8px"
+      >
         <a href="./privacy.html">Privacy Policy</a>
         <a href="./terms.html">Terms of Service</a>
         <a

@@ -3,7 +3,7 @@
  * Shows how to combine usePassiveIntent with the raw IntentManager API
  * for methods not yet exposed by the hook.
  */
-import React, { useCallback, useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { IntentManager } from '@passiveintent/core';
 import { MemoryStorageAdapter } from '@passiveintent/core';
 import { useIntent } from '../IntentContext';
@@ -11,21 +11,32 @@ import CodeBlock from '../components/CodeBlock';
 import { timerAdapter, lifecycleAdapter } from '../adapters';
 import type { ConversionPayload } from '@passiveintent/core';
 
-// Second IntentManager instance purely for the trackConversion demo
-// so we don't pollute the shared engine's event log with conflicting listeners.
-const convManager = new IntentManager({
-  storageKey: 'pi-conv-demo',
-  storage: new MemoryStorageAdapter(),
-  timer: timerAdapter,
-  lifecycleAdapter: lifecycleAdapter,
-});
-
 export default function Conversion() {
   const { on } = useIntent();
+  const convManagerRef = useRef<IntentManager | null>(null);
   const [type, setType] = useState('purchase');
   const [value, setValue] = useState(49.99);
   const [currency, setCurrency] = useState('USD');
   const [history, setHistory] = useState<ConversionPayload[]>([]);
+
+  // Initialize convManager lazily on mount, destroy on unmount
+  useEffect(() => {
+    if (!convManagerRef.current) {
+      convManagerRef.current = new IntentManager({
+        storageKey: 'pi-conv-demo',
+        storage: new MemoryStorageAdapter(),
+        timer: timerAdapter,
+        lifecycleAdapter: lifecycleAdapter,
+      });
+    }
+
+    return () => {
+      if (convManagerRef.current) {
+        convManagerRef.current.destroy();
+        convManagerRef.current = null;
+      }
+    };
+  }, []);
 
   useEffect(() => {
     // Listen on the shared engine's conversion event too
@@ -36,13 +47,16 @@ export default function Conversion() {
 
   // Also listen on the local convManager
   useEffect(() => {
-    return convManager.on('conversion', (p) => {
+    if (!convManagerRef.current) return;
+    return convManagerRef.current.on('conversion', (p: unknown) => {
       setHistory((h) => [p as ConversionPayload, ...h].slice(0, 10));
     });
   }, []);
 
   const handleTrack = useCallback(() => {
-    convManager.trackConversion({ type, value, currency });
+    if (convManagerRef.current && Number.isFinite(value)) {
+      convManagerRef.current.trackConversion({ type, value, currency });
+    }
   }, [type, value, currency]);
 
   return (

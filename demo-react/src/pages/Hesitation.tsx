@@ -105,8 +105,8 @@ export default function Hesitation() {
       <CodeBlock
         label="Intervention Ladder recipe"
         code={`<span class="fn">useEffect</span>(() => {
-  <span class="kw">return</span> <span class="fn">on</span>(<span class="str">'hesitation_detected'</span>, ({ <span class="prop">zScoreDwell</span>, <span class="prop">zScoreTrajectory</span> }) => {
-    <span class="kw">const</span> severity = (zScoreDwell + zScoreTrajectory) / <span class="num">2</span>;
+  <span class="kw">return</span> <span class="fn">on</span>(<span class="str">'hesitation_detected'</span>, ({ <span class="prop">dwellZScore</span>, <span class="prop">trajectoryZScore</span> }) => {
+    <span class="kw">const</span> severity = (dwellZScore + trajectoryZScore) / <span class="num">2</span>;
     <span class="kw">if</span>      (severity < <span class="num">2.5</span>) <span class="fn">setTooltip</span>(<span class="str">'Free shipping today!'</span>);
     <span class="kw">else if</span> (severity < <span class="num">3.5</span>) <span class="fn">setModal</span>({ discount: <span class="str">'10%'</span> });
     <span class="kw">else</span>               <span class="fn">openLiveChat</span>(<span class="str">'Hi! Can I help you complete your order?'</span>);

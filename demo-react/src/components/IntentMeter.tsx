@@ -136,7 +136,11 @@ export default function IntentMeter() {
       on('user_idle', () => setIdle(100)),
       on('user_resumed', () => setIdle(0)),
     ];
-    return () => unsubs.forEach((u) => u());
+    return () => {
+      unsubs.forEach((u) => {
+        u();
+      });
+    };
   }, [on]);
 
   // ─── Per-signal simulation callbacks ───────────────────────────────────

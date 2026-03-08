@@ -65,9 +65,9 @@ export default function Overview() {
         </p>
         <div className="chip-row">
           {QUICK_STATES.map((s) => (
-            <span key={s} className="state-chip" onClick={() => handleTrack(s)}>
+            <button key={s} type="button" className="state-chip" onClick={() => handleTrack(s)}>
               {s}
-            </span>
+            </button>
           ))}
         </div>
         {stateCount > 0 && (
