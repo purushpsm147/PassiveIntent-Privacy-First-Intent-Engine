@@ -2767,12 +2767,14 @@ function updateMeterGauge(name: string, value: number) {
   (meterState as Record<string, number>)[name] = v;
   const fill = document.getElementById(`gauge-${name}`);
   const valEl = document.getElementById(`gauge-${name}-val`);
+  const meterEl = document.getElementById(`meter-${name}`);
   if (fill) {
     fill.style.height = `${v}%`;
     fill.style.background = getGaugeColor(name);
     fill.style.boxShadow = v > 50 ? `0 0 8px ${getGaugeColor(name)}` : 'none';
   }
   if (valEl) valEl.textContent = `${Math.round(v)}%`;
+  if (meterEl) meterEl.setAttribute('aria-valuenow', String(Math.round(v)));
 }
 
 function getGaugeColor(name: string): string {
@@ -3032,11 +3034,13 @@ document.querySelectorAll<HTMLElement>('.nav-item').forEach((btn) => {
     sidebarEl.classList.add('sidebar--hidden');
     layoutEl.classList.add('sidebar-collapsed');
     expandBtn.style.display = '';
+    collapseBtn.setAttribute('aria-expanded', 'false');
   });
   expandBtn.addEventListener('click', () => {
     sidebarEl.classList.remove('sidebar--hidden');
     layoutEl.classList.remove('sidebar-collapsed');
     expandBtn.style.display = 'none';
+    collapseBtn.setAttribute('aria-expanded', 'true');
   });
 }
 
@@ -3051,11 +3055,13 @@ document.querySelectorAll<HTMLElement>('.nav-item').forEach((btn) => {
     logEl.classList.add('event-log--hidden');
     layoutEl.classList.add('log-collapsed');
     expandBtn.style.display = '';
+    collapseBtn.setAttribute('aria-expanded', 'false');
   });
   expandBtn.addEventListener('click', () => {
     logEl.classList.remove('event-log--hidden');
     layoutEl.classList.remove('log-collapsed');
     expandBtn.style.display = 'none';
+    collapseBtn.setAttribute('aria-expanded', 'true');
   });
 }
 

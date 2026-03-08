@@ -53,7 +53,16 @@
       <div class="layout">
         <!-- Sidebar nav -->
         <nav class="sidebar" id="sidebar">
-          <button class="sidebar-toggle" id="sidebar-collapse" title="Collapse sidebar">◀</button>
+          <button
+            class="sidebar-toggle"
+            id="sidebar-collapse"
+            title="Collapse sidebar"
+            aria-label="Collapse sidebar"
+            aria-controls="sidebar"
+            aria-expanded="true"
+          >
+            ◀
+          </button>
           <div class="nav-section-label">Getting Started</div>
           <button class="nav-item active" data-demo="overview">📊 Overview &amp; Telemetry</button>
           <button class="nav-item" data-demo="basic-tracking">📍 Basic Tracking</button>
@@ -90,6 +99,8 @@
           class="sidebar-expand"
           id="sidebar-expand"
           title="Expand sidebar"
+          aria-label="Expand sidebar"
+          aria-controls="sidebar"
           style="display: none"
         >
           ▶
@@ -107,49 +118,137 @@
               <span class="intent-meter-title">Intent Meter</span>
               <span class="drag-grip">⠿</span>
             </div>
-            <div class="gauge-row">
+            <div
+              class="gauge-row"
+              role="meter"
+              aria-label="Rage level"
+              aria-valuemin="0"
+              aria-valuemax="100"
+              aria-valuenow="0"
+              id="meter-rage"
+            >
               <span class="gauge-emoji">😤</span>
               <div class="gauge-track"><div class="gauge-fill" id="gauge-rage"></div></div>
               <span class="gauge-label">Rage</span>
               <span class="gauge-value" id="gauge-rage-val">0%</span>
-              <button class="gauge-sim-btn" id="sim-rage" title="Simulate Rage">⚡</button>
+              <button
+                class="gauge-sim-btn"
+                id="sim-rage"
+                title="Simulate Rage"
+                aria-label="Simulate Rage"
+              >
+                ⚡
+              </button>
             </div>
-            <div class="gauge-row">
+            <div
+              class="gauge-row"
+              role="meter"
+              aria-label="Anxiety level"
+              aria-valuemin="0"
+              aria-valuemax="100"
+              aria-valuenow="0"
+              id="meter-anxiety"
+            >
               <span class="gauge-emoji">😰</span>
               <div class="gauge-track"><div class="gauge-fill" id="gauge-anxiety"></div></div>
               <span class="gauge-label">Anxiety</span>
               <span class="gauge-value" id="gauge-anxiety-val">0%</span>
-              <button class="gauge-sim-btn" id="sim-anxiety" title="Simulate Anxiety">⚡</button>
+              <button
+                class="gauge-sim-btn"
+                id="sim-anxiety"
+                title="Simulate Anxiety"
+                aria-label="Simulate Anxiety"
+              >
+                ⚡
+              </button>
             </div>
-            <div class="gauge-row">
+            <div
+              class="gauge-row"
+              role="meter"
+              aria-label="Hesitation level"
+              aria-valuemin="0"
+              aria-valuemax="100"
+              aria-valuenow="0"
+              id="meter-hesitation"
+            >
               <span class="gauge-emoji">🤔</span>
               <div class="gauge-track"><div class="gauge-fill" id="gauge-hesitation"></div></div>
               <span class="gauge-label">Hesitation</span>
               <span class="gauge-value" id="gauge-hesitation-val">0%</span>
-              <button class="gauge-sim-btn" id="sim-hesitation" title="Simulate Hesitation">
+              <button
+                class="gauge-sim-btn"
+                id="sim-hesitation"
+                title="Simulate Hesitation"
+                aria-label="Simulate Hesitation"
+              >
                 ⚡
               </button>
             </div>
-            <div class="gauge-row">
+            <div
+              class="gauge-row"
+              role="meter"
+              aria-label="Bot likelihood"
+              aria-valuemin="0"
+              aria-valuemax="100"
+              aria-valuenow="0"
+              id="meter-bot"
+            >
               <span class="gauge-emoji">🤖</span>
               <div class="gauge-track"><div class="gauge-fill" id="gauge-bot"></div></div>
               <span class="gauge-label">Bot</span>
               <span class="gauge-value" id="gauge-bot-val">0%</span>
-              <button class="gauge-sim-btn" id="sim-bot" title="Simulate Bot">⚡</button>
+              <button
+                class="gauge-sim-btn"
+                id="sim-bot"
+                title="Simulate Bot"
+                aria-label="Simulate Bot"
+              >
+                ⚡
+              </button>
             </div>
-            <div class="gauge-row">
+            <div
+              class="gauge-row"
+              role="meter"
+              aria-label="Idle level"
+              aria-valuemin="0"
+              aria-valuemax="100"
+              aria-valuenow="0"
+              id="meter-idle"
+            >
               <span class="gauge-emoji">💤</span>
               <div class="gauge-track"><div class="gauge-fill" id="gauge-idle"></div></div>
               <span class="gauge-label">Idle</span>
               <span class="gauge-value" id="gauge-idle-val">0%</span>
-              <button class="gauge-sim-btn" id="sim-idle" title="Simulate Idle">⚡</button>
+              <button
+                class="gauge-sim-btn"
+                id="sim-idle"
+                title="Simulate Idle"
+                aria-label="Simulate Idle"
+              >
+                ⚡
+              </button>
             </div>
-            <div class="gauge-row">
+            <div
+              class="gauge-row"
+              role="meter"
+              aria-label="Exit intent level"
+              aria-valuemin="0"
+              aria-valuemax="100"
+              aria-valuenow="0"
+              id="meter-exit"
+            >
               <span class="gauge-emoji">🚪</span>
               <div class="gauge-track"><div class="gauge-fill" id="gauge-exit"></div></div>
               <span class="gauge-label">Exit</span>
               <span class="gauge-value" id="gauge-exit-val">0%</span>
-              <button class="gauge-sim-btn" id="sim-exit" title="Simulate Exit">⚡</button>
+              <button
+                class="gauge-sim-btn"
+                id="sim-exit"
+                title="Simulate Exit"
+                aria-label="Simulate Exit"
+              >
+                ⚡
+              </button>
             </div>
           </div>
         </div>
@@ -160,14 +259,37 @@
             <span>📡 Live Event Log</span>
             <div style="display: flex; gap: 4px">
               <button id="clear-log" class="btn btn-ghost btn-sm">Clear</button>
-              <button id="log-collapse" class="btn btn-ghost btn-sm" title="Collapse log">▶</button>
+              <button
+                id="log-collapse"
+                class="btn btn-ghost btn-sm"
+                title="Collapse log"
+                aria-label="Collapse event log"
+                aria-controls="event-log"
+                aria-expanded="true"
+              >
+                ▶
+              </button>
             </div>
           </div>
-          <div class="event-log-entries" id="log-entries">
+          <div
+            class="event-log-entries"
+            id="log-entries"
+            role="log"
+            aria-live="polite"
+            aria-relevant="additions"
+            aria-label="Live intent events"
+          >
             <div class="log-empty">Events will appear here as you interact with the demos.</div>
           </div>
         </aside>
-        <button class="log-expand" id="log-expand" title="Expand event log" style="display: none">
+        <button
+          class="log-expand"
+          id="log-expand"
+          title="Expand event log"
+          aria-label="Expand event log"
+          aria-controls="event-log"
+          style="display: none"
+        >
           ◀ Log
         </button>
       </div>
