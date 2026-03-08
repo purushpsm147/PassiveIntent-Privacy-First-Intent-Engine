@@ -326,10 +326,33 @@ nav a:hover {
   margin-top: 0;
 }
 
+.demo-section {
+  background:
+    radial-gradient(ellipse at 60% 0%, rgba(86, 226, 240, 0.12), transparent 60%),
+    radial-gradient(ellipse at 10% 80%, rgba(126, 179, 255, 0.1), transparent 50%);
+  border: 1px solid rgba(86, 226, 240, 0.2);
+  border-radius: calc(var(--radius) + 4px);
+  padding: clamp(24px, 4vw, 48px);
+}
+
+.demo-subhead {
+  color: var(--muted);
+  max-width: 580px;
+  margin: 8px 0 0;
+  font-size: 0.97rem;
+  line-height: 1.6;
+}
+
+.demo-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  margin-bottom: 16px;
+}
+
 .demo-tabs {
   display: flex;
   gap: 8px;
-  margin-bottom: 16px;
 }
 
 .demo-tab {
@@ -343,19 +366,71 @@ nav a:hover {
   cursor: pointer;
   transition:
     border-color 0.2s,
-    color 0.2s;
+    color 0.2s,
+    background 0.2s;
 }
 
-.demo-tab.active {
+.demo-tab:hover {
   border-color: var(--primary);
   color: var(--primary);
 }
 
+.demo-tab.active {
+  border-color: var(--primary);
+  color: #041221;
+  background: var(--primary);
+  font-weight: 500;
+}
+
+.demo-live-badge {
+  font-size: 0.78rem;
+  color: #4ade80;
+  letter-spacing: 0.04em;
+  font-family: 'IBM Plex Mono', monospace;
+  animation: pulse-live 2s ease-in-out infinite;
+}
+
+@keyframes pulse-live {
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.4;
+  }
+}
+
+.demo-embed {
+  position: relative;
+}
+
 .demo-embed iframe {
   width: 100%;
-  height: 600px;
-  border: 1px solid var(--border);
+  height: 680px;
+  border: 1px solid rgba(86, 226, 240, 0.3);
   border-radius: var(--radius);
+  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.4);
+  display: block;
+}
+
+.demo-open-link {
+  position: absolute;
+  bottom: 12px;
+  right: 12px;
+  font-size: 0.78rem;
+  font-family: 'IBM Plex Mono', monospace;
+  color: var(--primary);
+  background: rgba(4, 18, 33, 0.85);
+  border: 1px solid rgba(86, 226, 240, 0.3);
+  border-radius: 6px;
+  padding: 4px 10px;
+  text-decoration: none;
+  backdrop-filter: blur(4px);
+  transition: background 0.2s;
+}
+
+.demo-open-link:hover {
+  background: rgba(86, 226, 240, 0.15);
 }
 
 .coming-link {
@@ -453,6 +528,14 @@ code {
 .price-card p {
   margin: 0;
   color: var(--muted);
+}
+
+.price-card .btn {
+  margin-top: 16px;
+  display: inline-block;
+  width: 100%;
+  text-align: center;
+  box-sizing: border-box;
 }
 
 .price-card.featured {
