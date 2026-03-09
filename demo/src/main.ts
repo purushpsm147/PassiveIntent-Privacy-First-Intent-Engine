@@ -1906,6 +1906,11 @@ intent.<span class="fn">destroy</span>(); <span class="cmt">// closes BroadcastC
         }),
       ];
 
+      // Reset the session-wide cart counter to match the fresh UI state.
+      // cartItems is recreated on each mount, so the counter must be synced to avoid drift
+      // between UI state (fresh empty array) and telemetry (potentially non-zero counter).
+      intent.resetCounter('cart-items');
+
       type PlaygroundProduct = {
         id: string;
         name: string;
@@ -1913,6 +1918,7 @@ intent.<span class="fn">destroy</span>(); <span class="cmt">// closes BroadcastC
         price: number;
         state: string;
       };
+
       let selectedProduct: PlaygroundProduct | null = null;
       let cartItems: PlaygroundProduct[] = [];
       let checkoutStep = 0; // 0=browse, 1=cart, 2=payment
@@ -2002,11 +2008,14 @@ intent.<span class="fn">destroy</span>(); <span class="cmt">// closes BroadcastC
 
       // Product clicks → track
       el.querySelectorAll<HTMLElement>('.product-card').forEach((card) => {
-        card.addEventListener('click', () => {
+        card.addEventListener('click', (event) => {
+          if ((event.target as HTMLElement).closest('[data-add-cart]')) return;
           if (checkoutStep !== 0) return;
           selectedProduct = productFromCard(card);
           intent.track(selectedProduct.state);
-          el.querySelectorAll<HTMLElement>('.product-card').forEach((c) => c.classList.remove('active'));
+          el.querySelectorAll<HTMLElement>('.product-card').forEach((c) =>
+            c.classList.remove('active'),
+          );
           card.classList.add('active');
           renderStoreState();
         });
@@ -2018,7 +2027,9 @@ intent.<span class="fn">destroy</span>(); <span class="cmt">// closes BroadcastC
         const addCartBtn = target.closest('[data-add-cart]') as HTMLElement | null;
         if (addCartBtn) {
           const state = addCartBtn.dataset.addCart!;
-          const card = el.querySelector<HTMLElement>(`.product-card[data-product-state="${state}"]`);
+          const card = el.querySelector<HTMLElement>(
+            `.product-card[data-product-state="${state}"]`,
+          );
           let product = card ? productFromCard(card) : selectedProduct;
           if (!product) {
             // If we can't resolve a product, don't modify cart or telemetry.
@@ -2062,7 +2073,9 @@ intent.<span class="fn">destroy</span>(); <span class="cmt">// closes BroadcastC
             intent.incrementCounter('cart-items', -removedItems);
           }
           cartItems = [];
-          el.querySelectorAll<HTMLElement>('.product-card').forEach((c) => c.classList.remove('active'));
+          el.querySelectorAll<HTMLElement>('.product-card').forEach((c) =>
+            c.classList.remove('active'),
+          );
           renderStoreState();
         }
       });
@@ -3135,6 +3148,25 @@ document.getElementById('sim-exit')!.addEventListener('click', () => {
 // ─── Navigation ───────────────────────────────────────────────────────────────
 let activeDemo = 'overview';
 let activeCleanup: (() => void) | void = undefined;
+const QUICK_JUMPS: Array<{ key: string; label: string }> = [
+  { key: 'overview', label: 'Start with Overview' },
+  { key: 'amazon-playground', label: 'Open Playground' },
+  { key: 'high-entropy', label: 'Trigger Entropy' },
+  { key: 'exit-intent', label: 'Test Exit Intent' },
+  { key: 'byob', label: 'Calibrate Baselines' },
+];
+
+const quickJumpEl = document.getElementById('quick-jump-bar');
+if (quickJumpEl) {
+  quickJumpEl.innerHTML = QUICK_JUMPS.map(
+    (jump) =>
+      `<button class="quick-jump" type="button" data-quick-demo="${jump.key}">${jump.label}</button>`,
+  ).join('');
+
+  quickJumpEl.querySelectorAll<HTMLElement>('[data-quick-demo]').forEach((btn) => {
+    btn.addEventListener('click', () => navigateTo(btn.dataset.quickDemo!));
+  });
+}
 
 function navigateTo(demoKey: string): void {
   if (!demos[demoKey]) return;
@@ -3149,6 +3181,11 @@ function navigateTo(demoKey: string): void {
 
   activeDemo = demoKey;
   const demo = demos[demoKey];
+  const headingEl = document.getElementById('active-demo-label');
+  if (headingEl) headingEl.textContent = demo.title;
+  document.querySelectorAll<HTMLElement>('.quick-jump').forEach((btn) => {
+    btn.classList.toggle('active', btn.dataset.quickDemo === demoKey);
+  });
   const contentEl = document.getElementById('content')!;
   contentEl.innerHTML = demo.render();
   activeCleanup = demo.setup(contentEl);

@@ -3,23 +3,30 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>PassiveIntent — Interactive Demo</title>
+    <title>PassiveIntent — Guided Demo Lab</title>
+    <meta name="theme-color" content="#0d1017" />
     <link
       rel="icon"
       type="image/svg+xml"
       href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🧠</text></svg>"
     />
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=Manrope:wght@400;500;600;700;800&display=swap"
+      rel="stylesheet"
+    />
     <link rel="stylesheet" href="/src/style.css" />
   </head>
   <body>
     <div id="app">
-      <!-- Header -->
       <header class="header">
         <div class="header-left">
           <span class="logo">🧠</span>
           <div>
+            <span class="header-kicker">Core library guided lab</span>
             <h1 class="header-title">PassiveIntent</h1>
-            <span class="header-sub">Interactive Feature Demo</span>
+            <span class="header-sub">Vanilla JS demo with feature-parity shell</span>
           </div>
         </div>
         <div class="header-right">
@@ -31,7 +38,7 @@
             class="btn btn-ghost btn-sm"
             title="Destroy the current engine and reload — clears all learned transitions, bot state, trajectory, and gauges."
           >
-            🔄 Reset Session
+            Reset Session
           </button>
           <a
             href="https://github.com/passiveintent/core"
@@ -39,7 +46,7 @@
             rel="noopener noreferrer"
             class="gh-link"
           >
-            <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor">
               <path
                 d="M12 0C5.37 0 0 5.37 0 12c0 5.31 3.435 9.795 8.205 11.385.6.105.825-.255.825-.57 0-.285-.015-1.23-.015-2.235-3.015.555-3.795-.735-4.035-1.41-.135-.345-.72-1.41-1.23-1.695-.42-.225-1.02-.78-.015-.795.945-.015 1.62.87 1.845 1.23 1.08 1.815 2.805 1.305 3.495.99.105-.78.42-1.305.765-1.605-2.67-.3-5.46-1.335-5.46-5.925 0-1.305.465-2.385 1.23-3.225-.12-.3-.54-1.53.12-3.18 0 0 1.005-.315 3.3 1.23.96-.27 1.98-.405 3-.405s2.04.135 3 .405c2.295-1.56 3.3-1.23 3.3-1.23.66 1.65.24 2.88.12 3.18.765.84 1.23 1.905 1.23 3.225 0 4.605-2.805 5.625-5.475 5.925.435.375.81 1.095.81 2.22 0 1.605-.015 2.895-.015 3.3 0 .315.225.69.825.57A12.02 12.02 0 0024 12c0-6.63-5.37-12-12-12z"
               />
@@ -49,9 +56,7 @@
         </div>
       </header>
 
-      <!-- Main layout -->
       <div class="layout">
-        <!-- Sidebar nav -->
         <nav class="sidebar" id="sidebar">
           <button
             class="sidebar-toggle"
@@ -63,36 +68,40 @@
           >
             ◀
           </button>
-          <div class="nav-section-label">Getting Started</div>
-          <button class="nav-item active" data-demo="overview">📊 Overview &amp; Telemetry</button>
-          <button class="nav-item" data-demo="basic-tracking">📍 Basic Tracking</button>
+          <div class="sidebar-inner">
+            <div class="nav-section-label">Start Here</div>
+            <button class="nav-item active" data-demo="overview">
+              📊 Overview &amp; Telemetry
+            </button>
+            <button class="nav-item" data-demo="basic-tracking">📍 Basic Tracking</button>
 
-          <div class="nav-section-label">Behavioral Signals</div>
-          <button class="nav-item" data-demo="high-entropy">⚡ High Entropy</button>
-          <button class="nav-item" data-demo="dwell-time">⏱ Dwell Time Anomaly</button>
-          <button class="nav-item" data-demo="trajectory">🛤 Trajectory Anomaly</button>
-          <button class="nav-item" data-demo="hesitation">🤔 Hesitation Detection</button>
+            <div class="nav-section-label">Behavioral Signals</div>
+            <button class="nav-item" data-demo="high-entropy">⚡ High Entropy</button>
+            <button class="nav-item" data-demo="dwell-time">⏱ Dwell Time Anomaly</button>
+            <button class="nav-item" data-demo="trajectory">🛤 Trajectory Anomaly</button>
+            <button class="nav-item" data-demo="hesitation">🤔 Hesitation Detection</button>
 
-          <div class="nav-section-label">Lifecycle Events</div>
-          <button class="nav-item" data-demo="attention-return">👁 Attention Return</button>
-          <button class="nav-item" data-demo="idle-detection">💤 Idle Detection</button>
-          <button class="nav-item" data-demo="exit-intent">🚪 Exit Intent</button>
+            <div class="nav-section-label">Lifecycle Events</div>
+            <button class="nav-item" data-demo="attention-return">👁 Attention Return</button>
+            <button class="nav-item" data-demo="idle-detection">💤 Idle Detection</button>
+            <button class="nav-item" data-demo="exit-intent">🚪 Exit Intent</button>
 
-          <div class="nav-section-label">Intelligence</div>
-          <button class="nav-item" data-demo="bloom-filter">🌸 Bloom Filter</button>
-          <button class="nav-item" data-demo="markov-graph">🕸 Markov Predictions</button>
-          <button class="nav-item" data-demo="bot-detection">🤖 Bot Detection</button>
+            <div class="nav-section-label">Intelligence</div>
+            <button class="nav-item" data-demo="bloom-filter">🌸 Bloom Filter</button>
+            <button class="nav-item" data-demo="markov-graph">🕸 Markov Predictions</button>
+            <button class="nav-item" data-demo="bot-detection">🤖 Bot Detection</button>
+            <button class="nav-item" data-demo="cross-tab">📡 Cross-Tab Sync</button>
 
-          <div class="nav-section-label">Business Logic</div>
-          <button class="nav-item" data-demo="conversion">💰 Conversion Tracking</button>
-          <button class="nav-item" data-demo="counters">🔢 Session Counters</button>
-          <button class="nav-item" data-demo="cross-tab">📡 Cross-Tab Sync</button>
+            <div class="nav-section-label">Business Logic</div>
+            <button class="nav-item" data-demo="conversion">💰 Conversion Tracking</button>
+            <button class="nav-item" data-demo="counters">🔢 Session Counters</button>
 
-          <div class="nav-section-label">Calibration</div>
-          <button class="nav-item" data-demo="byob">🎯 Bring Your Own Baseline</button>
+            <div class="nav-section-label">Calibration</div>
+            <button class="nav-item" data-demo="byob">🎯 Bring Your Own Baseline</button>
 
-          <div class="nav-section-label">Playground</div>
-          <button class="nav-item" data-demo="amazon-playground">🛒 E-commerce Playground</button>
+            <div class="nav-section-label">Playground</div>
+            <button class="nav-item" data-demo="amazon-playground">🛒 E-commerce Playground</button>
+          </div>
         </nav>
 
         <button
@@ -106,12 +115,64 @@
           ▶
         </button>
 
-        <!-- Demo area -->
-        <main class="content" id="content">
-          <!-- Content injected by JS -->
+        <main class="content">
+          <div class="content-shell">
+            <section class="lab-intro">
+              <div class="lab-intro-copy">
+                <p class="section-eyebrow">Guided lab</p>
+                <h2 class="shell-title">
+                  Explore the shipping core library, with future layers hinted but not
+                  over-explained.
+                </h2>
+                <p class="shell-copy">
+                  This lab keeps the full feature surface available, but gives visitors a cleaner
+                  way to jump into the strongest flows first. The React demo uses the same shell and
+                  flow order so both experiences stay visually aligned.
+                </p>
+                <div class="quick-jump-bar" id="quick-jump-bar"></div>
+              </div>
+              <div class="lab-intro-aside">
+                <div class="shell-stat-grid">
+                  <article class="shell-stat">
+                    <span class="shell-stat-label">Coverage</span>
+                    <strong>Full lab</strong>
+                    <p>Telemetry, anomalies, lifecycle, business logic, and calibration.</p>
+                  </article>
+                  <article class="shell-stat">
+                    <span class="shell-stat-label">Current offer</span>
+                    <strong>Core library</strong>
+                    <p>PassiveIntent is the fully described product in this experience.</p>
+                  </article>
+                  <article class="shell-stat">
+                    <span class="shell-stat-label">Next layers</span>
+                    <strong>Teased only</strong>
+                    <p>Sentinel and integration lanes are visible, but intentionally restrained.</p>
+                  </article>
+                </div>
+                <article class="roadmap-card">
+                  <span class="roadmap-label">Roadmap signal</span>
+                  <p>
+                    Sentinel stays lightly teased. Planned integrations remain conservative:
+                    Salesforce, Adobe Commerce, Shopify, BigCommerce, and Wix.
+                  </p>
+                </article>
+              </div>
+            </section>
+
+            <div class="page-heading-row">
+              <div>
+                <p class="section-eyebrow section-eyebrow-muted">Current module</p>
+                <h2 class="page-heading" id="active-demo-label">📊 Overview &amp; Telemetry</h2>
+              </div>
+              <p class="page-heading-copy">
+                Use the sidebar for full coverage or jump directly into the most persuasive flows.
+              </p>
+            </div>
+
+            <section class="page-surface" id="content"></section>
+          </div>
         </main>
 
-        <!-- Intent Meter -->
         <div id="intent-meter" class="intent-meter">
           <div id="meter-body" class="intent-meter-body">
             <div id="meter-drag-handle" class="intent-meter-drag-handle" title="Drag to reposition">
@@ -265,11 +326,13 @@
           </div>
         </div>
 
-        <!-- Event log panel -->
         <aside class="event-log" id="event-log">
           <div class="event-log-header">
-            <span>📡 Live Event Log</span>
-            <div style="display: flex; gap: 4px">
+            <div>
+              <span class="event-log-kicker">Background telemetry</span>
+              <span>Live Event Log</span>
+            </div>
+            <div class="event-log-actions">
               <button id="clear-log" class="btn btn-ghost btn-sm">Clear</button>
               <button
                 id="log-collapse"
