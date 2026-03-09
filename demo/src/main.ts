@@ -2019,7 +2019,12 @@ intent.<span class="fn">destroy</span>(); <span class="cmt">// closes BroadcastC
         if (addCartBtn) {
           const state = addCartBtn.dataset.addCart!;
           const card = el.querySelector<HTMLElement>(`.product-card[data-product-state="${state}"]`);
-          if (card) cartItems.push(productFromCard(card));
+          let product = card ? productFromCard(card) : selectedProduct;
+          if (!product) {
+            // If we can't resolve a product, don't modify cart or telemetry.
+            return;
+          }
+          cartItems.push(product);
           intent.track('/amazon/cart');
           intent.incrementCounter('cart-items', 1);
           checkoutStep = 1;
