@@ -17,120 +17,6 @@
       rel="stylesheet"
     />
     <link rel="stylesheet" href="./styles.css" />
-    <style>
-      :root {
-        --fg: var(--text, #13161f);
-        --accent: var(--accent-strong, #0c4dc8);
-      }
-      .legal-page {
-        max-width: 840px;
-        margin: 0 auto;
-        padding: 70px 24px 96px;
-        background: rgba(255, 255, 255, 0.72);
-        border: 1px solid rgba(19, 22, 31, 0.08);
-        border-radius: var(--radius-xl);
-        box-shadow: var(--shadow-card);
-      }
-      .legal-page .eyebrow {
-        margin-bottom: 12px;
-      }
-      .legal-page h1 {
-        font-size: clamp(2.2rem, 4vw, 3.4rem);
-        line-height: 1.05;
-        letter-spacing: -0.05em;
-        margin-bottom: 8px;
-      }
-      .legal-page .effective-date {
-        color: var(--muted);
-        font-size: 0.88rem;
-        margin-bottom: 40px;
-      }
-      .legal-page h2 {
-        font-size: 1.18rem;
-        font-weight: 700;
-        margin: 40px 0 12px;
-        color: var(--fg);
-        border-bottom: 1px solid var(--line);
-        padding-bottom: 8px;
-        letter-spacing: -0.02em;
-      }
-      .legal-page p,
-      .legal-page li {
-        font-size: 0.98rem;
-        line-height: 1.8;
-        color: var(--muted);
-        margin-bottom: 12px;
-      }
-      .legal-page ul {
-        padding-left: 1.4em;
-        margin-bottom: 12px;
-      }
-      .legal-page li {
-        margin-bottom: 6px;
-      }
-      .legal-page strong {
-        color: var(--fg);
-      }
-      .legal-page code {
-        font-family: 'IBM Plex Mono', monospace;
-        font-size: 0.88em;
-        padding: 2px 6px;
-        border-radius: 999px;
-        background: rgba(21, 111, 247, 0.08);
-      }
-      .legal-page a {
-        color: var(--accent);
-        text-decoration: underline;
-        text-underline-offset: 3px;
-      }
-      .legal-page a:hover {
-        opacity: 0.8;
-      }
-      .zero-egress-badge {
-        display: inline-flex;
-        align-items: flex-start;
-        gap: 8px;
-        background: rgba(67, 193, 126, 0.08);
-        border: 1px solid rgba(67, 193, 126, 0.18);
-        border-radius: var(--radius-md);
-        padding: 14px 18px;
-        font-size: 0.9rem;
-        color: #1d7d4a;
-        margin: 20px 0 32px;
-        line-height: 1.6;
-      }
-      .legal-back-nav {
-        display: flex;
-        gap: 12px;
-        margin-bottom: 36px;
-        flex-wrap: wrap;
-      }
-      .legal-back-nav a {
-        min-height: 38px;
-        padding: 0 14px;
-        border-radius: 999px;
-        font-size: 0.84rem;
-        color: var(--muted-strong);
-        text-decoration: none;
-        display: inline-flex;
-        align-items: center;
-        gap: 5px;
-        transition:
-          color 0.2s,
-          background 0.2s;
-        background: rgba(255, 255, 255, 0.72);
-        border: 1px solid rgba(19, 22, 31, 0.08);
-      }
-      .legal-back-nav a:hover {
-        color: var(--fg);
-        background: rgba(255, 255, 255, 0.96);
-      }
-      @media (max-width: 640px) {
-        .legal-page {
-          padding: 28px 18px 72px;
-        }
-      }
-    </style>
   </head>
   <body>
     <div class="page-orb page-orb-a"></div>
@@ -154,8 +40,8 @@
       </div>
     </header>
 
-    <main>
-      <div class="legal-page">
+    <main class="legal-main">
+      <section class="legal-hero">
         <nav class="legal-back-nav">
           <a href="./index.html">← Back to Home</a>
           <a href="./terms.html">Terms of Service →</a>
@@ -163,17 +49,27 @@
 
         <p class="eyebrow">Legal</p>
         <h1>Privacy Policy</h1>
-        <p class="effective-date">Effective Date: March 6, 2026</p>
+        <p class="legal-summary">
+          How PassiveIntent handles website inquiries, licensing, and billing while keeping end-user
+          behavioral signals entirely on-device.
+        </p>
+        <div class="legal-meta">
+          <span class="legal-meta-item">Effective March 6, 2026</span>
+          <span class="legal-meta-item">Zero-egress SDK</span>
+          <span class="legal-meta-item">Applies to passiveintent.dev and licensing</span>
+        </div>
 
         <div class="zero-egress-badge">
-          <span>🔒</span>
+          <span class="legal-callout-label">Zero-egress guarantee</span>
           <span>
             <strong>Zero-Egress Guarantee:</strong> The <code>@passiveintent/core</code> SDK runs
             entirely on the client device and makes zero network requests to our servers. Your
             end-users' behavioral data never leaves their browser.
           </span>
         </div>
+      </section>
 
+      <article class="legal-page">
         <h2>1. Introduction</h2>
         <p>
           Welcome to PassiveIntent ("we," "our," or "us"), operated by
@@ -234,7 +130,7 @@
           For any privacy-related inquiries, please contact us at:
           <a href="mailto:support@passiveintent.dev">support@passiveintent.dev</a>
         </p>
-      </div>
+      </article>
     </main>
 
     <footer class="site-footer">
