@@ -15,14 +15,14 @@
     "gdpr",
     "behavioral-analytics"
   ],
-  "author": "Purushottam <purushottam@passiveintent.dev> (https://github.com/purushpsm147)",
+  "author": "Purushottam <purushottam@passiveintent.dev> (https://github.com/passiveintent)",
   "license": "AGPL-3.0-only",
   "repository": {
     "type": "git",
     "url": "https://github.com/passiveintent/core.git",
     "directory": "packages/react"
   },
-  "homepage": "https://github.com/passiveintent/core#readme",
+  "homepage": "https://passiveintent.dev",
   "engines": {
     "node": ">=20"
   },
