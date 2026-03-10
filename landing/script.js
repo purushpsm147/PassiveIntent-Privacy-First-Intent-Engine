@@ -247,10 +247,68 @@ function setupReveal() {
   revealItems.forEach((item) => observer.observe(item));
 }
 
+function getStackBlitzDemoSupport() {
+  const userAgent = navigator.userAgent || '';
+  const isMobileDevice =
+    window.matchMedia('(max-width: 900px)').matches ||
+    /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(userAgent);
+  const iframe = document.createElement('iframe');
+  const supportsEmbeddedPreview = 'credentialless' in iframe;
+
+  if (isMobileDevice) {
+    return {
+      supported: false,
+      status: 'Open on a laptop in Chrome or Edge',
+      message:
+        'This interactive demo is intentionally desktop-only. Open it on a laptop or desktop in Chrome, Edge, or another Chromium-based browser.',
+    };
+  }
+
+  if (!supportsEmbeddedPreview) {
+    return {
+      supported: false,
+      status: 'Open on desktop Chrome or Edge',
+      message:
+        'Embedded StackBlitz previews are not supported in this browser. Open the full demo on a laptop or desktop in Chrome, Edge, or another Chromium-based browser.',
+    };
+  }
+
+  return {
+    supported: true,
+    status: 'Feature lab parity',
+    message: '',
+  };
+}
+
 function setupDemoTabs() {
   const demoTabs = Array.from(document.querySelectorAll('.demo-tab'));
   const demoPanels = Array.from(document.querySelectorAll('.demo-panel'));
   if (!demoTabs.length || !demoPanels.length) return;
+
+  const demoSupport = getStackBlitzDemoSupport();
+  if (!demoSupport.supported) {
+    const status = document.querySelector('.demo-status');
+    if (status) status.textContent = demoSupport.status;
+
+    demoPanels.forEach((panel) => {
+      panel.classList.add('demo-panel-fallback');
+
+      const iframe = panel.querySelector('iframe');
+      if (iframe) {
+        iframe.hidden = true;
+        iframe.setAttribute('aria-hidden', 'true');
+      }
+
+      if (!panel.querySelector('.demo-fallback')) {
+        const fallback = document.createElement('p');
+        fallback.className = 'demo-fallback';
+        fallback.textContent = demoSupport.message;
+
+        const link = panel.querySelector('.demo-open-link');
+        panel.insertBefore(fallback, link ?? null);
+      }
+    });
+  }
 
   const activateTab = (nextTab) => {
     const targetId = nextTab.dataset.target;
@@ -267,7 +325,7 @@ function setupDemoTabs() {
       panel.setAttribute('aria-hidden', active ? 'false' : 'true');
 
       // Lazy-load iframe on first tab activation
-      if (active) {
+      if (active && demoSupport.supported) {
         const iframe = panel.querySelector('iframe');
         if (iframe && !iframe.src && iframe.dataset.src) {
           iframe.src = iframe.dataset.src;
