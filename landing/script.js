@@ -295,7 +295,6 @@ function setupDemoTabs() {
 
       const iframe = panel.querySelector('iframe');
       if (iframe) {
-        iframe.removeAttribute('src');
         iframe.hidden = true;
         iframe.setAttribute('aria-hidden', 'true');
       }
