@@ -41,10 +41,7 @@ describe('createBrowserIntent() — Layer 3 browser integration', () => {
 
     // Wait until the ESM module has loaded and MouseKinematicsAdapter has
     // fired the initial state — this guarantees window.__engine is ready.
-    cy.get('[data-cy="event-log"] [data-event="state_change"]').should(
-      'have.length.at.least',
-      1,
-    );
+    cy.get('[data-cy="event-log"] [data-event="state_change"]').should('have.length.at.least', 1);
   });
 
   // =========================================================================
@@ -79,10 +76,7 @@ describe('createBrowserIntent() — Layer 3 browser integration', () => {
       win.__engine.track('/cart');
     });
     // Initial state from page load + 3 manual tracks = at least 4
-    cy.get('[data-cy="event-log"] [data-event="state_change"]').should(
-      'have.length.at.least',
-      4,
-    );
+    cy.get('[data-cy="event-log"] [data-event="state_change"]').should('have.length.at.least', 4);
     cy.get('[data-cy="event-log"] [data-event="state_change"]')
       .last()
       .should('contain.text', '/cart');
@@ -137,18 +131,14 @@ describe('createBrowserIntent() — Layer 3 browser integration', () => {
       win.__engine.destroy();
 
       // Record the log length right after destroy.
-      const countBefore = win.document.querySelectorAll(
-        '[data-event="state_change"]',
-      ).length;
+      const countBefore = win.document.querySelectorAll('[data-event="state_change"]').length;
 
       // Trigger a navigation event — the unsubscribed listener must NOT fire.
       win.history.pushState({}, '', '/after-destroy');
       win.dispatchEvent(new win.PopStateEvent('popstate'));
 
       // dispatchEvent is synchronous so the count is stable immediately.
-      const countAfter = win.document.querySelectorAll(
-        '[data-event="state_change"]',
-      ).length;
+      const countAfter = win.document.querySelectorAll('[data-event="state_change"]').length;
 
       expect(countAfter).to.equal(countBefore);
     });
