@@ -1906,12 +1906,6 @@ intent.<span class="fn">destroy</span>(); <span class="cmt">// closes BroadcastC
         }),
       ];
 
-      // Reset the playground-scoped cart counter to match the fresh UI state.
-      // cartItems is recreated on each mount, so the counter must be synced to avoid drift
-      // between UI state (fresh empty array) and telemetry (potentially non-zero counter).
-      // Use 'amazon-cart-items' to isolate playground state from other demos using 'cart-items'.
-      intent.resetCounter('amazon-cart-items');
-
       type PlaygroundProduct = {
         id: string;
         name: string;
@@ -2009,8 +2003,7 @@ intent.<span class="fn">destroy</span>(); <span class="cmt">// closes BroadcastC
 
       // Product clicks → track
       el.querySelectorAll<HTMLElement>('.product-card').forEach((card) => {
-        card.addEventListener('click', (event) => {
-          if ((event.target as HTMLElement).closest('[data-add-cart]')) return;
+        card.addEventListener('click', () => {
           if (checkoutStep !== 0) return;
           selectedProduct = productFromCard(card);
           intent.track(selectedProduct.state);
@@ -2038,7 +2031,7 @@ intent.<span class="fn">destroy</span>(); <span class="cmt">// closes BroadcastC
           }
           cartItems.push(product);
           intent.track('/amazon/cart');
-          intent.incrementCounter('amazon-cart-items', 1);
+          intent.incrementCounter('cart-items', 1);
           checkoutStep = 1;
           renderStoreState();
           return;
@@ -2071,7 +2064,7 @@ intent.<span class="fn">destroy</span>(); <span class="cmt">// closes BroadcastC
           selectedProduct = null;
           const removedItems = cartItems.length;
           if (removedItems > 0) {
-            intent.incrementCounter('amazon-cart-items', -removedItems);
+            intent.incrementCounter('cart-items', -removedItems);
           }
           cartItems = [];
           el.querySelectorAll<HTMLElement>('.product-card').forEach((c) =>
@@ -2925,7 +2918,6 @@ function updateMeterGauge(name: string, value: number) {
   }
   if (valEl) valEl.textContent = `${Math.round(v)}%`;
   if (meterEl) meterEl.setAttribute('aria-valuenow', String(Math.round(v)));
-  updateMeterSummary();
 }
 
 function getGaugeColor(name: string): string {
@@ -2982,39 +2974,60 @@ intent.on('exit_intent', () => updateMeterGauge('exit', 100));
 intent.on('user_idle', () => updateMeterGauge('idle', 100));
 intent.on('user_resumed', () => updateMeterGauge('idle', 0));
 
-function updateMeterSummary() {
-  const summaryEl = document.getElementById('intent-meter-summary');
-  if (!summaryEl) return;
-
-  const entries: Array<[string, number]> = [
-    ['Rage', meterState.rage],
-    ['Anxiety', meterState.anxiety],
-    ['Hesitation', meterState.hesitation],
-    ['Bot', meterState.bot],
-    ['Idle', meterState.idle],
-    ['Exit', meterState.exit],
-  ];
-  const top = entries.reduce((best, entry) => (entry[1] > best[1] ? entry : best), entries[0]);
-  summaryEl.textContent = top[1] < 12 ? 'Quiet' : `${top[0]} ${Math.round(top[1])}%`;
-}
-
-// Compact docked meter toggle
+// Drag handle for meter repositioning
 {
   const meter = document.getElementById('intent-meter')!;
-  const body = document.getElementById('meter-body')!;
-  const toggle = document.getElementById('intent-meter-toggle')!;
-  const close = document.getElementById('intent-meter-close')!;
+  const handle = document.getElementById('meter-drag-handle');
+  const translate = { x: 0, y: 0 };
+  const DEFAULT_TRANSLATE = { x: 0, y: 0 };
 
-  const setOpen = (open: boolean) => {
-    meter.classList.toggle('intent-meter--open', open);
-    body.hidden = !open;
-    toggle.setAttribute('aria-expanded', open ? 'true' : 'false');
+  const applyMeterPosition = () => {
+    meter.style.transform = `translate(${translate.x}px, ${translate.y}px)`;
   };
 
-  toggle.addEventListener('click', () => setOpen(true));
-  close.addEventListener('click', () => setOpen(false));
-  updateMeterSummary();
-  setOpen(false);
+  const clampTranslate = (nextX: number, nextY: number) => {
+    const meterRect = meter.getBoundingClientRect();
+    const maxX = Math.max(0, window.innerWidth - meterRect.width);
+    const maxY = Math.max(0, window.innerHeight - meterRect.height);
+
+    return {
+      x: Math.min(Math.max(nextX, -meterRect.left), maxX - meterRect.left),
+      y: Math.min(Math.max(nextY, -meterRect.top), maxY - meterRect.top),
+    };
+  };
+
+  const resetMeter = () => {
+    translate.x = DEFAULT_TRANSLATE.x;
+    translate.y = DEFAULT_TRANSLATE.y;
+    applyMeterPosition();
+  };
+
+  if (handle) {
+    handle.addEventListener('mousedown', (e) => {
+      e.preventDefault();
+      const startX = e.clientX;
+      const startY = e.clientY;
+      const origX = translate.x;
+      const origY = translate.y;
+
+      const onMove = (ev: MouseEvent) => {
+        const next = clampTranslate(origX + ev.clientX - startX, origY + ev.clientY - startY);
+        translate.x = next.x;
+        translate.y = next.y;
+        applyMeterPosition();
+      };
+      const onUp = () => {
+        window.removeEventListener('mousemove', onMove);
+        window.removeEventListener('mouseup', onUp);
+      };
+      window.addEventListener('mousemove', onMove);
+      window.addEventListener('mouseup', onUp);
+    });
+
+    handle.addEventListener('dblclick', () => {
+      resetMeter();
+    });
+  }
 }
 
 // Per-gauge Quick Simulate buttons
@@ -3158,30 +3171,6 @@ document.getElementById('sim-exit')!.addEventListener('click', () => {
 // ─── Navigation ───────────────────────────────────────────────────────────────
 let activeDemo = 'overview';
 let activeCleanup: (() => void) | void = undefined;
-const QUICK_JUMPS: Array<{ key: string; label: string }> = [
-  { key: 'overview', label: 'Overview' },
-  { key: 'basic-tracking', label: 'Tracking' },
-  { key: 'high-entropy', label: 'Entropy' },
-  { key: 'dwell-time', label: 'Dwell Time' },
-  { key: 'trajectory', label: 'Trajectory' },
-  { key: 'hesitation', label: 'Hesitation' },
-  { key: 'exit-intent', label: 'Exit Intent' },
-  { key: 'bot-detection', label: 'Bot Detection' },
-  { key: 'amazon-playground', label: 'Playground' },
-  { key: 'byob', label: 'BYOB' },
-];
-
-const quickJumpEl = document.getElementById('quick-jump-bar');
-if (quickJumpEl) {
-  quickJumpEl.innerHTML = QUICK_JUMPS.map(
-    (jump) =>
-      `<button class="quick-jump" type="button" data-quick-demo="${jump.key}">${jump.label}</button>`,
-  ).join('');
-
-  quickJumpEl.querySelectorAll<HTMLElement>('[data-quick-demo]').forEach((btn) => {
-    btn.addEventListener('click', () => navigateTo(btn.dataset.quickDemo!));
-  });
-}
 
 function navigateTo(demoKey: string): void {
   if (!demos[demoKey]) return;
@@ -3197,10 +3186,7 @@ function navigateTo(demoKey: string): void {
   activeDemo = demoKey;
   const demo = demos[demoKey];
   const headingEl = document.getElementById('active-demo-label');
-  if (headingEl) headingEl.textContent = demo.title;
-  document.querySelectorAll<HTMLElement>('.quick-jump').forEach((btn) => {
-    btn.classList.toggle('active', btn.dataset.quickDemo === demoKey);
-  });
+  if (headingEl) headingEl.innerHTML = demo.label;
   const contentEl = document.getElementById('content')!;
   contentEl.innerHTML = demo.render();
   activeCleanup = demo.setup(contentEl);

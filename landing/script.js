@@ -353,7 +353,12 @@ function setupDemoTabs() {
     });
   });
 
-  activateTab(demoTabs[0]);
+  const initialTab =
+    demoTabs.find(
+      (tab) => tab.classList.contains('active') || tab.getAttribute('aria-selected') === 'true',
+    ) ?? demoTabs[0];
+
+  activateTab(initialTab);
 }
 
 function setupBackToTop() {
