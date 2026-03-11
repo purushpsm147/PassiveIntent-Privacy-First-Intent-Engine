@@ -356,7 +356,6 @@
                     href="mailto:support@passiveintent.dev?subject=Interactive%20Demo%20Request%20-%20Revenue%20Saver"
                     >Experience the Rescue</a
                   >
-                  <span class="possible-placeholder">Interactive demo placeholder</span>
                 </div>
               </div>
             </article>
@@ -407,7 +406,6 @@
                     href="mailto:support@passiveintent.dev?subject=Interactive%20Demo%20Request%20-%20Security%20Shield"
                     >See Zero-Egress Security</a
                   >
-                  <span class="possible-placeholder">Interactive demo placeholder</span>
                 </div>
               </div>
             </article>
@@ -459,7 +457,6 @@
                     href="mailto:support@passiveintent.dev?subject=Interactive%20Demo%20Request%20-%20Empathy%20Engine"
                     >Explore the Intake Flow</a
                   >
-                  <span class="possible-placeholder">Interactive demo placeholder</span>
                 </div>
               </div>
             </article>
@@ -498,7 +495,6 @@
                     href="mailto:support@passiveintent.dev?subject=Interactive%20Demo%20Request%20-%20Project%20Cupid"
                     >Feel the Interaction</a
                   >
-                  <span class="possible-placeholder">Interactive demo placeholder</span>
                 </div>
               </div>
             </article>
@@ -538,7 +534,6 @@
                     href="mailto:support@passiveintent.dev?subject=Interactive%20Demo%20Request%20-%20Churn%20Preventer"
                     >Try the Support Trigger</a
                   >
-                  <span class="possible-placeholder">Interactive demo placeholder</span>
                 </div>
               </div>
             </article>
@@ -564,7 +559,7 @@
             <p class="eyebrow eyebrow-demo">Live guided demo</p>
             <h2>The fastest way to understand the library is to touch the signals.</h2>
             <p class="section-copy section-copy-demo">
-              Switch between the Vanilla and React implementations, run the same feature lab in
+              Switch between the React and Vanilla implementations, run the same feature lab in
               both, and inspect how hesitation, entropy, exit intent, conversion, and trajectory
               signals behave in real time.
             </p>
@@ -578,16 +573,16 @@
             <div class="demo-meta">
               <span class="live-pill">&#9679; Live in browser</span>
               <a
-                href="https://github.com/passiveintent/core/tree/main/demo"
-                target="_blank"
-                rel="noopener noreferrer"
-                >See vanilla source</a
-              >
-              <a
                 href="https://github.com/passiveintent/core/tree/main/demo-react"
                 target="_blank"
                 rel="noopener noreferrer"
                 >See React source</a
+              >
+              <a
+                href="https://github.com/passiveintent/core/tree/main/demo"
+                target="_blank"
+                rel="noopener noreferrer"
+                >See vanilla source</a
               >
             </div>
           </div>
@@ -596,53 +591,31 @@
             <div class="demo-toolbar">
               <div class="demo-tabs" role="tablist" aria-label="Choose a demo implementation">
                 <button
-                  id="demo-tab-vanilla"
+                  id="demo-tab-react"
                   class="demo-tab active"
                   type="button"
                   role="tab"
                   aria-selected="true"
-                  aria-controls="demo-vanilla"
-                  data-target="demo-vanilla"
+                  aria-controls="demo-react"
+                  data-target="demo-react"
                   tabindex="0"
                 >
-                  Vanilla JS
+                  React
                 </button>
                 <button
-                  id="demo-tab-react"
+                  id="demo-tab-vanilla"
                   class="demo-tab"
                   type="button"
                   role="tab"
                   aria-selected="false"
-                  aria-controls="demo-react"
-                  data-target="demo-react"
+                  aria-controls="demo-vanilla"
+                  data-target="demo-vanilla"
                   tabindex="-1"
                 >
-                  React
+                  Vanilla JS
                 </button>
               </div>
               <span class="demo-status">Feature lab parity</span>
-            </div>
-
-            <div
-              id="demo-vanilla"
-              class="demo-panel"
-              role="tabpanel"
-              aria-labelledby="demo-tab-vanilla"
-            >
-              <iframe
-                data-src="https://stackblitz.com/github/passiveintent/core/tree/main/demo?embed=1&hideNavigation=1&view=preview"
-                title="PassiveIntent Vanilla JS demo"
-                loading="lazy"
-                sandbox="allow-scripts allow-same-origin"
-                allow="cross-origin-isolated"
-              ></iframe>
-              <a
-                class="demo-open-link"
-                href="https://stackblitz.com/github/passiveintent/core/tree/main/demo"
-                target="_blank"
-                rel="noopener noreferrer"
-                >Open Vanilla demo ↗</a
-              >
             </div>
 
             <div
@@ -650,7 +623,6 @@
               class="demo-panel"
               role="tabpanel"
               aria-labelledby="demo-tab-react"
-              hidden
             >
               <iframe
                 data-src="https://stackblitz.com/github/passiveintent/core/tree/main/demo-react?embed=1&hideNavigation=1&view=preview"
@@ -665,6 +637,29 @@
                 target="_blank"
                 rel="noopener noreferrer"
                 >Open React demo ↗</a
+              >
+            </div>
+
+            <div
+              id="demo-vanilla"
+              class="demo-panel"
+              role="tabpanel"
+              aria-labelledby="demo-tab-vanilla"
+              hidden
+            >
+              <iframe
+                data-src="https://stackblitz.com/github/passiveintent/core/tree/main/demo?embed=1&hideNavigation=1&view=preview"
+                title="PassiveIntent Vanilla JS demo"
+                loading="lazy"
+                sandbox="allow-scripts allow-same-origin"
+                allow="cross-origin-isolated"
+              ></iframe>
+              <a
+                class="demo-open-link"
+                href="https://stackblitz.com/github/passiveintent/core/tree/main/demo"
+                target="_blank"
+                rel="noopener noreferrer"
+                >Open Vanilla demo ↗</a
               >
             </div>
           </div>
@@ -732,6 +727,91 @@
             >Download the Commercial License Exemption Brief</a
           >.
         </p>
+      </section>
+
+      <section class="section reveal pricing-compare-section">
+        <div class="pricing-compare-shell">
+          <div class="section-head pricing-compare-head">
+            <p class="eyebrow">Plan comparison</p>
+            <h2>Choose the tier that matches your usage model.</h2>
+            <p class="section-copy">
+              The table below reflects the current licensing brief: AGPLv3 stays available for
+              open-source and evaluation use, while paid tiers add an AGPL exemption, project
+              coverage, and the support channel that matches the team.
+            </p>
+          </div>
+
+          <div class="pricing-compare-table-wrap" role="region" aria-label="Pricing comparison">
+            <table class="pricing-compare-table">
+              <thead>
+                <tr>
+                  <th scope="col">Tier</th>
+                  <th scope="col">Annual fee</th>
+                  <th scope="col">Best for</th>
+                  <th scope="col">Project coverage</th>
+                  <th scope="col">Support</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr>
+                  <th scope="row">Free</th>
+                  <td>$0</td>
+                  <td>Open-source projects, students, evaluation, internal exploration</td>
+                  <td>AGPLv3 only. Use free if your full application is open source.</td>
+                  <td>Community forum / GitHub Issues only</td>
+                </tr>
+                <tr>
+                  <th scope="row">Startup</th>
+                  <td>$599<span>/year</span></td>
+                  <td>Small teams shipping their first commercial use cases</td>
+                  <td>Up to 3 commercial projects with AGPL exemption</td>
+                  <td>Priority email support, async on business days</td>
+                </tr>
+                <tr>
+                  <th scope="row">Growth</th>
+                  <td>$1,999<span>/year</span></td>
+                  <td>Scaling companies standardizing on PassiveIntent internally</td>
+                  <td>Unlimited internal projects for one organization</td>
+                  <td>Direct founder access via async email/chat on business days</td>
+                </tr>
+                <tr>
+                  <th scope="row">Enterprise</th>
+                  <td>Custom</td>
+                  <td>OEM vendors, multi-org deployments, procurement-heavy teams</td>
+                  <td>Custom commercial scope, legal review, architecture consultation</td>
+                  <td>Custom scoped support hours. No 24/7 or weekend coverage by default.</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+
+          <div class="pricing-compare-notes">
+            <article class="pricing-compare-note">
+              <span class="article-source">Commercial use</span>
+              <p>
+                You need a commercial license if PassiveIntent ships inside a proprietary product,
+                runs in a network service without releasing the full app under AGPLv3, or is resold
+                or white-labeled inside an analytics or AdTech product.
+              </p>
+            </article>
+            <article class="pricing-compare-note">
+              <span class="article-source">Early adopter</span>
+              <p>
+                The current brief also offers the first 200 companies a free Startup-tier license
+                for year one via
+                <a href="mailto:support@passiveintent.dev">support@passiveintent.dev</a>.
+              </p>
+            </article>
+            <article class="pricing-compare-note">
+              <span class="article-source">OEM / agency</span>
+              <p>
+                Standard tiers are for internal business use. Agencies, SDK vendors, Shopify apps,
+                white-label products, and other wrapped-product scenarios need a separate OEM /
+                Agency license.
+              </p>
+            </article>
+          </div>
+        </div>
       </section>
 
       <section id="products" class="section reveal">

@@ -676,7 +676,9 @@ select {
 }
 
 .section-demo {
+  max-width: min(1480px, calc(100vw - 24px));
   padding-top: clamp(36px, 6vw, 64px);
+  padding-inline: clamp(14px, 2.2vw, 26px);
 }
 
 .possible-shell {
@@ -1000,19 +1002,6 @@ select {
   transform: translateY(-1px);
   background: #ffffff;
   box-shadow: 0 16px 34px rgba(8, 10, 16, 0.22);
-}
-
-.possible-placeholder {
-  display: inline-flex;
-  align-items: center;
-  width: fit-content;
-  min-height: 34px;
-  padding: 0 12px;
-  border-radius: 999px;
-  background: rgba(255, 255, 255, 0.06);
-  color: rgba(247, 248, 250, 0.66);
-  font-size: 0.78rem;
-  font-weight: 700;
 }
 
 .possible-gesture {
@@ -1458,22 +1447,32 @@ select {
   background: linear-gradient(160deg, #141924 0%, #0f121a 100%);
   color: #f7f8fa;
   border-radius: calc(var(--radius-xl) + 4px);
-  padding: clamp(24px, 4vw, 34px);
+  padding: clamp(22px, 3vw, 34px);
   box-shadow: 0 34px 90px rgba(15, 18, 26, 0.28);
   display: grid;
-  grid-template-columns: minmax(280px, 0.38fr) minmax(0, 1fr);
-  gap: 24px;
+  grid-template-columns: minmax(250px, 320px) minmax(0, 1fr);
+  gap: clamp(20px, 2.4vw, 32px);
+  align-items: start;
 }
 
 .demo-copy {
   display: flex;
   flex-direction: column;
   justify-content: space-between;
+  gap: 20px;
+}
+
+.demo-copy > * {
+  margin-top: 0;
+}
+
+.demo-copy > *:last-child {
+  margin-bottom: 0;
 }
 
 .demo-copy h2 {
   font-size: clamp(2rem, 4vw, 3.5rem);
-  max-width: 10ch;
+  max-width: 9ch;
 }
 
 .section-copy-demo,
@@ -1515,10 +1514,15 @@ select {
 }
 
 .demo-theater {
-  background: rgba(255, 255, 255, 0.03);
+  background:
+    radial-gradient(circle at top right, rgba(118, 171, 255, 0.12), transparent 28%),
+    linear-gradient(180deg, rgba(255, 255, 255, 0.05) 0%, rgba(9, 12, 18, 0.28) 100%);
   border: 1px solid rgba(255, 255, 255, 0.08);
-  border-radius: calc(var(--radius-lg) + 2px);
-  padding: 16px;
+  border-radius: calc(var(--radius-lg) + 4px);
+  padding: clamp(16px, 1.5vw, 20px);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.05),
+    0 26px 60px rgba(8, 11, 19, 0.24);
 }
 
 .demo-toolbar {
@@ -1563,6 +1567,11 @@ select {
 
 .demo-panel {
   position: relative;
+  overflow: hidden;
+  border-radius: calc(var(--radius-lg) + 2px);
+  background: linear-gradient(180deg, rgba(9, 12, 18, 0.98) 0%, rgba(18, 23, 34, 1) 100%);
+  border: 1px solid rgba(255, 255, 255, 0.06);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.04);
 }
 
 .demo-panel.demo-panel-fallback {
@@ -1575,10 +1584,10 @@ select {
 
 .demo-panel iframe {
   width: 100%;
-  height: 860px;
+  height: clamp(860px, 88vh, 1120px);
   display: block;
   border: 0;
-  border-radius: var(--radius-lg);
+  border-radius: inherit;
   background: #0d1117;
   box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.08);
 }
@@ -1599,11 +1608,19 @@ select {
   bottom: 16px;
   text-decoration: none;
   color: #d6e4ff;
-  background: rgba(17, 20, 29, 0.72);
+  background: rgba(17, 20, 29, 0.82);
   border: 1px solid rgba(255, 255, 255, 0.14);
   border-radius: 999px;
   padding: 10px 14px;
   backdrop-filter: blur(10px);
+  box-shadow: 0 16px 36px rgba(3, 7, 14, 0.28);
+}
+
+@media (min-width: 1101px) {
+  .demo-copy {
+    position: sticky;
+    top: 108px;
+  }
 }
 
 .demo-panel.demo-panel-fallback .demo-open-link {
@@ -1641,6 +1658,101 @@ select {
 
 .pricing-note {
   margin: 16px 0 0;
+}
+
+.pricing-compare-section {
+  padding-top: 0;
+}
+
+.pricing-compare-shell {
+  display: grid;
+  gap: 22px;
+  padding: clamp(22px, 3.4vw, 34px);
+  border-radius: calc(var(--radius-xl) + 4px);
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.84) 0%, rgba(248, 250, 255, 0.96) 100%);
+  border: 1px solid rgba(19, 22, 31, 0.08);
+  box-shadow: var(--shadow-soft);
+}
+
+.pricing-compare-head {
+  max-width: 900px;
+}
+
+.pricing-compare-head h2 {
+  max-width: 13ch;
+}
+
+.pricing-compare-table-wrap {
+  overflow-x: auto;
+  border-radius: 28px;
+  border: 1px solid rgba(19, 22, 31, 0.08);
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.94) 0%, rgba(246, 248, 252, 0.96) 100%);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.72);
+}
+
+.pricing-compare-table {
+  width: 100%;
+  min-width: 920px;
+  border-collapse: collapse;
+}
+
+.pricing-compare-table thead th {
+  padding: 18px 20px;
+  text-align: left;
+  font-size: 0.78rem;
+  font-weight: 800;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--muted-strong);
+  background: rgba(21, 111, 247, 0.05);
+}
+
+.pricing-compare-table tbody th,
+.pricing-compare-table tbody td {
+  padding: 18px 20px;
+  vertical-align: top;
+  border-top: 1px solid rgba(19, 22, 31, 0.08);
+}
+
+.pricing-compare-table tbody th {
+  width: 140px;
+  font-size: 1rem;
+  letter-spacing: -0.02em;
+  color: var(--text);
+  background: rgba(255, 255, 255, 0.6);
+}
+
+.pricing-compare-table tbody td {
+  color: var(--muted);
+  line-height: 1.65;
+}
+
+.pricing-compare-table td:first-of-type {
+  white-space: nowrap;
+}
+
+.pricing-compare-table td span {
+  color: var(--muted);
+}
+
+.pricing-compare-notes {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 16px;
+}
+
+.pricing-compare-note {
+  min-height: 100%;
+  padding: 20px;
+  border-radius: 24px;
+  background: rgba(255, 255, 255, 0.76);
+  border: 1px solid rgba(19, 22, 31, 0.08);
+  box-shadow: var(--shadow-card);
+}
+
+.pricing-compare-note p {
+  margin: 10px 0 0;
+  color: var(--muted);
 }
 
 .pricing-note a,
@@ -2149,13 +2261,19 @@ details p {
   .step-grid,
   .pricing-grid,
   .product-grid,
-  .article-grid {
+  .article-grid,
+  .pricing-compare-notes {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 
   .hero,
   .demo-shell {
     display: grid;
+  }
+
+  .section-demo {
+    max-width: var(--max-width);
+    padding-inline: clamp(18px, 4vw, 32px);
   }
 
   .hero h1,
@@ -2199,7 +2317,7 @@ details p {
   }
 
   .demo-panel iframe {
-    height: 700px;
+    height: 760px;
   }
 }
 
@@ -2210,7 +2328,8 @@ details p {
   .step-grid,
   .pricing-grid,
   .product-grid,
-  .article-grid {
+  .article-grid,
+  .pricing-compare-notes {
     grid-template-columns: 1fr;
   }
 
@@ -2361,6 +2480,16 @@ details p {
     align-items: flex-start;
   }
 
+  .pricing-compare-shell {
+    padding: 18px;
+  }
+
+  .pricing-compare-table thead th,
+  .pricing-compare-table tbody th,
+  .pricing-compare-table tbody td {
+    padding: 16px;
+  }
+
   .demo-tabs {
     width: 100%;
     justify-content: space-between;
@@ -2371,7 +2500,7 @@ details p {
   }
 
   .demo-panel iframe {
-    height: 620px;
+    height: 660px;
   }
 
   .demo-open-link {

@@ -16,7 +16,6 @@ PassiveIntent is **free and open-source** under AGPLv3 for open-source projects,
 | Tier       | Annual Fee | Target Audience                          | What You Get (Support & Features)                                                                                         |
 | ---------- | ---------- | ---------------------------------------- | ------------------------------------------------------------------------------------------------------------------------- |
 | Free       | $0         | Open-source projects, students           | AGPLv3 copyleft license. Full SDK. **Support:** Community Forum / GitHub Issues only.                                     |
-| Indie      | $149/yr    | Solo devs, pre-seed founders             | 1 Commercial Project, AGPL exemption. **Support:** Basic Email Support — best effort, no SLA.                             |
 | Startup    | $599/yr    | Small teams (5–50 employees)             | Up to 3 Commercial Projects, AGPL exemption. **Support:** Priority Email Support — async, business days only.             |
 | Growth     | $1,999/yr  | Scaling companies (50–200 employees)     | Unlimited Internal Projects (1 org). **Support:** Direct Founder Access — async email/chat, business days only.           |
 | Enterprise | Custom     | Conglomerates, CDPs, AdTech, OEM vendors | Custom legal review, architecture consultation. **Support:** Custom scoped hours — no 24/7 or weekend coverage available. |
@@ -43,10 +42,10 @@ Claim your spot by contacting us via email.
 ## FAQ
 
 **Can I use the Free tier in a closed-source startup?**  
-No. AGPLv3 requires you to release your application's source code if you run it as a network service. Purchase the Indie or Startup tier instead.
+No. AGPLv3 requires you to release your application's source code if you run it as a network service. Purchase the Startup tier or above instead.
 
 **Does the commercial license cover all my products?**  
-Indie covers one project. Startup covers three. Growth covers unlimited projects within one organisation. Enterprise covers multi-org and OEM redistribution.
+Startup covers three projects. Growth covers unlimited projects within one organisation. Enterprise covers multi-org and OEM redistribution.
 
 **What counts as a "project"?**  
 A single deployable web application or npm package that ships PassiveIntent. Micro-frontends under the same domain count as one project.
@@ -86,9 +85,9 @@ Support does **not** include:
 
 ## Frequently Asked Questions
 
-**Can I use the Indie, Startup, or Growth tier to build a Shopify App, SDK, or my own B2B analytics tool?**
+**Can I use the Startup or Growth tier to build a Shopify App, SDK, or my own B2B analytics tool?**
 
-No. Our standard commercial tiers (Indie, Startup, Growth) are licensed strictly for **Internal Business Purposes** (e.g., deploying on your own company's website or SaaS application to track your own users). You cannot sub-license, resell, white-label, or "wrap" PassiveIntent into a standalone product or application where the primary value derived by your end-user is PassiveIntent's intent-tracking functionality.
+No. Our standard commercial tiers (Startup, Growth) are licensed strictly for **Internal Business Purposes** (e.g., deploying on your own company's website or SaaS application to track your own users). You cannot sub-license, resell, white-label, or "wrap" PassiveIntent into a standalone product or application where the primary value derived by your end-user is PassiveIntent's intent-tracking functionality.
 
 **I run a development agency / I want to build a B2B app using PassiveIntent. What are my options?**
 
