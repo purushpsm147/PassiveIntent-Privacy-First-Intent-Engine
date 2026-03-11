@@ -45,7 +45,7 @@ Claim your spot by contacting us via email.
 No. AGPLv3 requires you to release your application's source code if you run it as a network service. Purchase the Startup tier or above instead.
 
 **Does the commercial license cover all my products?**  
-Startup covers three projects. Growth covers unlimited projects within one organisation. Enterprise covers multi-org and OEM redistribution.
+Startup covers three projects. Growth covers unlimited internal projects within one organisation (not for customer-facing redistribution or OEM redistribution). Enterprise covers multi-org and OEM redistribution.
 
 **What counts as a "project"?**  
 A single deployable web application or npm package that ships PassiveIntent. Micro-frontends under the same domain count as one project.

@@ -1906,11 +1906,6 @@ intent.<span class="fn">destroy</span>(); <span class="cmt">// closes BroadcastC
         }),
       ];
 
-      // Reset the session-wide cart counter to match the fresh UI state.
-      // cartItems is recreated on each mount, so the counter must be synced to avoid drift
-      // between UI state (fresh empty array) and telemetry (potentially non-zero counter).
-      intent.resetCounter('cart-items');
-
       type PlaygroundProduct = {
         id: string;
         name: string;
@@ -2917,7 +2912,7 @@ function updateMeterGauge(name: string, value: number) {
   const valEl = document.getElementById(`gauge-${name}-val`);
   const meterEl = document.getElementById(`meter-${name}`);
   if (fill) {
-    fill.style.height = `${v}%`;
+    fill.style.width = `${v}%`;
     fill.style.background = getGaugeColor(name);
     fill.style.boxShadow = v > 50 ? `0 0 8px ${getGaugeColor(name)}` : 'none';
   }
@@ -2982,28 +2977,57 @@ intent.on('user_resumed', () => updateMeterGauge('idle', 0));
 // Drag handle for meter repositioning
 {
   const meter = document.getElementById('intent-meter')!;
-  const handle = document.getElementById('meter-drag-handle')!;
+  const handle = document.getElementById('meter-drag-handle');
   const translate = { x: 0, y: 0 };
+  const DEFAULT_TRANSLATE = { x: 0, y: 0 };
 
-  handle.addEventListener('mousedown', (e) => {
-    e.preventDefault();
-    const startX = e.clientX;
-    const startY = e.clientY;
-    const origX = translate.x;
-    const origY = translate.y;
+  const applyMeterPosition = () => {
+    meter.style.transform = `translate(${translate.x}px, ${translate.y}px)`;
+  };
 
-    const onMove = (ev: MouseEvent) => {
-      translate.x = origX + ev.clientX - startX;
-      translate.y = origY + ev.clientY - startY;
-      meter.style.transform = `translate(${translate.x}px, ${translate.y}px)`;
+  const clampTranslate = (nextX: number, nextY: number) => {
+    const meterRect = meter.getBoundingClientRect();
+    const maxX = Math.max(0, window.innerWidth - meterRect.width);
+    const maxY = Math.max(0, window.innerHeight - meterRect.height);
+
+    return {
+      x: Math.min(Math.max(nextX, -meterRect.left), maxX - meterRect.left),
+      y: Math.min(Math.max(nextY, -meterRect.top), maxY - meterRect.top),
     };
-    const onUp = () => {
-      window.removeEventListener('mousemove', onMove);
-      window.removeEventListener('mouseup', onUp);
-    };
-    window.addEventListener('mousemove', onMove);
-    window.addEventListener('mouseup', onUp);
-  });
+  };
+
+  const resetMeter = () => {
+    translate.x = DEFAULT_TRANSLATE.x;
+    translate.y = DEFAULT_TRANSLATE.y;
+    applyMeterPosition();
+  };
+
+  if (handle) {
+    handle.addEventListener('mousedown', (e) => {
+      e.preventDefault();
+      const startX = e.clientX;
+      const startY = e.clientY;
+      const origX = translate.x;
+      const origY = translate.y;
+
+      const onMove = (ev: MouseEvent) => {
+        const next = clampTranslate(origX + ev.clientX - startX, origY + ev.clientY - startY);
+        translate.x = next.x;
+        translate.y = next.y;
+        applyMeterPosition();
+      };
+      const onUp = () => {
+        window.removeEventListener('mousemove', onMove);
+        window.removeEventListener('mouseup', onUp);
+      };
+      window.addEventListener('mousemove', onMove);
+      window.addEventListener('mouseup', onUp);
+    });
+
+    handle.addEventListener('dblclick', () => {
+      resetMeter();
+    });
+  }
 }
 
 // Per-gauge Quick Simulate buttons
@@ -3161,6 +3185,8 @@ function navigateTo(demoKey: string): void {
 
   activeDemo = demoKey;
   const demo = demos[demoKey];
+  const headingEl = document.getElementById('active-demo-label');
+  if (headingEl) headingEl.innerHTML = demo.label;
   const contentEl = document.getElementById('content')!;
   contentEl.innerHTML = demo.render();
   activeCleanup = demo.setup(contentEl);

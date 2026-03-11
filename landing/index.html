@@ -639,6 +639,115 @@
                 </div>
               </div>
             </article>
+
+            <article class="possible-card possible-card-featured possible-card-propensity">
+              <div class="possible-visual possible-visual-propensity" aria-hidden="true">
+                <div class="possible-propensity-stage">
+                  <div class="possible-propensity-pane possible-propensity-pane-pricing">
+                    <div class="possible-propensity-browser-bar">
+                      <span></span>
+                      <span></span>
+                      <span></span>
+                      <strong>Pricing / Plans</strong>
+                    </div>
+                    <div class="possible-propensity-page">
+                      <div class="possible-propensity-page-head">
+                        <span class="possible-offer-kicker">High-intent visit</span>
+                        <strong>Choose the plan that matches your team.</strong>
+                      </div>
+                      <div class="possible-propensity-tier-grid">
+                        <article class="possible-propensity-tier">
+                          <span>Starter</span>
+                          <strong>$299</strong>
+                          <small>Core event coverage</small>
+                        </article>
+                        <article class="possible-propensity-tier possible-propensity-tier-featured">
+                          <span>Pro</span>
+                          <strong>$1,499</strong>
+                          <small>Advanced intent signals</small>
+                        </article>
+                      </div>
+                      <div class="possible-propensity-checklist">
+                        <span></span>
+                        <span></span>
+                        <span class="short"></span>
+                      </div>
+                      <div class="possible-propensity-cta-bar">
+                        <span>Annual billing</span>
+                        <strong>Upgrade to Pro</strong>
+                      </div>
+                    </div>
+                    <div class="possible-propensity-close-target"></div>
+                    <div class="possible-cursor possible-cursor-propensity"></div>
+                    <div class="possible-modal possible-modal-propensity">
+                      <span class="possible-offer-kicker">Propensity engine</span>
+                      <strong>Still deciding on the Pro tier?</strong>
+                      <span class="possible-offer-note">Here is a one-time 20% discount code.</span>
+                    </div>
+                  </div>
+
+                  <div class="possible-propensity-pane possible-propensity-pane-console">
+                    <div class="possible-propensity-console-head">
+                      <span>Intent Console</span>
+                      <span class="possible-propensity-console-status">Live</span>
+                    </div>
+                    <div class="possible-propensity-console-body">
+                      <div class="possible-propensity-readout">
+                        <span class="possible-propensity-label">Propensity_To_Buy</span>
+                        <div class="possible-propensity-score-panel">
+                          <div class="possible-propensity-score possible-propensity-score-high">
+                            <strong>85%</strong>
+                            <span>steady buyer intent</span>
+                          </div>
+                          <div class="possible-propensity-score possible-propensity-score-low">
+                            <strong>32%</strong>
+                            <span>High Friction Detected</span>
+                          </div>
+                        </div>
+                        <div class="possible-propensity-meter">
+                          <span class="possible-propensity-meter-fill"></span>
+                        </div>
+                      </div>
+
+                      <div class="possible-propensity-log">
+                        <div class="possible-propensity-log-row">
+                          <span>mouse vector</span>
+                          <strong>close-tab trajectory</strong>
+                        </div>
+                        <div class="possible-propensity-log-row">
+                          <span>kinematic variance</span>
+                          <strong>+0.42 sigma</strong>
+                        </div>
+                        <div class="possible-propensity-log-row">
+                          <span>offer trigger</span>
+                          <strong>armed below 40%</strong>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              <div class="possible-content">
+                <span class="story-tag">SaaS pricing &amp; monetization</span>
+                <h3>Don't guess their intent. Calculate it.</h3>
+                <p>
+                  Standard analytics tell you a user abandoned the pricing page. PassiveIntent
+                  calculates a continuous, real-time "Propensity to Buy" score locally on the
+                  device. By combining bounded Markov chain probabilities with real-time kinematic
+                  variance, our engine predicts conversion drops before the user clicks away. Stop
+                  cannibalizing your margins with generic popups. Only trigger discounts for the
+                  users mathematically proven to be on the fence.
+                </p>
+                <div class="possible-action-row">
+                  <a
+                    class="possible-action"
+                    href="mailto:support@passiveintent.dev?subject=Interactive%20Demo%20Request%20-%20Propensity%20Engine"
+                    >Watch the Propensity Engine</a
+                  >
+                </div>
+              </div>
+            </article>
           </div>
 
           <div class="possible-cta">
@@ -843,7 +952,12 @@
             </p>
           </div>
 
-          <div class="pricing-compare-table-wrap" role="region" aria-label="Pricing comparison">
+          <div
+            class="pricing-compare-table-wrap"
+            role="region"
+            aria-label="Pricing comparison"
+            tabindex="0"
+          >
             <table class="pricing-compare-table">
               <thead>
                 <tr>
@@ -858,8 +972,11 @@
                 <tr>
                   <th scope="row">Free</th>
                   <td>$0</td>
-                  <td>Open-source projects, students, evaluation, internal exploration</td>
-                  <td>AGPLv3 only. Use free if your full application is open source.</td>
+                  <td>
+                    Open-source projects and students only. Closed-source evaluation or internal use
+                    is not covered by this free tier.
+                  </td>
+                  <td>AGPLv3 only. Use free only if your full application is open source.</td>
                   <td>Community forum / GitHub Issues only</td>
                 </tr>
                 <tr>
@@ -879,8 +996,11 @@
                 <tr>
                   <th scope="row">Enterprise</th>
                   <td>Custom</td>
-                  <td>OEM vendors, multi-org deployments, procurement-heavy teams</td>
-                  <td>Custom commercial scope, legal review, architecture consultation</td>
+                  <td>Multi-org deployments, procurement-heavy teams, custom internal rollouts</td>
+                  <td>
+                    Custom internal commercial scope, legal review, architecture consultation. OEM /
+                    Agency and wrapped-product cases require a separate license.
+                  </td>
                   <td>Custom scoped support hours. No 24/7 or weekend coverage by default.</td>
                 </tr>
               </tbody>
