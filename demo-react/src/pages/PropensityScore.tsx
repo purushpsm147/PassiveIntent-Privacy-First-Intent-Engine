@@ -521,6 +521,7 @@ export default function PropensityScore() {
           </span>
           <input
             type="range"
+            aria-label="Manual z-score override"
             min={0}
             max={10}
             step={0.1}
