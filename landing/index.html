@@ -153,13 +153,16 @@
 
     <main id="top">
       <section class="hero section reveal">
-        <div class="hero-copy hero-copy-centered">
-          <p class="eyebrow">PassiveIntent Core</p>
-          <h1>Detect hesitation while the session is still alive.</h1>
+        <div class="hero-copy">
+          <div class="hero-kicker-row">
+            <p class="eyebrow">PassiveIntent Core</p>
+            <span class="hero-inline-proof">Zero-egress by default</span>
+          </div>
+          <h1>Catch hesitation before the session disappears.</h1>
           <p class="hero-text">
-            PassiveIntent is a privacy-first JavaScript library for product, growth, and CX teams
-            that want to catch checkout friction, pricing doubt, and exit intent before the user
-            disappears, without exporting behavioral data to another vendor.
+            PassiveIntent is a privacy-first JavaScript library that spots pricing doubt, exit
+            intent, and trajectory drift while the user is still deciding, so your product can
+            intervene without exporting behavioral data to another vendor.
           </p>
           <div class="hero-actions">
             <a class="btn btn-primary" href="#demo">Try the live demo</a>
@@ -171,11 +174,137 @@
               >Read the docs</a
             >
           </div>
-          <div class="hero-proof-strip">
-            <span>For product, growth, and CX teams</span>
-            <span>~11 kB gzip</span>
-            <span>Runs in the browser</span>
-            <span>No behavioral export by default</span>
+          <div class="hero-proof-grid">
+            <article class="hero-proof-card">
+              <span class="hero-proof-label">Zero-egress</span>
+              <strong>Runs in the browser by default</strong>
+              <p>
+                No behavioral export.
+                <a
+                  href="./PassiveIntent_Zero_Egress_Attestation.pdf"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  >Read the attestation</a
+                >.
+              </p>
+            </article>
+            <article class="hero-proof-card">
+              <span class="hero-proof-label">Lightweight</span>
+              <strong>~11 kB gzip</strong>
+              <p>Small enough for checkout, onboarding, pricing, and support-sensitive flows.</p>
+            </article>
+            <article class="hero-proof-card">
+              <span class="hero-proof-label">Deterministic</span>
+              <strong>Inspectable session math</strong>
+              <p>Markov chains, entropy, and dwell-time signals instead of opaque AI scoring.</p>
+            </article>
+          </div>
+        </div>
+
+        <div class="hero-stage">
+          <div class="hero-stage-shell">
+            <div class="hero-stage-meta">
+              <div>
+                <span class="hero-stage-label">Live product scenario</span>
+                <p class="hero-stage-title">
+                  Pricing doubt, detected while the decision is still live.
+                </p>
+              </div>
+              <span class="hero-stage-status">Intent console active</span>
+            </div>
+
+            <div class="possible-visual possible-visual-propensity hero-visual" aria-hidden="true">
+              <div class="possible-propensity-stage">
+                <div class="possible-propensity-pane possible-propensity-pane-pricing">
+                  <div class="possible-propensity-browser-bar">
+                    <span></span>
+                    <span></span>
+                    <span></span>
+                    <strong>Pricing / Plans</strong>
+                  </div>
+                  <div class="possible-propensity-page">
+                    <div class="possible-propensity-page-head">
+                      <span class="possible-offer-kicker">High-intent visit</span>
+                      <strong>Choose the plan that matches your team.</strong>
+                    </div>
+                    <div class="possible-propensity-tier-grid">
+                      <article class="possible-propensity-tier">
+                        <span>Starter</span>
+                        <strong>$299</strong>
+                        <small>Core event coverage</small>
+                      </article>
+                      <article class="possible-propensity-tier possible-propensity-tier-featured">
+                        <span>Pro</span>
+                        <strong>$1,499</strong>
+                        <small>Advanced intent signals</small>
+                      </article>
+                    </div>
+                    <div class="possible-propensity-checklist">
+                      <span></span>
+                      <span></span>
+                      <span class="short"></span>
+                    </div>
+                    <div class="possible-propensity-cta-bar">
+                      <span>Annual billing</span>
+                      <strong>Upgrade to Pro</strong>
+                    </div>
+                  </div>
+                  <div class="possible-propensity-close-target"></div>
+                  <div class="possible-cursor possible-cursor-propensity"></div>
+                  <div class="possible-modal possible-modal-propensity">
+                    <span class="possible-offer-kicker">Propensity engine</span>
+                    <strong>Still deciding on the Pro tier?</strong>
+                    <span class="possible-offer-note">Here is a one-time 20% discount code.</span>
+                  </div>
+                </div>
+
+                <div class="possible-propensity-pane possible-propensity-pane-console">
+                  <div class="possible-propensity-console-head">
+                    <span>Intent Console</span>
+                    <span class="possible-propensity-console-status">Live</span>
+                  </div>
+                  <div class="possible-propensity-console-body">
+                    <div class="possible-propensity-readout">
+                      <span class="possible-propensity-label">Propensity_To_Buy</span>
+                      <div class="possible-propensity-score-panel">
+                        <div class="possible-propensity-score possible-propensity-score-high">
+                          <strong>85%</strong>
+                          <span>steady buyer intent</span>
+                        </div>
+                        <div class="possible-propensity-score possible-propensity-score-low">
+                          <strong>32%</strong>
+                          <span>High Friction Detected</span>
+                        </div>
+                      </div>
+                      <div class="possible-propensity-meter">
+                        <span class="possible-propensity-meter-fill"></span>
+                      </div>
+                    </div>
+
+                    <div class="possible-propensity-log">
+                      <div class="possible-propensity-log-row">
+                        <span>mouse vector</span>
+                        <strong>close-tab trajectory</strong>
+                      </div>
+                      <div class="possible-propensity-log-row">
+                        <span>kinematic variance</span>
+                        <strong>+0.42 sigma</strong>
+                      </div>
+                      <div class="possible-propensity-log-row">
+                        <span>offer trigger</span>
+                        <strong>armed below 40%</strong>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <div class="hero-stage-notes">
+              <span>Observe routes + kinematics</span>
+              <span>Infer intent in-session</span>
+              <span>Trigger the next best step</span>
+            </div>
           </div>
         </div>
       </section>
@@ -183,13 +312,13 @@
       <section class="section section-bridge reveal">
         <div class="bridge-panel">
           <div>
-            <p class="eyebrow">What it is</p>
-            <h2>A small client-side library for teams that need to act before abandonment.</h2>
+            <p class="eyebrow">Where it fits</p>
+            <h2>A small in-browser layer for flows where hesitation is expensive.</h2>
           </div>
           <div class="bridge-copy">
             <p>
               Use it in checkout, pricing, billing, onboarding, and support-sensitive journeys where
-              hesitation matters more than hindsight.
+              acting in-session matters more than post-hoc analytics.
             </p>
             <p>
               The shipping product is PassiveIntent Core. JavaScript and React packages are
@@ -327,64 +456,6 @@
             <p>
               Catch the session before it turns into a lost conversion or avoidable support ticket.
             </p>
-          </article>
-        </div>
-      </section>
-
-      <section id="start" class="section reveal">
-        <div class="section-head">
-          <p class="eyebrow">Start here</p>
-          <h2>Documentation, demo, source, and licensing in one place.</h2>
-          <p class="section-copy">
-            The shortest path to trust is simple: read the docs, inspect the source, run the demo,
-            and understand the license.
-          </p>
-        </div>
-        <div class="start-grid" id="start-grid">
-          <article class="start-card start-card-compact">
-            <span class="article-source">Docs</span>
-            <h3>Documentation</h3>
-            <p>Installation, APIs, and calibration guidance for teams moving toward production.</p>
-            <a
-              class="start-link"
-              href="https://github.com/passiveintent/core/tree/main/packages/core"
-              target="_blank"
-              rel="noopener noreferrer"
-              >Open docs</a
-            >
-          </article>
-          <article class="start-card start-card-compact">
-            <span class="article-source">Demo</span>
-            <h3>Live demo</h3>
-            <p>
-              Run the guided lab and see hesitation, entropy, exit intent, and trajectory signals in
-              motion.
-            </p>
-            <a class="start-link" href="#demo">Open demo</a>
-          </article>
-          <article class="start-card start-card-compact">
-            <span class="article-source">GitHub</span>
-            <h3>Source code</h3>
-            <p>
-              Review the core package, React package, demo apps, and calibration guide in the public
-              repo.
-            </p>
-            <a
-              class="start-link"
-              href="https://github.com/passiveintent/core"
-              target="_blank"
-              rel="noopener noreferrer"
-              >View GitHub</a
-            >
-          </article>
-          <article class="start-card start-card-compact">
-            <span class="article-source">Pricing</span>
-            <h3>Pricing and licensing</h3>
-            <p>
-              See the AGPL path, commercial tiers, and the brief used for legal and procurement
-              review.
-            </p>
-            <a class="start-link" href="#pricing">See pricing</a>
           </article>
         </div>
       </section>
@@ -874,6 +945,64 @@
               >
             </div>
           </div>
+        </div>
+      </section>
+
+      <section id="start" class="section reveal">
+        <div class="section-head">
+          <p class="eyebrow">Start here</p>
+          <h2>Documentation, demo, source, and licensing in one place.</h2>
+          <p class="section-copy">
+            Once the product story lands, the shortest path to trust is simple: read the docs,
+            inspect the source, run the demo, and understand the license.
+          </p>
+        </div>
+        <div class="start-grid" id="start-grid">
+          <article class="start-card start-card-compact">
+            <span class="article-source">Docs</span>
+            <h3>Documentation</h3>
+            <p>Installation, APIs, and calibration guidance for teams moving toward production.</p>
+            <a
+              class="start-link"
+              href="https://github.com/passiveintent/core/tree/main/packages/core"
+              target="_blank"
+              rel="noopener noreferrer"
+              >Open docs</a
+            >
+          </article>
+          <article class="start-card start-card-compact">
+            <span class="article-source">Demo</span>
+            <h3>Live demo</h3>
+            <p>
+              Run the guided lab and see hesitation, entropy, exit intent, and trajectory signals in
+              motion.
+            </p>
+            <a class="start-link" href="#demo">Open demo</a>
+          </article>
+          <article class="start-card start-card-compact">
+            <span class="article-source">GitHub</span>
+            <h3>Source code</h3>
+            <p>
+              Review the core package, React package, demo apps, and calibration guide in the public
+              repo.
+            </p>
+            <a
+              class="start-link"
+              href="https://github.com/passiveintent/core"
+              target="_blank"
+              rel="noopener noreferrer"
+              >View GitHub</a
+            >
+          </article>
+          <article class="start-card start-card-compact">
+            <span class="article-source">Pricing</span>
+            <h3>Pricing and licensing</h3>
+            <p>
+              See the AGPL path, commercial tiers, and the brief used for legal and procurement
+              review.
+            </p>
+            <a class="start-link" href="#pricing">See pricing</a>
+          </article>
         </div>
       </section>
 

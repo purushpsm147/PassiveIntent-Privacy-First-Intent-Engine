@@ -31,6 +31,13 @@ interface BFSNode {
   readonly pathProb: number;
   /** Number of hops taken from the source state to this node. */
   readonly depth: number;
+  /**
+   * States already visited on this specific path from the source to this node.
+   * Tracked per-path (not globally) so that converging simple paths are not
+   * incorrectly pruned: two different paths may visit the same intermediate
+   * state independently without forming a cycle.
+   */
+  readonly pathVisited: ReadonlySet<string>;
 }
 
 // ---------------------------------------------------------------------------
@@ -191,10 +198,13 @@ export class PropensityCalculator {
    * probabilistic forward walk.
    *
    * ### Cycle prevention
-   * A `visited` Set prevents the BFS from re-expanding states it has already
-   * enqueued.  Without this guard a cyclic graph (A→B→A→…) would fill the
-   * queue within `maxDepth` steps, producing over-counted probabilities and
-   * potentially O(F^D) iterations instead of the bounded O(V) we guarantee.
+   * Each queued node carries its own `pathVisited` set — the states already on
+   * that specific path from `currentState` to this node.  Before enqueuing a
+   * neighbor we check `pathVisited` and skip it if it appears, preventing the
+   * BFS from following cycles (A→B→A→…) along any single route.  Unlike a
+   * global visited set, this approach allows two *different* paths to pass
+   * through the same intermediate state independently, which is required to
+   * correctly sum all simple-path contributions to the hitting probability.
    *
    * ### Probability accumulation
    * Each BFS node carries `pathProb` — the running product of edge probabilities
@@ -231,16 +241,20 @@ export class PropensityCalculator {
 
     // ── BFS initialisation ────────────────────────────────────────────────────
     // The queue holds frontier nodes in FIFO order.
-    // `visited` prevents the BFS from revisiting states, bounding the search.
-    const queue: BFSNode[] = [{ state: currentState, pathProb: 1, depth: 0 }];
-    const visited = new Set<string>([currentState]);
+    // `pathVisited` is tracked per-path so that converging simple paths are not
+    // incorrectly pruned: two routes may share an intermediate state without
+    // forming a cycle.  A global visited set would drop valid second arrivals.
+    const queue: BFSNode[] = [
+      { state: currentState, pathProb: 1, depth: 0, pathVisited: new Set([currentState]) },
+    ];
 
     // Running sum of joint path probabilities that terminate at `targetState`.
     let accumulated = 0;
 
     while (queue.length > 0) {
-      // `shift()` is O(n) but the queue is bounded at O(D × F) ≤ ~512 entries.
-      // A ring-buffer would be O(1) but adds ~20 lines; overkill at this scale.
+      // `shift()` is O(n) but the queue is bounded by the number of distinct
+      // simple paths: at fan-out F and depth D that is at most F×(F-1)^(D-1).
+      // At D=3, F=8 this is ~400 entries — a ring-buffer would save nothing.
       const node = queue.shift()!;
 
       // ── Expand: enumerate all outgoing transitions from this state ──────────
@@ -251,6 +265,11 @@ export class PropensityCalculator {
       const neighbours = graph.getLikelyNext(node.state, 0);
 
       for (const { state: nextState, probability: edgeProb } of neighbours) {
+        // Skip states already on this path to prevent cycles.
+        if (node.pathVisited.has(nextState)) {
+          continue;
+        }
+
         // Joint probability of the path ending at `nextState`:
         //   pathProb(node → nextState) = pathProb(source → node) × P(nextState | node)
         const reachProb = node.pathProb * edgeProb;
@@ -261,12 +280,20 @@ export class PropensityCalculator {
           // not expand from the goal.  Multiple paths of different lengths
           // can hit the target, so we accumulate rather than early-return.
           accumulated += reachProb;
-        } else if (node.depth + 1 < maxDepth && !visited.has(nextState)) {
+        } else if (node.depth + 1 < maxDepth) {
           // ── Not yet at target and depth budget remains — keep walking ────────
-          visited.add(nextState);
-          queue.push({ state: nextState, pathProb: reachProb, depth: node.depth + 1 });
+          // Push a shallow copy of pathVisited with nextState added so each
+          // queued node carries its own independent path history.
+          const nextPathVisited = new Set(node.pathVisited);
+          nextPathVisited.add(nextState);
+          queue.push({
+            state: nextState,
+            pathProb: reachProb,
+            depth: node.depth + 1,
+            pathVisited: nextPathVisited,
+          });
         }
-        // States beyond maxDepth or already visited are silently discarded —
+        // States beyond maxDepth are silently discarded —
         // they cannot improve the estimate without risking cycle inflation.
       }
     }
@@ -334,6 +361,7 @@ export class PropensityCalculator {
     // target are throttled and do not cause a performance.now() call storm.
     if (this.cachedBaseline <= 0) {
       this.lastCalculationTime = now;
+      this.lastPropensity = 0;
       return 0;
     }
 

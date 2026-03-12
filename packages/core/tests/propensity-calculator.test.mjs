@@ -473,6 +473,40 @@ test('getRealTimePropensity: updateBaseline mid-throttle — new baseline reflec
   });
 });
 
+test('getRealTimePropensity: zero-baseline branch resets lastPropensity — no stale score on next throttled read', () => {
+  // Regression: the zero-baseline early-exit path previously set lastCalculationTime
+  // but not lastPropensity, so a subsequent throttled call would return the previous
+  // non-zero cached score instead of 0.
+  withMockClock((setTime) => {
+    const calc = new PropensityCalculator(0, 500); // alpha=0, 500ms throttle
+
+    // Prime a non-zero score: A→B with P=0.8
+    const model1 = makeStubModel({ A: [{ state: 'B', probability: 0.8 }] });
+    calc.updateBaseline(model1, 'A', 'B', 1);
+    setTime(0);
+    const firstScore = calc.getRealTimePropensity(0);
+    assert.ok(Math.abs(firstScore - 0.8) < 1e-10, `expected 0.8, got ${firstScore}`);
+
+    // Advance past the throttle window, then call with an unreachable target so
+    // the zero-baseline branch executes and sets lastCalculationTime=now.
+    const model2 = makeStubModel({}); // no edges → baseline = 0
+    calc.updateBaseline(model2, 'A', 'B', 1);
+    setTime(600);
+    const zeroScore = calc.getRealTimePropensity(0);
+    assert.equal(zeroScore, 0, `zero-baseline must return 0, got ${zeroScore}`);
+
+    // Immediately re-call within the new throttle window: must return 0, not the
+    // stale 0.8 that was cached before the baseline was cleared.
+    setTime(700);
+    const throttledScore = calc.getRealTimePropensity(0);
+    assert.equal(
+      throttledScore,
+      0,
+      `throttled call after zero-baseline must return 0, not stale ${firstScore}; got ${throttledScore}`,
+    );
+  });
+});
+
 test('getRealTimePropensity: throttle is enforced for zero-baseline calls too', () => {
   // If cachedBaseline=0, the function still advances lastCalculationTime so
   // repeated calls in rapid succession don't hammer performance.now().
@@ -765,6 +799,39 @@ test('math: direct target edge always accumulated regardless of maxDepth', () =>
         `direct edge must be found at maxDepth=${depths[i]}: expected 0.55, got ${score}`,
       );
     }
+  });
+});
+
+test('updateBaseline: converging simple paths through shared intermediate state both accumulate', () => {
+  // Regression for the global-visited-set bug.
+  //
+  // Graph:
+  //   A → M → target   (path 1: 0.5 × 0.8 = 0.40)
+  //   A → B → M → target (path 2: 0.6 × 1.0 × 0.8 = 0.48)
+  //
+  // Both paths are simple (no repeated nodes within each path) but they share
+  // the intermediate state M.  With a global visited set, M is marked after
+  // path 1 is enqueued, so path 2's copy of M is silently dropped, yielding
+  // only 0.40 instead of the correct 0.40 + 0.48 = 0.88.
+  const calc = new PropensityCalculator(0, 0); // alpha=0 so score == baseline
+  const model = makeStubModel({
+    A: [
+      { state: 'M', probability: 0.5 },
+      { state: 'B', probability: 0.6 },
+    ],
+    B: [{ state: 'M', probability: 1.0 }],
+    M: [{ state: 'target', probability: 0.8 }],
+  });
+  calc.updateBaseline(model, 'A', 'target', 3);
+
+  withMockClock((setTime) => {
+    setTime(0);
+    const score = calc.getRealTimePropensity(0);
+    // Expected: 0.40 + 0.48 = 0.88
+    assert.ok(
+      Math.abs(score - 0.88) < 1e-10,
+      `converging simple paths must both accumulate; expected 0.88, got ${score}`,
+    );
   });
 });
 

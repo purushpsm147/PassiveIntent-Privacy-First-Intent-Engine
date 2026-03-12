@@ -2392,7 +2392,7 @@ Custom `LifecycleAdapter` implementations that do not implement `onExitIntent` c
 
 #### The Two-Factor Model
 
-```
+```text
 propensity(t) = P_reach × exp(−α × max(0, z(t)))
                 ────────   ───────────────────────
                 Factor 1            Factor 2
@@ -2403,7 +2403,7 @@ propensity(t) = P_reach × exp(−α × max(0, z(t)))
 
 Computed by `updateBaseline()`. A depth-bounded BFS walks the live `IStateModel` transition graph from `currentState`, accumulating path probabilities for all simple paths that reach `targetState` within `maxDepth` hops:
 
-```
+```text
 P_reach = Σ_paths  Π_edges P(s_{i+1} | s_i)
 ```
 
@@ -2413,7 +2413,7 @@ This is the standard _hitting probability_ definition: the probability that a ra
 
 Applied at read time by `getRealTimePropensity(z)`. The dwell-time z-score from Welford's online algorithm (computed by `DwellTimePolicy` / `SignalEngine`) reflects how much the user's current dwell deviates from their own historical mean:
 
-```
+```text
 friction = exp(−α × max(0, z))
 ```
 
@@ -2437,7 +2437,7 @@ The `max(0, z)` clamp is a deliberate asymmetry: a user navigating faster than t
 
 `getRealTimePropensity()` enforces a `THROTTLE_MS`-wide recompute gate via `performance.now()`:
 
-```
+```ts
 if (now - lastCalculationTime < THROTTLE_MS) → return lastPropensity  // zero alloc
 else → recompute, store lastPropensity, update lastCalculationTime
 ```
@@ -2488,7 +2488,7 @@ intent.on('dwell_time_anomaly', ({ zScore }) => {
 
 #### File Location
 
-```
+```text
 src/engine/propensity-calculator.ts   ← implementation (< 1 kB minified)
 tests/propensity-calculator.test.mjs  ← 34 unit tests (5 sections)
 cypress/e2e/propensity.cy.ts          ← 12 E2E tests (Tests AL–AV)

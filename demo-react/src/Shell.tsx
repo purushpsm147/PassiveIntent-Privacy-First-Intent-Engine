@@ -47,6 +47,7 @@ const NAV: Array<{ section: string; items: NavItem[] }> = [
     items: [
       { key: 'conversion', label: '💰 Conversion Tracking' },
       { key: 'counters', label: '🔢 Session Counters' },
+      { key: 'propensity-score', label: '📐 Propensity Score' },
     ],
   },
   {
@@ -68,6 +69,7 @@ const QUICK_JUMPS: Array<{ key: DemoKey; label: string }> = [
   { key: 'hesitation', label: 'Hesitation' },
   { key: 'exit-intent', label: 'Exit Intent' },
   { key: 'bot-detection', label: 'Bot Detection' },
+  { key: 'propensity-score', label: 'Propensity' },
   { key: 'amazon-playground', label: 'Playground' },
   { key: 'byob', label: 'BYOB' },
 ];
@@ -101,7 +103,7 @@ export default function Shell({ active, onNavigate, onReset, children }: Props) 
           </div>
         </div>
         <div className="header-right">
-          <span className="badge badge-green">v1.0.0</span>
+          <span className="badge badge-green">v1.1.0</span>
           <span className="badge badge-blue">React 18</span>
           <span className="badge badge-purple">@passiveintent/react</span>
           <button
