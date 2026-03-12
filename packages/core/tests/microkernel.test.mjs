@@ -13,6 +13,7 @@
  *                             entropy, trajectory, serialize/restore)
  *   7. LocalStorageAdapter — IPersistenceAdapter contract (Node.js + mock window)
  *   8. createBrowserIntent factory — SSR-safe construction and functional smoke test
+ *   9. MouseKinematicsAdapter — deferred initial state + navigation events
  *
  * All tests use plain-object mocks — no class inheritance, no spy libraries.
  * DOM-dependent adapters are tested by polyfilling `global.window` in-place
@@ -25,6 +26,7 @@ import assert from 'node:assert/strict';
 import { IntentEngine } from '../dist/src/engine/intent-engine.js';
 import { ContinuousGraphModel } from '../dist/src/plugins/web/ContinuousGraphModel.js';
 import { LocalStorageAdapter } from '../dist/src/plugins/web/LocalStorageAdapter.js';
+import { MouseKinematicsAdapter } from '../dist/src/plugins/web/MouseKinematicsAdapter.js';
 import { createBrowserIntent } from '../dist/src/factory.js';
 
 // ---------------------------------------------------------------------------
@@ -1045,4 +1047,152 @@ test('createBrowserIntent: two independent instances do not share state', () => 
   assert.equal(bEvents.length, 0);
   a.destroy();
   b.destroy();
+});
+
+// ===========================================================================
+// Section 9 — MouseKinematicsAdapter: deferred initial state + navigation
+// ===========================================================================
+
+/**
+ * Minimal mock window that satisfies MouseKinematicsAdapter.subscribe().
+ * Listeners are collected so tests can fire fake events.
+ */
+function makeMockWindow(pathname = '/mock-path') {
+  const listeners = {};
+  return {
+    location: { pathname },
+    addEventListener(event, handler) {
+      listeners[event] = handler;
+    },
+    removeEventListener(event) {
+      delete listeners[event];
+    },
+    history: { pushState() {} },
+    /** Fire a registered event handler by name. */
+    dispatch(event) {
+      listeners[event]?.();
+    },
+    listeners,
+  };
+}
+
+test('MouseKinematicsAdapter: initial state is NOT emitted synchronously inside subscribe()', () => {
+  const mockWin = makeMockWindow('/deferred-check');
+  global.window = mockWin;
+  try {
+    const adapter = new MouseKinematicsAdapter();
+    const states = [];
+    adapter.subscribe((s) => states.push(s));
+    // Must be zero — queueMicrotask defers the emit
+    assert.equal(states.length, 0, 'initial state must not fire synchronously');
+    adapter.destroy();
+  } finally {
+    delete global.window;
+  }
+});
+
+test('MouseKinematicsAdapter: initial state is emitted after the current microtask checkpoint', async () => {
+  const mockWin = makeMockWindow('/async-check');
+  global.window = mockWin;
+  try {
+    const adapter = new MouseKinematicsAdapter();
+    const states = [];
+    adapter.subscribe((s) => states.push(s));
+    // Yield to the microtask queue
+    await Promise.resolve();
+    assert.equal(states.length, 1);
+    assert.equal(states[0], '/async-check');
+    adapter.destroy();
+  } finally {
+    delete global.window;
+  }
+});
+
+test('MouseKinematicsAdapter: listener registered after subscribe() still receives the initial state', async () => {
+  // This is the exact regression scenario: engine.on() is called after
+  // createBrowserIntent() returns, so the callback is set up after subscribe().
+  const mockWin = makeMockWindow('/regression-guard');
+  global.window = mockWin;
+  try {
+    const adapter = new MouseKinematicsAdapter();
+    // subscribe first — simulates what IntentEngine constructor does
+    const states = [];
+    const unsub = adapter.subscribe((s) => states.push(s));
+    // Attach a downstream listener after subscribe (simulates app.ts engine.on())
+    // — in the real flow this is the event listener added to the IntentEngine
+    // after createBrowserIntent() returns; the adapter callback captures it via closure.
+    assert.equal(states.length, 0, 'must not fire before microtask boundary');
+    await Promise.resolve();
+    assert.equal(states.length, 1, 'must fire after microtask boundary');
+    unsub();
+    adapter.destroy();
+  } finally {
+    delete global.window;
+  }
+});
+
+test('MouseKinematicsAdapter: popstate fires synchronously (navigation events are not deferred)', () => {
+  const mockWin = makeMockWindow('/start');
+  global.window = mockWin;
+  try {
+    const adapter = new MouseKinematicsAdapter();
+    const states = [];
+    adapter.subscribe((s) => states.push(s));
+    // Simulate a popstate navigation (synchronous path)
+    mockWin.location.pathname = '/after-nav';
+    mockWin.dispatch('popstate');
+    // Popstate handler calls handleNavigation() → emit() synchronously
+    assert.equal(states.length, 1, 'popstate state must fire synchronously');
+    assert.equal(states[0], '/after-nav');
+    adapter.destroy();
+  } finally {
+    delete global.window;
+  }
+});
+
+test('MouseKinematicsAdapter: destroy() prevents further state emissions after popstate', () => {
+  const mockWin = makeMockWindow('/page');
+  global.window = mockWin;
+  try {
+    const adapter = new MouseKinematicsAdapter();
+    const states = [];
+    adapter.subscribe((s) => states.push(s));
+    adapter.destroy();
+    mockWin.location.pathname = '/after-destroy';
+    mockWin.dispatch('popstate');
+    assert.equal(states.length, 0, 'no events must fire after destroy()');
+  } finally {
+    delete global.window;
+  }
+});
+
+test('createBrowserIntent: listener registered after construction receives initial state_change via microtask', async () => {
+  const store = new Map();
+  const mockWin = makeMockWindow('/factory-deferred');
+  mockWin.localStorage = {
+    getItem: (k) => store.get(k) ?? null,
+    setItem: (k, v) => store.set(k, v),
+  };
+  mockWin.document = {
+    visibilityState: 'visible',
+    addEventListener() {},
+    removeEventListener() {},
+  };
+  mockWin.documentElement = { addEventListener() {}, removeEventListener() {} };
+  global.window = mockWin;
+  global.document = mockWin.document;
+  try {
+    const engine = createBrowserIntent({ storageKey: 'test-microtask-deferred' });
+    const events = [];
+    engine.on('state_change', (e) => events.push(e));
+    // Synchronously: no events yet — deferred to microtask
+    assert.equal(events.length, 0, 'state_change must not fire synchronously after construction');
+    await Promise.resolve();
+    assert.equal(events.length, 1, 'state_change must fire after microtask boundary');
+    assert.equal(events[0].to, '/factory-deferred');
+    engine.destroy();
+  } finally {
+    delete global.window;
+    delete global.document;
+  }
 });

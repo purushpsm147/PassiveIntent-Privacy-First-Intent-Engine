@@ -89,7 +89,11 @@ export class MouseKinematicsAdapter implements IInputAdapter {
     this.lastVelocityZone = null;
 
     // ── Emit initial page state ──────────────────────────────────────
-    onState(this.currentPath);
+    // Deferred via queueMicrotask so callers can register engine.on() listeners
+    // before the first state_change fires.  The engine constructor calls
+    // subscribe() synchronously, meaning any .on() registrations that happen
+    // after createBrowserIntent() returns would otherwise miss this event.
+    queueMicrotask(() => onState(this.currentPath));
 
     // ── Navigation events ────────────────────────────────────────────
     // Covers back/forward (popstate) and hash-based routing (hashchange).
