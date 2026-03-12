@@ -18,6 +18,7 @@ import Counters from './pages/Counters';
 import AmazonPlayground from './pages/AmazonPlayground';
 import BYOBaseline from './pages/BYOBaseline';
 import CrossTabSync from './pages/CrossTabSync';
+import PropensityScore from './pages/PropensityScore';
 
 export type DemoKey =
   | 'overview'
@@ -34,6 +35,7 @@ export type DemoKey =
   | 'bot-detection'
   | 'conversion'
   | 'counters'
+  | 'propensity-score'
   | 'amazon-playground'
   | 'byob'
   | 'cross-tab';
@@ -53,6 +55,7 @@ const PAGE_MAP: Record<DemoKey, React.ComponentType> = {
   'bot-detection': BotDetection,
   conversion: Conversion,
   counters: Counters,
+  'propensity-score': PropensityScore,
   'amazon-playground': AmazonPlayground,
   byob: BYOBaseline,
   'cross-tab': CrossTabSync,

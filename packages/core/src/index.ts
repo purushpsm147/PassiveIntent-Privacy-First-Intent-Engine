@@ -110,6 +110,7 @@ export type {
  * });
  * ```
  */
+export { PropensityCalculator } from './engine/propensity-calculator.js';
 export { IntentEngine } from './engine/intent-engine.js';
 export type { IntentEngineConfig } from './types/microkernel.js';
 

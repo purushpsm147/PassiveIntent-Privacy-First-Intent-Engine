@@ -121,6 +121,49 @@ intent.on('exit_intent', ({ state, likelyNext }) => {
 });
 ```
 
+**7. The Propensity Scorer — Real-Time Conversion Readiness**
+
+Combine Markov graph reachability with live dwell-time friction to produce a `[0, 1]` propensity score that reflects _both_ how navigable the funnel path is _and_ how behaviorally engaged the user is at this exact moment.
+
+```ts
+import { PropensityCalculator, IntentManager } from '@passiveintent/core';
+
+// Two-factor propensity model:
+//   P_reach  — probability of reaching /checkout from current state (graph structure)
+//   friction — exp(-α × max(0, z)) applied at read time (behavioral signal)
+const propensity = new PropensityCalculator(
+  0.2, // alpha: friction sensitivity (0.2 = score halves at z ≈ 3.47)
+  500, // throttleMs: max one recomputation per 500 ms
+);
+
+const intent = new IntentManager({ storageKey: 'shop-intent', baseline: myBaseline });
+
+// Refresh the structural baseline on every navigation.
+intent.on('state_change', ({ state }) => {
+  propensity.updateBaseline(
+    intent.getStateModel(), // live IStateModel backed by the Markov graph
+    state, // current position in the funnel
+    '/checkout', // conversion target
+    3, // BFS depth: explore up to 3 hops ahead
+  );
+});
+
+// Read the real-time score on every dwell-time signal —
+// fused with the current Welford z-score, never older than 500 ms.
+intent.on('dwell_time_anomaly', ({ zScore }) => {
+  const score = propensity.getRealTimePropensity(zScore);
+
+  if (score > 0.7) {
+    // High structural probability AND low behavioral friction: user is on track.
+    // Show a subtle progress indicator rather than a disruptive modal.
+    UI.showProgressBar({ step: 'payment', confidence: score });
+  } else if (score < 0.25 && zScore > 2.0) {
+    // Low structural probability AND high friction: user is struggling.
+    UI.showChatWidget('Need help completing your order?');
+  }
+});
+```
+
 ## Install
 
 ```bash
@@ -469,6 +512,41 @@ All fields are optional. Pass them to `new IntentManager(config)` or `IntentMana
 | `TimerAdapter`            | interface | Implement to provide a custom timer backend (e.g. Node.js timers in tests).                                                                                                                         |
 | `LifecycleAdapter`        | interface | Implement to provide a custom page-visibility / app-lifecycle backend for React Native, Electron, or environments where `document` is unavailable. Pass via `IntentManagerConfig.lifecycleAdapter`. |
 | `TimerHandle`             | type      | Opaque handle returned by `TimerAdapter.setTimeout`.                                                                                                                                                |
+
+### PropensityCalculator
+
+Real-time conversion funnel scoring: combines Markov hitting probability with Welford Z-score friction into a single `[0, 1]` score.
+
+**Formula:** `propensity = P_reach × exp(−α × max(0, z))`
+
+| Method / Property                                             | Description                                                                                                                                                                                  |
+| ------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `new PropensityCalculator(alpha?, throttleMs?)`               | Construct with optional `alpha` (friction sensitivity, default `0.2`) and `throttleMs` (recompute gate, default `500`). At default α, the score halves when z ≈ 3.47 (one natural log unit). |
+| `updateBaseline(graph, currentState, targetState, maxDepth?)` | Run a depth-bounded BFS over `graph` (any `IStateModel`) and cache the Markov hitting probability. O(D × F). Call on every `state_change` / navigation event.                                |
+| `getRealTimePropensity(currentZScore)`                        | Apply `exp(−α × max(0, z))` to the cached baseline and return the fused score. Throttled: returns the cached score unchanged within the `throttleMs` window.                                 |
+
+**Parameters for `updateBaseline`:**
+
+| Parameter      | Type          | Default | Description                                                                                   |
+| -------------- | ------------- | ------- | --------------------------------------------------------------------------------------------- |
+| `graph`        | `IStateModel` | —       | Live state model. Pass `intent.getStateModel()` or any object implementing `getLikelyNext()`. |
+| `currentState` | `string`      | —       | Starting node for the BFS (e.g. the route the user is currently on).                          |
+| `targetState`  | `string`      | —       | Conversion goal (e.g. `'/checkout'`).                                                         |
+| `maxDepth`     | `number`      | `3`     | Maximum BFS hops. Higher values find longer paths but cost more CPU.                          |
+
+**Alpha calibration guide:**
+
+| Session type                           | Recommended `alpha` | Behaviour at z = 3.5              |
+| -------------------------------------- | ------------------- | --------------------------------- |
+| Short, high-intent (e.g. checkout)     | `0.4`               | Score reduced to ~24 % of P_reach |
+| Medium friction (default)              | `0.2`               | Score reduced to ~50 % of P_reach |
+| Long, noisier browsing (e.g. research) | `0.1`               | Score reduced to ~70 % of P_reach |
+
+**Import:**
+
+```ts
+import { PropensityCalculator } from '@passiveintent/core';
+```
 
 ### Utilities
 

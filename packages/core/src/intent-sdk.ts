@@ -42,6 +42,7 @@ export { SignalEngine } from './engine/signal-engine.js';
 export { EventEmitter } from './engine/event-emitter.js';
 export { DriftProtectionPolicy } from './engine/policies/drift-protection-policy.js';
 export { BenchmarkRecorder } from './performance-instrumentation.js';
+export { PropensityCalculator } from './engine/propensity-calculator.js';
 
 export type {
   AnomalyDispatcherConfig,

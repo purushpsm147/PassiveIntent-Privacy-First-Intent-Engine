@@ -9,6 +9,7 @@ import {
   MarkovGraph,
   MemoryStorageAdapter,
   computeBloomConfig,
+  PropensityCalculator,
 } from '@passiveintent/core';
 import type {
   LifecycleAdapter,
@@ -2850,6 +2851,518 @@ intent.<span class="fn">destroy</span>(); <span class="cmt">// closes BroadcastC
       updateConfig();
 
       return () => unsubs.forEach((u) => u());
+    },
+  },
+
+  // ── 18. Propensity Score ────────────────────────────────────────────────────
+  'propensity-score': {
+    title: '📐 Propensity Score',
+    render: () => {
+      // Pre-train a local graph (same 20-session e-commerce baseline as React demo)
+      const g = new MarkovGraph({ maxStates: 200, smoothingAlpha: 0 });
+      const mainPath: [string, string][] = [
+        ['/home', '/products'],
+        ['/products', '/product/headphones'],
+        ['/product/headphones', '/cart'],
+        ['/cart', '/checkout/payment'],
+        ['/checkout/payment', '/thank-you'],
+      ];
+      for (let i = 0; i < 20; i++) {
+        for (const [a, b] of mainPath) g.incrementTransition(a, b);
+      }
+      for (let i = 0; i < 4; i++) {
+        g.incrementTransition('/home', '/pricing');
+        g.incrementTransition('/products', '/cart');
+        g.incrementTransition('/product/headphones', '/checkout/payment');
+      }
+
+      const funnelPages = [
+        { route: '/home', label: 'Home', icon: '🏠' },
+        { route: '/products', label: 'Products', icon: '🛍' },
+        { route: '/product/headphones', label: 'Product', icon: '🎧' },
+        { route: '/cart', label: 'Cart', icon: '🛒' },
+        { route: '/checkout/payment', label: 'Checkout', icon: '💳' },
+        { route: '/thank-you', label: 'Thank You', icon: '🎉' },
+      ];
+      const detourPages = [
+        { route: '/support', label: 'Support', icon: '💬' },
+        { route: '/faq', label: 'FAQ', icon: '❓' },
+        { route: '/returns', label: 'Returns', icon: '↩' },
+        { route: '/404', label: '404', icon: '🚫' },
+      ];
+
+      const funnelBtns = funnelPages
+        .map(
+          (p, i) =>
+            (i > 0 ? '<span class="funnel-arrow" id="fa-' + i + '">›</span>' : '') +
+            `<button class="funnel-step" data-route="${p.route}" id="fs-${p.route.replace(/\//g, '-')}">
+              <span class="funnel-step-icon">${p.icon}</span>
+              <span class="funnel-step-label">${p.label}</span>
+            </button>`,
+        )
+        .join('');
+
+      const detourBtns = detourPages
+        .map(
+          (p) =>
+            `<button class="btn btn-ghost btn-sm propensity-detour" data-route="${p.route}">${p.icon} ${p.label}</button>`,
+        )
+        .join('');
+
+      return `
+        <div class="demo-header">
+          <div class="hook-callout">📐 new PropensityCalculator(alpha?, throttleMs?)</div>
+          <h2 class="demo-title">Propensity Score</h2>
+          <p class="demo-description">
+            Combines a <strong>Markov hitting-probability BFS</strong> — how structurally likely
+            is the user to reach checkout? — with a
+            <strong>Welford Z-score friction penalty</strong> — how much does their trajectory
+            deviate from healthy baseline? Navigate the funnel and inject friction to watch the
+            score respond live.
+          </p>
+        </div>
+
+        <div class="propensity-top-grid">
+          <!-- Score ring -->
+          <div class="card propensity-score-card">
+            <div class="card-title">Live Propensity Score</div>
+            <div class="propensity-ring-wrap">
+              <svg id="ps-arc-svg" width="160" height="160" style="transform:rotate(-90deg);display:block">
+                <circle cx="80" cy="80" r="71" fill="none" stroke="var(--bg-3)" stroke-width="12"/>
+                <circle id="ps-arc" cx="80" cy="80" r="71" fill="none" stroke="var(--green)"
+                  stroke-width="12" stroke-linecap="round"
+                  stroke-dasharray="0 446.1" style="transition:stroke-dasharray .45s cubic-bezier(.4,0,.2,1),stroke .4s ease"/>
+              </svg>
+              <div class="propensity-ring-center">
+                <span id="ps-pct" class="propensity-pct" style="color:var(--green)">0%</span>
+                <span id="ps-tier" class="propensity-tier-label" style="color:var(--green)">—</span>
+              </div>
+            </div>
+            <p id="ps-action" class="propensity-action-text">Navigate the funnel to begin.</p>
+            <div class="sparkline-wrap" id="ps-spark-wrap" style="display:none">
+              <span class="sparkline-label">Score history</span>
+              <div class="sparkline" id="ps-sparkline"></div>
+            </div>
+          </div>
+
+          <!-- Formula breakdown -->
+          <div class="card propensity-formula-card">
+            <div class="card-title">Formula Breakdown</div>
+            <div class="formula-row">
+              <div class="formula-factor">
+                <span class="formula-sym">P<sub>reach</sub></span>
+                <span id="ps-preach" class="formula-val" style="color:var(--blue)">0.0%</span>
+                <span class="formula-hint">Markov BFS hitting probability<br><code id="ps-from-route">/home</code> → <code>/thank-you</code></span>
+              </div>
+              <span class="formula-op">×</span>
+              <div class="formula-factor">
+                <span class="formula-sym">e<sup>−αz</sup></span>
+                <span id="ps-friction-val" class="formula-val" style="color:var(--green)">100.0%</span>
+                <span class="formula-hint">Friction penalty<br>α=0.2, z=<span id="ps-z-display">0.00</span></span>
+              </div>
+              <span class="formula-op">=</span>
+              <div class="formula-factor formula-factor--result">
+                <span class="formula-sym">Score</span>
+                <span id="ps-score-val" class="formula-val" style="color:var(--green)">0.0%</span>
+                <span class="formula-hint">Combined propensity<br>always in [0, 1]</span>
+              </div>
+            </div>
+
+            <table class="data-table" style="margin-top:18px">
+              <thead><tr><th>Z</th><th>Penalty (α=0.2)</th><th>Interpretation</th></tr></thead>
+              <tbody>
+                ${[
+                  [0, 'No anomaly — full propensity'],
+                  [1.5, 'Minor deviation'],
+                  [3.5, 'Divergence threshold — score halved'],
+                  [6.9, 'Severe — score quartered'],
+                  [10.0, 'Rage-quit territory'],
+                ]
+                  .map(([z, note]) => {
+                    const pen = (Math.exp(-0.2 * (z as number)) * 100).toFixed(1);
+                    const col =
+                      Math.exp(-0.2 * (z as number)) >= 0.65
+                        ? 'var(--green)'
+                        : Math.exp(-0.2 * (z as number)) >= 0.35
+                          ? 'var(--yellow)'
+                          : 'var(--red)';
+                    return `<tr id="ps-ref-${z}"><td><code>${z}</code></td><td style="color:${col}">${pen}%</td><td style="font-size:11px;color:var(--text-muted)">${note}</td></tr>`;
+                  })
+                  .join('')}
+              </tbody>
+            </table>
+          </div>
+        </div>
+
+        <div class="card">
+          <div class="card-title" style="display:flex;align-items:center;justify-content:space-between">
+            <span>Funnel Navigator</span>
+            <button class="btn btn-ghost btn-sm" id="ps-reset-btn">↺ Reset journey</button>
+          </div>
+          <p style="font-size:12px;color:var(--text-muted);margin-bottom:14px">
+            Current: <code id="ps-current-route" style="color:var(--accent-h)">/home</code>
+            → target: <code style="color:var(--green)">/thank-you</code>
+          </p>
+          <div class="funnel-strip">${funnelBtns}</div>
+
+          <div style="margin-top:14px">
+            <p style="font-size:12px;color:var(--text-muted);margin-bottom:8px">
+              Detour pages — visit these to introduce trajectory friction:
+            </p>
+            <div style="display:flex;gap:8px;flex-wrap:wrap">${detourBtns}</div>
+          </div>
+
+          <div id="ps-breadcrumb" class="nav-breadcrumb" style="margin-top:14px;display:none"></div>
+        </div>
+
+        <div class="card">
+          <div class="card-title">Friction Control — Z-Score</div>
+          <p style="font-size:13px;color:var(--text-muted);margin-bottom:12px">
+            In production the z-score comes from <code>trajectory_anomaly</code> events.
+            Enable manual override to explore how friction degrades the propensity score.
+          </p>
+          <label style="display:flex;align-items:center;gap:8px;margin-bottom:14px;cursor:pointer;font-size:13px">
+            <input type="checkbox" id="ps-manual-cb">
+            Manual override (live z: <strong id="ps-live-z">0.00</strong>)
+          </label>
+          <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:14px">
+            ${[
+              ['✅ No friction', 0],
+              ['😐 Mild', 1.5],
+              ['😟 Diverging', 3.5],
+              ['😱 High', 6.0],
+              ['💀 Critical', 9.0],
+            ]
+              .map(
+                ([label, z]) =>
+                  `<button class="btn btn-ghost btn-sm ps-preset-btn" data-z="${z}">${label}</button>`,
+              )
+              .join('')}
+          </div>
+          <div style="display:flex;align-items:center;gap:12px">
+            <span id="ps-z-label" style="font-size:13px;color:var(--text-muted);min-width:52px;font-variant-numeric:tabular-nums">z = 0.0</span>
+            <input type="range" id="ps-z-slider" min="0" max="10" step="0.1" value="0" style="flex:1">
+            <span id="ps-penalty-label" style="font-size:12px;color:var(--text-muted);min-width:76px">penalty 100%</span>
+          </div>
+        </div>
+
+        ${codeBlock(
+          'Wire PropensityCalculator into your app',
+          `import { PropensityCalculator } from '@passiveintent/core';
+
+const calc = new PropensityCalculator(0.2, 500); // alpha=0.2, throttle=500ms
+
+// Re-baseline when the user changes state
+manager.on('state_change', ({ stateTo }) => {
+  calc.updateBaseline(stateModel, stateTo, '/thank-you', 3);
+});
+
+// Fold live friction into the score
+manager.on('trajectory_anomaly', ({ zScore }) => {
+  const p = calc.getRealTimePropensity(zScore);
+  if (p < 0.35) showInterventionBanner();
+  if (p < 0.15) showExitIntentOffer();
+});`,
+        )}
+      `;
+    },
+
+    setup(container: HTMLElement) {
+      const TARGET_ROUTE = '/thank-you';
+      const ALPHA = 0.2;
+      const CIRC = 2 * Math.PI * 71; // matches r=71 in SVG
+
+      // Rebuild graph from the same baseline as render() — setup() gets fresh DOM
+      function seedGraph() {
+        const graph = new MarkovGraph({ maxStates: 200, smoothingAlpha: 0 });
+        const mainPath: [string, string][] = [
+          ['/home', '/products'],
+          ['/products', '/product/headphones'],
+          ['/product/headphones', '/cart'],
+          ['/cart', '/checkout/payment'],
+          ['/checkout/payment', '/thank-you'],
+        ];
+        for (let i = 0; i < 20; i++) {
+          for (const [a, b] of mainPath) graph.incrementTransition(a, b);
+        }
+        for (let i = 0; i < 4; i++) {
+          graph.incrementTransition('/home', '/pricing');
+          graph.incrementTransition('/products', '/cart');
+          graph.incrementTransition('/product/headphones', '/checkout/payment');
+        }
+        return graph;
+      }
+
+      let g = seedGraph();
+
+      const calc = new PropensityCalculator(ALPHA, 0); // throttleMs=0
+
+      // IStateModel adapter — only getLikelyNext is used by PropensityCalculator
+      const stateModel = {
+        markSeen(_s: string) {},
+        hasSeen(_s: string) {
+          return false;
+        },
+        recordTransition(_f: string, _t: string) {},
+        getLikelyNext(state: string, threshold: number) {
+          return g.getLikelyNextStates(state, threshold);
+        },
+        evaluateEntropy(_s: string) {
+          return { entropy: 0, normalizedEntropy: 0, isHigh: false } as const;
+        },
+        evaluateTrajectory(_f: string, _t: string, _traj: readonly string[]) {
+          return null;
+        },
+        serialize() {
+          return '';
+        },
+        restore(_d: string) {},
+      };
+
+      let currentRoute = '/home';
+      let navHistory: string[] = ['/home'];
+      let liveZ = 0;
+      let manualZ = 0;
+      let useManual = false;
+      let scoreHistory: number[] = [];
+
+      // ── DOM refs ──
+      const pctEl = container.querySelector<HTMLElement>('#ps-pct')!;
+      const tierEl = container.querySelector<HTMLElement>('#ps-tier')!;
+      const actionEl = container.querySelector<HTMLElement>('#ps-action')!;
+      const arcEl = container.querySelector<SVGCircleElement>('#ps-arc')!;
+      const preachEl = container.querySelector<HTMLElement>('#ps-preach')!;
+      const frictionEl = container.querySelector<HTMLElement>('#ps-friction-val')!;
+      const scoreValEl = container.querySelector<HTMLElement>('#ps-score-val')!;
+      const zDisplayEl = container.querySelector<HTMLElement>('#ps-z-display')!;
+      const fromRouteEl = container.querySelector<HTMLElement>('#ps-from-route')!;
+      const currentEl = container.querySelector<HTMLElement>('#ps-current-route')!;
+      const breadcrumbEl = container.querySelector<HTMLElement>('#ps-breadcrumb')!;
+      const sparklineEl = container.querySelector<HTMLElement>('#ps-sparkline')!;
+      const sparkWrapEl = container.querySelector<HTMLElement>('#ps-spark-wrap')!;
+      const zLabelEl = container.querySelector<HTMLElement>('#ps-z-label')!;
+      const zSliderEl = container.querySelector<HTMLInputElement>('#ps-z-slider')!;
+      const penaltyEl = container.querySelector<HTMLElement>('#ps-penalty-label')!;
+      const liveZEl = container.querySelector<HTMLElement>('#ps-live-z')!;
+      const manualCbEl = container.querySelector<HTMLInputElement>('#ps-manual-cb')!;
+
+      function scoreColor(s: number) {
+        if (s >= 0.65) return 'var(--green)';
+        if (s >= 0.35) return 'var(--yellow)';
+        return 'var(--red)';
+      }
+
+      function tierInfo(s: number) {
+        if (s >= 0.75)
+          return { tier: 'High Propensity', action: '✅ On track — no intervention needed.' };
+        if (s >= 0.55)
+          return { tier: 'Moderate', action: '🎁 Show a free-shipping banner or social proof.' };
+        if (s >= 0.35)
+          return { tier: 'At Risk', action: '⏳ Trigger a limited-time 10% discount.' };
+        if (s >= 0.15)
+          return {
+            tier: 'Low Propensity',
+            action: '💬 Open a live-chat prompt or money-back offer.',
+          };
+        return {
+          tier: 'Critical',
+          action: '🚪 Last-chance exit-intent overlay before they leave.',
+        };
+      }
+
+      function recompute(route: string, z: number) {
+        calc.updateBaseline(stateModel, route, TARGET_ROUTE, 5);
+        const reach = calc.getRealTimePropensity(0);
+        const fr = Math.exp(-ALPHA * Math.max(0, z));
+        const score = reach * fr;
+        const color = scoreColor(score);
+        const { tier, action } = tierInfo(score);
+
+        // Update arc
+        const dash = score * CIRC;
+        arcEl.style.strokeDasharray = `${dash} ${CIRC}`;
+        arcEl.style.stroke = color;
+
+        // Update text
+        pctEl.textContent = Math.round(score * 100) + '%';
+        pctEl.style.color = color;
+        tierEl.textContent = tier;
+        tierEl.style.color = color;
+        actionEl.textContent = action;
+
+        // Formula panel
+        preachEl.textContent = (reach * 100).toFixed(1) + '%';
+        frictionEl.textContent = (fr * 100).toFixed(1) + '%';
+        frictionEl.style.color = z > 2 ? 'var(--yellow)' : 'var(--green)';
+        scoreValEl.textContent = (score * 100).toFixed(1) + '%';
+        scoreValEl.style.color = color;
+        zDisplayEl.textContent = z.toFixed(2);
+        fromRouteEl.textContent = route;
+
+        // Highlight matching reference row
+        [0, 1.5, 3.5, 6.9, 10.0].forEach((refZ) => {
+          const row = container.querySelector<HTMLElement>(`#ps-ref-${refZ}`);
+          if (row) row.style.background = Math.abs(z - refZ) < 0.5 ? 'rgba(121,168,255,0.08)' : '';
+        });
+
+        // Sparkline
+        scoreHistory = [...scoreHistory.slice(-23), score];
+        if (scoreHistory.length >= 2) {
+          sparkWrapEl.style.display = 'flex';
+          const peak = Math.max(...scoreHistory, 0.01);
+          sparklineEl.innerHTML = scoreHistory
+            .map((s, i) => {
+              const h = Math.round((s / peak) * 100);
+              const op = (0.35 + 0.65 * (i / scoreHistory.length)).toFixed(2);
+              return `<div class="spark-bar" style="height:${h}%;background:${scoreColor(s)};opacity:${op}" title="${Math.round(s * 100)}%"></div>`;
+            })
+            .join('');
+        }
+      }
+
+      function updateFunnelUI() {
+        container.querySelectorAll<HTMLElement>('.funnel-step').forEach((btn) => {
+          const r = btn.dataset.route!;
+          btn.classList.toggle('funnel-step--active', r === currentRoute);
+          btn.classList.toggle(
+            'funnel-step--visited',
+            navHistory.includes(r) && r !== currentRoute,
+          );
+        });
+        // Light up arrows for visited transitions
+        navHistory.forEach((r, i) => {
+          if (i === 0) return;
+          const funnelRoutes = [
+            '/home',
+            '/products',
+            '/product/headphones',
+            '/cart',
+            '/checkout/payment',
+            '/thank-you',
+          ];
+          const idx = funnelRoutes.indexOf(r);
+          if (idx > 0) {
+            const arrow = container.querySelector<HTMLElement>(`#fa-${idx}`);
+            if (arrow) arrow.classList.add('funnel-arrow--lit');
+          }
+        });
+        currentEl.textContent = currentRoute;
+        // Breadcrumb
+        if (navHistory.length > 1) {
+          breadcrumbEl.style.display = 'flex';
+          const last10 = navHistory.slice(-10);
+          breadcrumbEl.innerHTML =
+            last10
+              .map(
+                (r, i) =>
+                  (i === 0 ? '' : '<span class="bc-sep">›</span>') +
+                  `<code class="bc-item">${r}</code>`,
+              )
+              .join('') +
+            (navHistory.length > 10
+              ? `<span style="color:var(--text-muted);font-size:11px">+${navHistory.length - 10} more</span>`
+              : '');
+        }
+      }
+
+      function navigateTo(route: string) {
+        g.incrementTransition(currentRoute, route);
+        intent.track(route);
+        currentRoute = route;
+        navHistory = [...navHistory, route];
+        updateFunnelUI();
+        recompute(route, useManual ? manualZ : liveZ);
+      }
+
+      // ── Event listeners ──
+      container.querySelectorAll<HTMLElement>('.funnel-step').forEach((btn) => {
+        btn.addEventListener('click', () => navigateTo(btn.dataset.route!));
+      });
+      container.querySelectorAll<HTMLElement>('.propensity-detour').forEach((btn) => {
+        btn.addEventListener('click', () => navigateTo(btn.dataset.route!));
+      });
+
+      container.querySelector('#ps-reset-btn')!.addEventListener('click', () => {
+        g = seedGraph();
+        currentRoute = '/home';
+        navHistory = ['/home'];
+        liveZ = 0;
+        if (!useManual) {
+          manualZ = 0;
+          zSliderEl.value = '0';
+        }
+        scoreHistory = [];
+        sparkWrapEl.style.display = 'none';
+        sparklineEl.innerHTML = '';
+        breadcrumbEl.style.display = 'none';
+        breadcrumbEl.innerHTML = '';
+        container
+          .querySelectorAll('.funnel-arrow--lit')
+          .forEach((el) => el.classList.remove('funnel-arrow--lit'));
+        updateFunnelUI();
+        const z = useManual ? manualZ : liveZ;
+        zLabelEl.textContent = `z = ${z.toFixed(1)}`;
+        penaltyEl.textContent = `penalty ${Math.round(Math.exp(-ALPHA * Math.max(0, z)) * 100)}%`;
+        recompute('/home', z);
+      });
+
+      manualCbEl.addEventListener('change', () => {
+        useManual = manualCbEl.checked;
+        if (!useManual) {
+          manualZ = 0;
+          zSliderEl.value = String(Math.min(10, liveZ));
+        }
+        const z = useManual ? manualZ : liveZ;
+        zLabelEl.textContent = `z = ${z.toFixed(1)}`;
+        penaltyEl.textContent = `penalty ${Math.round(Math.exp(-ALPHA * Math.max(0, z)) * 100)}%`;
+        recompute(currentRoute, z);
+      });
+
+      zSliderEl.addEventListener('input', () => {
+        useManual = true;
+        manualCbEl.checked = true;
+        manualZ = parseFloat(zSliderEl.value);
+        const z = manualZ;
+        zLabelEl.textContent = `z = ${z.toFixed(1)}`;
+        penaltyEl.textContent = `penalty ${Math.round(Math.exp(-ALPHA * Math.max(0, z)) * 100)}%`;
+        recompute(currentRoute, z);
+      });
+
+      container.querySelectorAll<HTMLElement>('.ps-preset-btn').forEach((btn) => {
+        btn.addEventListener('click', () => {
+          useManual = true;
+          manualCbEl.checked = true;
+          manualZ = parseFloat(btn.dataset.z!);
+          zSliderEl.value = String(manualZ);
+          zLabelEl.textContent = `z = ${manualZ.toFixed(1)}`;
+          penaltyEl.textContent = `penalty ${Math.round(Math.exp(-ALPHA * Math.max(0, manualZ)) * 100)}%`;
+          // Highlight active preset
+          container
+            .querySelectorAll('.ps-preset-btn')
+            .forEach((b) => ((b as HTMLElement).style.borderColor = ''));
+          btn.style.borderColor = 'var(--accent)';
+          btn.style.color = 'var(--accent)';
+          recompute(currentRoute, manualZ);
+        });
+      });
+
+      // Subscribe to live trajectory z-score
+      const unsub = intent.on('trajectory_anomaly', (payload: any) => {
+        liveZ = payload.zScore ?? 0;
+        liveZEl.textContent = liveZ.toFixed(2);
+        if (!useManual) {
+          zSliderEl.value = String(Math.min(10, liveZ));
+          zLabelEl.textContent = `z = ${liveZ.toFixed(1)}`;
+          penaltyEl.textContent = `penalty ${Math.round(Math.exp(-ALPHA * Math.max(0, liveZ)) * 100)}%`;
+          recompute(currentRoute, liveZ);
+        }
+      });
+
+      // Bootstrap
+      recompute('/home', 0);
+      updateFunnelUI();
+
+      return unsub;
     },
   },
 };

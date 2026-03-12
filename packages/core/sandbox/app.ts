@@ -12,6 +12,7 @@ import {
   BroadcastSync,
   normalizeRouteState,
   BrowserLifecycleAdapter,
+  PropensityCalculator,
   SerializedMarkovGraph,
 } from '../src/intent-sdk.js';
 
@@ -106,4 +107,5 @@ routes.addEventListener('click', (event: Event) => {
   BroadcastSync,
   normalizeRouteState,
   BrowserLifecycleAdapter,
+  PropensityCalculator,
 };

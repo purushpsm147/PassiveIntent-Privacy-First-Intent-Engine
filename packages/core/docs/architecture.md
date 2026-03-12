@@ -64,6 +64,7 @@ PassiveIntent takes the opposite approach. It is a tiny, tree-shakeable TypeScri
 - [Comparison Shopper Detection (attention_return)](#comparison-shopper-detection-attention_return)
 - [Idle-State Detector (user_idle / user_resumed)](#idle-state-detector-user_idle--user_resumed)
 - [Smart Exit-Intent Detection (exit_intent)](#smart-exit-intent-detection-exit_intent)
+- [PropensityCalculator — Real-Time Funnel Scoring](#propensitycalculator--real-time-funnel-scoring)
 - [Baseline Drift Auto-Killswitch](#baseline-drift-auto-killswitch)
 - [Selective Bigram Markov Transitions](#selective-bigram-markov-transitions)
 - [Event Cooldown](#event-cooldown)
@@ -2380,6 +2381,118 @@ Custom `LifecycleAdapter` implementations that do not implement `onExitIntent` c
 - No extra data is collected — the event payload contains only the state labels your application has already explicitly passed to `track()`.
 - The Markov validation gate ensures the event cannot be triggered by a page with zero learned history, making it impossible to surface spammy overlays on cold-start sessions.
 - Like all PassiveIntent events, `exit_intent` is entirely local and never transmitted anywhere unless the host application explicitly sends it.
+
+---
+
+### PropensityCalculator — Real-Time Funnel Scoring
+
+`PropensityCalculator` is a zero-dependency, < 1 kB utility that fuses two independent signals — graph-structural reachability and live behavioral friction — into a single `[0, 1]` propensity score.
+
+**Source:** `src/engine/propensity-calculator.ts`
+
+#### The Two-Factor Model
+
+```text
+propensity(t) = P_reach × exp(−α × max(0, z(t)))
+                ────────   ───────────────────────
+                Factor 1            Factor 2
+           (graph structure)  (behavioral friction)
+```
+
+**Factor 1 — Markov hitting probability (P_reach)**
+
+Computed by `updateBaseline()`. A depth-bounded BFS walks the live `IStateModel` transition graph from `currentState`, accumulating path probabilities for all simple paths that reach `targetState` within `maxDepth` hops:
+
+```text
+P_reach = Σ_paths  Π_edges P(s_{i+1} | s_i)
+```
+
+This is the standard _hitting probability_ definition: the probability that a random walk starting at `currentState` will reach `targetState` in at most `maxDepth` steps, considering all non-revisiting routes.
+
+**Factor 2 — Welford Z-score friction penalty**
+
+Applied at read time by `getRealTimePropensity(z)`. The dwell-time z-score from Welford's online algorithm (computed by `DwellTimePolicy` / `SignalEngine`) reflects how much the user's current dwell deviates from their own historical mean:
+
+```text
+friction = exp(−α × max(0, z))
+```
+
+- `z = 0` → no friction; propensity equals P_reach.
+- `z > 0` → user is slower than their baseline; propensity decays exponentially.
+- `z < 0` → user is faster than baseline; clamped to 0 so propensity is never _increased_ by friction (no reward for speed; only penalize slowdown).
+
+The `max(0, z)` clamp is a deliberate asymmetry: a user navigating faster than their baseline does not signal higher conversion intent — only slower, hesitating navigation signals _lower_ intent.
+
+#### BFS Design Choices
+
+| Decision                          | Choice                       | Reason                                                                                                            |
+| --------------------------------- | ---------------------------- | ----------------------------------------------------------------------------------------------------------------- |
+| BFS over DFS                      | BFS with a FIFO queue        | Level-by-level expansion terminates naturally at `maxDepth` without an explicit recursion depth counter           |
+| `visited` Set                     | Per-call local `Set<string>` | Prevents cycle inflation on A→B→A graphs and bounds search to O(V) nodes visited                                  |
+| Target excluded from `visited`    | Never added to `Set`         | Multiple paths through different intermediate nodes can each contribute their own edge to the target              |
+| Threshold `0` for `getLikelyNext` | Always pass `0`              | Avoids silent underestimation by ensuring _all_ edges are considered, not just those above some probability floor |
+| `Math.min(1, accumulated)`        | Clamp result to `[0, 1]`     | Guards against floating-point rounding when multiple parallel paths sum to just above 1.0                         |
+
+#### Throttle Gate
+
+`getRealTimePropensity()` enforces a `THROTTLE_MS`-wide recompute gate via `performance.now()`:
+
+```ts
+if (now - lastCalculationTime < THROTTLE_MS) → return lastPropensity  // zero alloc
+else → recompute, store lastPropensity, update lastCalculationTime
+```
+
+`lastCalculationTime` is initialized to `−Infinity` (not `0`) so the very first call is _never_ throttled — even in test environments where the mock clock starts at `0`. Using `0` would cause `0 − 0 = 0 < 500` to evaluate `true` and return `0` on the first call.
+
+Throttled-call cost: one `performance.now()` read + one float comparison + one return. No heap allocation.
+Full-computation cost: one `performance.now()` + one `Math.exp()` + one multiply (< 1 µs on V8).
+
+#### Alpha Calibration
+
+The default `alpha = 0.2` was calibrated against the default `divergenceThreshold = 3.5`:
+
+- At z = 3.5 (one standard deviation above the anomaly gate): `exp(−0.2 × 3.5) ≈ 0.497` → score halved.
+- Half-life formula: z where score = P_reach / 2 → `z_half = ln(2) / α ≈ 3.47` at α = 0.2.
+- Doubling z squares the decay: `exp(−α × 2z) = [exp(−α × z)]²`.
+
+| Session type                  | Recommended α | Score at z = 3.5 |
+| ----------------------------- | ------------- | ---------------- |
+| Short, high-intent (checkout) | `0.4`         | 24 % of P_reach  |
+| Default (medium friction)     | `0.2`         | 50 % of P_reach  |
+| Long, noisier browsing        | `0.1`         | 70 % of P_reach  |
+
+#### Integration Pattern
+
+```ts
+import { PropensityCalculator, createBrowserIntent } from '@passiveintent/core';
+
+const propensity = new PropensityCalculator(0.2, 500);
+const intent = createBrowserIntent({ storageKey: 'my-app' });
+
+// Refresh structural baseline on each navigation
+intent.on('state_change', ({ state }) => {
+  propensity.updateBaseline(
+    intent.getStateModel(), // live IStateModel
+    state, // current funnel position
+    '/checkout', // conversion goal
+    3, // BFS depth
+  );
+});
+
+// Read fused score on each dwell-time signal (≤ 500 ms staleness)
+intent.on('dwell_time_anomaly', ({ zScore }) => {
+  const score = propensity.getRealTimePropensity(zScore);
+  if (score < 0.25) UI.showChatWidget('Need help?');
+});
+```
+
+#### File Location
+
+```text
+src/engine/propensity-calculator.ts   ← implementation (< 1 kB minified)
+tests/propensity-calculator.test.mjs  ← 34 unit tests (5 sections)
+cypress/e2e/propensity.cy.ts          ← 12 E2E tests (Tests AL–AV)
+```
 
 ---
 

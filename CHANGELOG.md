@@ -12,6 +12,98 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ---
 
+## [1.1.0] – Microkernel Architecture, Web Integration & Testing
+
+### Microkernel Architecture — Four-Layer Model
+
+- **Strict four-layer separation** — the core package now enforces a clean boundary between `Layer 1` (pure domain logic: `IntentEngine`, `ContinuousGraphModel`), `Layer 2` (microkernel contracts: adapter interfaces), `Layer 3` (platform factories: `createBrowserIntent`), and `Layer 4` (web plugins: `src/plugins/web/`). Any domain adapter—web, React Native, Capacitor, food-delivery—can be plugged in by satisfying the Layer 2 contracts without touching engine internals.
+- **`IInputAdapter`** — new interface for push-based navigation input. `subscribe(onState)` receives canonical state strings and returns a teardown function; `destroy()` cleans up listeners. `MouseKinematicsAdapter` is the standard web implementation.
+- **`ILifecycleAdapter`** — new interface for page-visibility and interaction events. Declares `onPause()`, `onResume()`, `onInteraction()`, `onExitIntent()`, and `destroy()`. `BrowserLifecycleAdapter` is the standard web implementation.
+- **`IStateModel`** — new interface for the probabilistic state graph (`ContinuousGraphModel`). Covers `markSeen`, `hasSeen`, `recordTransition`, `getLikelyNext`, `evaluateEntropy`, `evaluateTrajectory`, `serialize`, and `restore`. Unlike the other three interfaces, `IStateModel` has no `destroy()` — lifecycle cleanup is the responsibility of the adapter layer, not the model.
+- **`IPersistenceAdapter`** — new interface replacing the old untyped `StorageAdapter` duck-type. Declares `load(): string | null`, `save(data: string): void`, and `destroy()`. `LocalStorageAdapter` is the standard web implementation.
+- **`src/types/microkernel.ts`** — all four interfaces are exported from this module and re-exported from the package root, giving TypeScript consumers a stable import path for custom adapter authoring.
+- **Documentation** — `docs/architecture.md` and `packages/core/README.md` include ASCII layer diagrams, interface contracts, and sample adapter implementations for React Native and Capacitor.
+
+### `MouseKinematicsAdapter` — Browser Navigation & Pointer Physics
+
+- **`MouseKinematicsAdapter` class** — new `IInputAdapter` implementation that converts browser navigation events and pointer/scroll physics into canonical state strings consumed by `IntentEngine`.
+  - **Navigation states** — listens to `popstate` and `hashchange`; emits `window.location.pathname` as the canonical state on every navigation change.
+  - **Scroll-depth sub-states** — emits `<pathname>#scroll:<depth>` suffixes (`25`, `50`, `75`, `100`) as the user scrolls through content, enabling per-section engagement tracking without query-string pollution.
+  - **Mouse-velocity states** — samples `mousemove` events and emits `<pathname>#velocity:<band>` (`slow`, `medium`, `fast`) when pointer speed crosses configurable thresholds, surfacing hesitation vs. confident-scanning intent signals.
+  - **Deferred initial state** — the current `window.location.pathname` is emitted via `queueMicrotask` on `subscribe()` so listeners registered _after_ the factory call (e.g., `engine.on('state_change', …)` in application code) still receive the page-load state. Previously, synchronous emission caused the event to fire before any listener could be attached.
+  - **SSR / Node.js safe** — every `window` access is guarded with `typeof window !== 'undefined'`; `subscribe()` returns a no-op teardown in non-browser environments.
+- **Bug fix: lost initial `state_change` on page load** — prior to this release, `MouseKinematicsAdapter.subscribe()` emitted the current pathname synchronously, before `IntentEngine` had finished wiring up internal listeners. The fix wraps the initial emit in `queueMicrotask`, guaranteeing it fires after the current call stack resolves. Consumers who paste the factory setup and immediately attach `engine.on('state_change', …)` now reliably receive the page-load event.
+
+### `createBrowserIntent()` Factory — Layer 3 Web Integration
+
+- **`createBrowserIntent(options?)` factory** — new convenience factory exported from `@passiveintent/core` that wires all four standard web plugins (`ContinuousGraphModel`, `LocalStorageAdapter`, `BrowserLifecycleAdapter`, `MouseKinematicsAdapter`) into a ready-to-use `IntentEngine` in a single call. Replaces the previous manual wiring pattern.
+- **Options** — accepts `storageKey` (defaults to `'__passiveintent'`), `stateNormalizer`, `onError`, and the full `IntentEngineConfig` surface. All fields are optional; a zero-config call works out of the box.
+- **SSR-safe** — the factory itself is importable in Node.js / Edge Workers; plugins that access `window` or `document` self-disable via their individual guards.
+- **Usage example** updated in `packages/core/README.md` — the quick-start snippet now places `engine.destroy()` in a dedicated teardown section (annotated as `// call during unmount / cleanup`) rather than inline with the setup code, preventing readers who paste the snippet from immediately destroying the engine.
+
+### Performance Improvements
+
+- **Average tracking time** — reduced from prior baseline; updated figures in `benchmarks/baseline.json` and `benchmarks/latest.json`.
+- **Memory usage** — serialized graph size reduced; memory estimate updated in benchmark reports.
+- **Benchmark methodology** — `perf-runner.mjs` was updated with a 5 000-call JIT warm-up pass so reported figures reflect steady-state V8 performance, not cold-start overhead.
+
+### E2E Test Suite — `createBrowserIntent()` Browser Integration
+
+- **`cypress/e2e/browser-intent.cy.ts`** — new Cypress E2E spec with 7 tests covering the full browser integration path:
+  - Emits initial `state_change` with the page-load pathname via `MouseKinematicsAdapter` on page load (regression guard for the `queueMicrotask` fix above).
+  - Emits `state_change` on `history.pushState` navigation.
+  - Persists and restores engine state across page reloads via `LocalStorageAdapter`.
+  - Emits `exit_intent` when the pointer leaves the viewport from above after a navigation.
+  - Emits `high_entropy` after rapid-fire navigation transitions.
+  - Calls `engine.destroy()` without throwing and stops emitting events afterward.
+  - Exposes the engine on `window.__intent` for Cypress introspection via the sandbox app.
+- **`sandbox/browser-intent/app.ts`** — new sandbox entry point that creates a `createBrowserIntent()` engine, logs all events to a `data-cy` event log in the DOM, and exposes `window.__intent` for automated test access.
+
+### `PropensityCalculator` — Real-Time Conversion Funnel Scoring
+
+- **`PropensityCalculator` class** — new zero-dependency, < 1 kB minified utility that answers "How likely is the current session to reach a target state?" in real time. Combines two scoring factors:
+  1. **Markov hitting probability** (`updateBaseline`) — a depth-bounded BFS over the live transition graph that accumulates `Σ Π P(s_{i+1}|s_i)` across all simple paths of length ≤ `maxDepth`. Cached between calls.
+  2. **Welford Z-score friction penalty** (`getRealTimePropensity`) — applies `exp(−α × max(0, z))` so that behavioral friction (dwell-time z-score) decays the structural probability in real time. Negative z-scores are clamped to 0.
+- **Combined formula:** `propensity = P_reach × exp(−α × max(0, z))` — always in `[0, 1]`.
+- **Constructor:** `new PropensityCalculator(alpha?: number = 0.2, throttleMs?: number = 500)`
+  - `alpha` — friction sensitivity. At z = 3.5, α = 0.2 halves the score (half-life z = ln(2)/α ≈ 3.47). Increase for short, high-intent funnels; decrease for long, noisier sessions.
+  - `throttleMs` — minimum ms between full recomputations. Throttled calls return the cached score with zero allocations.
+- **`updateBaseline(graph, currentState, targetState, maxDepth = 3)`** — computes and caches the Markov hitting probability via path-aware BFS. Each node on the BFS frontier carries its own `pathVisited` set (the states already on that route), so a state is only blocked within the path that introduced it, not globally. This allows multiple distinct simple paths to converge through a shared intermediate state and have their probabilities accumulated correctly. Cycles along a single route are still rejected (the path cannot revisit a node it already contains). Time complexity O(D × F^D) in the worst case where D = `maxDepth` and F = average fan-out. Call on each `track()` navigation event.
+- **`getRealTimePropensity(zScore)`** — applies the exponential friction penalty and returns the combined score, throttled to at most one full computation per `THROTTLE_MS` window.
+- **`lastCalculationTime` initialized to `−Infinity`** — guarantees the first call is never throttled even in test environments where `performance.now()` returns `0`.
+- **Per-path cycle prevention** — each BFS node carries a `pathVisited` set of states already on its route from source. Neighbours already in that set are skipped, blocking cycles (A→B→A→…) without a global visited set. Distinct simple paths that converge through a shared intermediate state are each explored independently and their probabilities summed.
+- **Bundle impact:** 866 bytes minified / 453 bytes gzipped.
+- **New file:** `src/engine/propensity-calculator.ts`
+- **Exports:** available from `@passiveintent/core` package root and `intent-sdk` façade. Exposed on `window.__PassiveIntentSDK` in the sandbox app for E2E access.
+
+### Unit Tests — `PropensityCalculator`
+
+- **43 unit tests** in `packages/core/tests/propensity-calculator.test.mjs` in six groups:
+  - **`updateBaseline` (10):** BFS traversal, hitting-probability accumulation, cycle safety, `visited` set semantics, baseline clamping, converging simple paths through shared intermediate state (regression for global-visited-set bug).
+  - **`getRealTimePropensity` (11):** cold start, z=0 identity, positive/negative z clamping, mathematical accuracy, large z, throttle window, post-throttle recomputation, mid-throttle baseline update, zero-baseline score reset, zero-baseline throttle enforcement, post-zero-baseline throttled read.
+  - **Constructor options (2):** custom `alpha` magnitude, custom `throttleMs` override.
+  - **Input validation / sanitization guards (7):** `alpha=NaN` fallback, negative `alpha` fallback, `throttleMs=NaN` fallback, `throttleMs=Infinity` fallback, `maxDepth=NaN` fallback, `maxDepth=Infinity` fallback, `z=NaN` treated as 0.
+  - **Property-based invariants (3):** `[0, 1]` range, monotonic decrease, empty-graph zero.
+  - **Mathematical edge cases (10):** α=0 no-friction identity, half-life formula `z = ln(2)/α`, decay-ratio doubling identity, three-hop probability product, mixed-depth parallel path accumulation, direct-edge reachability at any `maxDepth`, successive `updateBaseline` overwrite semantics, `throttleMs=0` no-cache behavior, `Math.min(1, …)` clamp on degenerate graphs, dense formula grid across 3 α values × 14 z-scores.
+- Total unit test count: **85 tests, 0 failures** (up from 75).
+
+### E2E Tests — `PropensityCalculator` (`cypress/e2e/propensity.cy.ts`)
+
+- **12 Cypress E2E tests** (Tests AL–AV) in real Chromium via the sandbox app: availability (AL), cold start (AM), reachable target score (AN), unreachable target (AO), probability accuracy (AP), positive z friction (AQ), negative z clamp (AR), throttle via `win.performance.now` override (AS), throttle window reset (AT), evidence accumulation (AU), `[0,1]` invariant sweep (AV).
+
+### Unit Tests — Microkernel Architecture (Section 9)
+
+- **6 new unit tests** added to `packages/core/tests/microkernel.test.mjs` covering `MouseKinematicsAdapter` behavior and the `createBrowserIntent` microtask contract:
+  - `initial state is NOT emitted synchronously inside subscribe()` — verifies the `queueMicrotask` deferral is in place.
+  - `initial state is emitted after the current microtask checkpoint` — verifies the deferred emit fires correctly after `await Promise.resolve()`.
+  - `listener registered after subscribe() still receives the initial state` — directly models the regression scenario.
+  - `popstate fires synchronously` — ensures navigation events (not the initial state) remain immediate.
+  - `destroy() prevents further state emissions after popstate` — guards the teardown path.
+  - `createBrowserIntent: listener registered after construction receives initial state_change via microtask` — end-to-end factory-level regression guard.
+- Total unit test count: **85 tests, 0 failures**.
+
+---
+
 ## [Unreleased] – Post-1.0 Engineering & Infrastructure
 
 _Branch: `codex/convert-to-npm-workspaces-monorepo` — included in v1.0.0 initial release to enable future ecosystem extensions without breaking changes_
