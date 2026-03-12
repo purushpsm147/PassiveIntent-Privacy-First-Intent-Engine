@@ -227,6 +227,7 @@ export default function PropensityScore() {
   // ── Navigation handlers ───────────────────────────────────────────────────
   const navigateTo = useCallback(
     (page: FunnelPage) => {
+      if (page.route === currentRoute) return;
       graphRef.current!.incrementTransition(currentRoute, page.route);
       track(page.route);
       setCurrentRoute(page.route);
