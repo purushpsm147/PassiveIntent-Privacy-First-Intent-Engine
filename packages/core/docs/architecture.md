@@ -927,7 +927,7 @@ interface IntentManagerConfig {
   graph?: {
     highEntropyThreshold?: number; // [0..1], default: 0.75
     divergenceThreshold?: number; // z-score magnitude, default: 3.5
-    targetFPR?: number; // progressive disclosure: float [0.001–0.5] → Z-score via √(−2 ln(fpr)); overrides divergenceThreshold
+    targetFPR?: number; // progressive disclosure: float [0.001–0.5] → Z-score via Φ⁻¹(1−fpr) (rational approx.); overrides divergenceThreshold
     baselineMeanLL?: number; // calibrated mean avg log-likelihood
     baselineStdLL?: number; // calibrated std dev of avg log-likelihood
     smoothingEpsilon?: number; // Laplace epsilon, default: 0.01
@@ -990,7 +990,7 @@ interface IntentManagerConfig {
     minSamples?: number; // minimum observations before firing (default: 10)
     // raise this value for short-session applications
     zScoreThreshold?: number; // |z| >= this fires the event (default: 2.5)
-    targetFPR?: number; // progressive disclosure: float [0.001–0.5] → Z-score via √(−2 ln(fpr)); overrides zScoreThreshold
+    targetFPR?: number; // progressive disclosure: float [0.001–0.5] → Z-score via Φ⁻¹(1−fpr) (rational approx.); overrides zScoreThreshold
   };
 
   // Selective bigram (second-order) Markov transitions
