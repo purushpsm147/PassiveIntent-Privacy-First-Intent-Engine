@@ -18,6 +18,7 @@ import {
   SyncPersistStrategy,
   AsyncPersistStrategy,
 } from '../dist/src/engine/persistence-strategies.js';
+import { serialize, deserialize, CURRENT_CODEC_VERSION } from '../dist/src/persistence/codec.js';
 
 // ---------------------------------------------------------------------------
 // Helpers / mocks
@@ -498,4 +499,43 @@ test('AsyncPersistStrategy: flushNow cancels pending retry and writes immediatel
   const retryTimerCancelled = state.scheduledTimers[0]?.cancelled;
   assert.equal(retryTimerCancelled, true, 'retry timer must be cancelled by flushNow');
   assert.equal(writes.length, 1, 'flushNow must produce a successful write');
+});
+
+// ---------------------------------------------------------------------------
+// codec: deserialize guards
+// ---------------------------------------------------------------------------
+
+test('codec/deserialize: empty base64 string throws RESTORE_PARSE (not a TypeError)', () => {
+  // atob('') → '' → Uint8Array([]) → versioned.length === 0 → versioned[0] is undefined
+  // Without the length guard, `undefined.toString(16)` would throw TypeError instead.
+  assert.throws(
+    () => deserialize(''),
+    (err) => {
+      assert.equal(err.code, 'RESTORE_PARSE', `expected RESTORE_PARSE, got ${err.code}`);
+      assert.ok(typeof err.message === 'string' && err.message.length > 0);
+      return true;
+    },
+  );
+});
+
+test('codec/deserialize: version mismatch throws RESTORE_PARSE with hex bytes in message', () => {
+  const wrongVersion = (CURRENT_CODEC_VERSION + 1) & 0xff;
+  // Build a raw versioned buffer with the wrong version byte
+  const raw = new Uint8Array([wrongVersion, 0x01, 0x02, 0x03]);
+  const base64 = btoa(String.fromCharCode(...raw));
+  assert.throws(
+    () => deserialize(base64),
+    (err) => {
+      assert.equal(err.code, 'RESTORE_PARSE', `expected RESTORE_PARSE, got ${err.code}`);
+      assert.ok(err.message.includes('0x'), `message should contain hex bytes: ${err.message}`);
+      return true;
+    },
+  );
+});
+
+test('codec/deserialize: valid round-trip returns original bytes', () => {
+  const original = new Uint8Array([0xde, 0xad, 0xbe, 0xef]);
+  const base64 = serialize(original);
+  const result = deserialize(base64);
+  assert.deepEqual(Array.from(result), Array.from(original));
 });

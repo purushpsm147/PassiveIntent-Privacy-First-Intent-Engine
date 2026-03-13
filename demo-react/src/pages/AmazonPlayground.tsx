@@ -152,7 +152,7 @@ export default function AmazonPlayground() {
           type: 'free-shipping',
           icon: '🚚',
           title: 'Free Shipping on orders over $50!',
-          body: `You paused on "${payload.state}" for ${Math.round(payload.dwellMs)}ms — z-score: ${payload.zScore.toFixed(1)}`,
+          body: `You paused on "${payload.state}" for ${Math.round(payload.dwellMs)}ms — z-score: ${payload.zScore.toFixed(1)} (confidence: ${payload.confidence}, n=${payload.sampleSize})`,
           trigger: 'dwell_time_anomaly',
         });
       }),
@@ -176,7 +176,7 @@ export default function AmazonPlayground() {
           type: 'compare',
           icon: '⚖️',
           title: 'Compare these products side by side?',
-          body: `Unusual path ${payload.stateFrom} → ${payload.stateTo} (z-score: ${payload.zScore.toFixed(1)})`,
+          body: `Unusual path ${payload.stateFrom} → ${payload.stateTo} (z-score: ${payload.zScore.toFixed(1)}, confidence: ${payload.confidence}, n=${payload.sampleSize})`,
           trigger: 'trajectory_anomaly',
         });
       }),

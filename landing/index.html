@@ -328,138 +328,6 @@
         </div>
       </section>
 
-      <section id="why-different" class="section reveal">
-        <div class="section-head section-head-wide">
-          <p class="eyebrow">Why PassiveIntent</p>
-          <h2>Built for intervention logic, not surveillance plumbing.</h2>
-          <p class="section-copy">
-            Most teams discover friction after the drop-off. PassiveIntent keeps the model close to
-            the session so you can respond while the decision is still in motion.
-          </p>
-        </div>
-        <div class="why-frame">
-          <div class="why-lead">
-            <p class="why-lead-copy">
-              It is lightweight enough to ship broadly, private enough for sensitive flows, and
-              specific enough to support real product decisions instead of another dashboard.
-            </p>
-            <p class="why-proof-link">
-              <a
-                href="./PassiveIntent_Zero_Egress_Attestation.pdf"
-                target="_blank"
-                rel="noopener noreferrer"
-                >Download the Zero Egress Attestation (PDF)</a
-              >
-            </p>
-          </div>
-          <div class="why-list">
-            <article class="why-item">
-              <span class="story-tag">Privacy-first</span>
-              <div>
-                <h3>No behavioral export by default</h3>
-                <p>
-                  Intent evaluation stays close to the session instead of feeding a remote
-                  clickstream.
-                </p>
-              </div>
-            </article>
-            <article class="why-item">
-              <span class="story-tag">Zero-egress</span>
-              <div>
-                <h3>No external inference vendor required</h3>
-                <p>
-                  You can detect hesitation without adding another behavioral processor to your
-                  stack.
-                </p>
-              </div>
-            </article>
-            <article class="why-item">
-              <span class="story-tag">Lightweight</span>
-              <div>
-                <h3>Small enough to ship broadly</h3>
-                <p>
-                  At roughly 11 kB gzip, the library fits storefronts, onboarding flows, and SaaS
-                  apps.
-                </p>
-              </div>
-            </article>
-            <article class="why-item">
-              <span class="story-tag">No Black Box</span>
-              <div>
-                <h3>Not AI. Deterministic math.</h3>
-                <p>
-                  No black-box AI. Just provable, deterministic session math built from Markov
-                  chains, entropy, and dwell-time signals your team can inspect and trust.
-                </p>
-              </div>
-            </article>
-          </div>
-        </div>
-      </section>
-
-      <section id="how" class="section reveal">
-        <div class="section-head">
-          <p class="eyebrow">How it works</p>
-          <h2>A small client-side loop: observe, infer, intervene.</h2>
-          <p class="section-copy">
-            Route changes and lifecycle events feed the model. The model scores hesitation locally.
-            Your product decides how to respond.
-          </p>
-        </div>
-        <div class="architecture-band">
-          <div class="architecture-flow">
-            <article class="architecture-node">
-              <span class="architecture-step">01</span>
-              <h3>Observe</h3>
-              <p>Routes, dwell time, lifecycle events, and path changes.</p>
-            </article>
-            <span class="architecture-arrow" aria-hidden="true">→</span>
-            <article class="architecture-node architecture-node-strong">
-              <span class="architecture-step">02</span>
-              <h3>Infer</h3>
-              <p>Hesitation, entropy, exit intent, and trajectory drift in-session.</p>
-            </article>
-            <span class="architecture-arrow" aria-hidden="true">→</span>
-            <article class="architecture-node">
-              <span class="architecture-step">03</span>
-              <h3>Intervene</h3>
-              <p>Support, reassurance, offers, or the next best step.</p>
-            </article>
-          </div>
-          <div class="architecture-notes">
-            <span class="architecture-note">Runs in the browser by default</span>
-            <span class="architecture-note">Keeps the model close to the moment</span>
-            <span class="architecture-note">Lets your product own the response</span>
-          </div>
-        </div>
-      </section>
-
-      <section id="use-cases" class="section reveal">
-        <div class="section-head">
-          <p class="eyebrow">Use cases</p>
-          <h2>Three concrete buyer problems the library helps solve right away.</h2>
-        </div>
-        <div class="story-grid">
-          <article class="story-card">
-            <span class="story-tag">Checkout</span>
-            <h3>Recover users who stall before payment.</h3>
-            <p>Detect hesitation and path drift before the buyer abandons the funnel.</p>
-          </article>
-          <article class="story-card story-card-emphasis">
-            <span class="story-tag">Pricing and billing</span>
-            <h3>Spot friction while high-intent visitors are still comparing options.</h3>
-            <p>Use in-session signals to trigger reassurance, support, or a better next step.</p>
-          </article>
-          <article class="story-card">
-            <span class="story-tag">Customer support</span>
-            <h3>Surface help when confusion shows up in navigation behavior.</h3>
-            <p>
-              Catch the session before it turns into a lost conversion or avoidable support ticket.
-            </p>
-          </article>
-        </div>
-      </section>
-
       <section id="art-of-possible" class="section reveal">
         <div class="possible-shell">
           <div class="possible-head">
@@ -832,6 +700,138 @@
               >Build This for Your Platform. Contact Enterprise Sales.</a
             >
           </div>
+        </div>
+      </section>
+
+      <section id="why-different" class="section reveal">
+        <div class="section-head section-head-wide">
+          <p class="eyebrow">Why PassiveIntent</p>
+          <h2>Built for intervention logic, not surveillance plumbing.</h2>
+          <p class="section-copy">
+            Most teams discover friction after the drop-off. PassiveIntent keeps the model close to
+            the session so you can respond while the decision is still in motion.
+          </p>
+        </div>
+        <div class="why-frame">
+          <div class="why-lead">
+            <p class="why-lead-copy">
+              It is lightweight enough to ship broadly, private enough for sensitive flows, and
+              specific enough to support real product decisions instead of another dashboard.
+            </p>
+            <p class="why-proof-link">
+              <a
+                href="./PassiveIntent_Zero_Egress_Attestation.pdf"
+                target="_blank"
+                rel="noopener noreferrer"
+                >Download the Zero Egress Attestation (PDF)</a
+              >
+            </p>
+          </div>
+          <div class="why-list">
+            <article class="why-item">
+              <span class="story-tag">Privacy-first</span>
+              <div>
+                <h3>No behavioral export by default</h3>
+                <p>
+                  Intent evaluation stays close to the session instead of feeding a remote
+                  clickstream.
+                </p>
+              </div>
+            </article>
+            <article class="why-item">
+              <span class="story-tag">Zero-egress</span>
+              <div>
+                <h3>No external inference vendor required</h3>
+                <p>
+                  You can detect hesitation without adding another behavioral processor to your
+                  stack.
+                </p>
+              </div>
+            </article>
+            <article class="why-item">
+              <span class="story-tag">Lightweight</span>
+              <div>
+                <h3>Small enough to ship broadly</h3>
+                <p>
+                  At roughly 11 kB gzip, the library fits storefronts, onboarding flows, and SaaS
+                  apps.
+                </p>
+              </div>
+            </article>
+            <article class="why-item">
+              <span class="story-tag">No Black Box</span>
+              <div>
+                <h3>Not AI. Deterministic math.</h3>
+                <p>
+                  No black-box AI. Just provable, deterministic session math built from Markov
+                  chains, entropy, and dwell-time signals your team can inspect and trust.
+                </p>
+              </div>
+            </article>
+          </div>
+        </div>
+      </section>
+
+      <section id="how" class="section reveal">
+        <div class="section-head">
+          <p class="eyebrow">How it works</p>
+          <h2>A small client-side loop: observe, infer, intervene.</h2>
+          <p class="section-copy">
+            Route changes and lifecycle events feed the model. The model scores hesitation locally.
+            Your product decides how to respond.
+          </p>
+        </div>
+        <div class="architecture-band">
+          <div class="architecture-flow">
+            <article class="architecture-node">
+              <span class="architecture-step">01</span>
+              <h3>Observe</h3>
+              <p>Routes, dwell time, lifecycle events, and path changes.</p>
+            </article>
+            <span class="architecture-arrow" aria-hidden="true">→</span>
+            <article class="architecture-node architecture-node-strong">
+              <span class="architecture-step">02</span>
+              <h3>Infer</h3>
+              <p>Hesitation, entropy, exit intent, and trajectory drift in-session.</p>
+            </article>
+            <span class="architecture-arrow" aria-hidden="true">→</span>
+            <article class="architecture-node">
+              <span class="architecture-step">03</span>
+              <h3>Intervene</h3>
+              <p>Support, reassurance, offers, or the next best step.</p>
+            </article>
+          </div>
+          <div class="architecture-notes">
+            <span class="architecture-note">Runs in the browser by default</span>
+            <span class="architecture-note">Keeps the model close to the moment</span>
+            <span class="architecture-note">Lets your product own the response</span>
+          </div>
+        </div>
+      </section>
+
+      <section id="use-cases" class="section reveal">
+        <div class="section-head">
+          <p class="eyebrow">Use cases</p>
+          <h2>Three concrete buyer problems the library helps solve right away.</h2>
+        </div>
+        <div class="story-grid">
+          <article class="story-card">
+            <span class="story-tag">Checkout</span>
+            <h3>Recover users who stall before payment.</h3>
+            <p>Detect hesitation and path drift before the buyer abandons the funnel.</p>
+          </article>
+          <article class="story-card story-card-emphasis">
+            <span class="story-tag">Pricing and billing</span>
+            <h3>Spot friction while high-intent visitors are still comparing options.</h3>
+            <p>Use in-session signals to trigger reassurance, support, or a better next step.</p>
+          </article>
+          <article class="story-card">
+            <span class="story-tag">Customer support</span>
+            <h3>Surface help when confusion shows up in navigation behavior.</h3>
+            <p>
+              Catch the session before it turns into a lost conversion or avoidable support ticket.
+            </p>
+          </article>
         </div>
       </section>
 

@@ -150,7 +150,7 @@ export class ContinuousGraphModel implements IStateModel {
    * Mirrors `SignalEngine.evaluateTrajectory()`.
    */
   evaluateTrajectory(
-    _from: string,
+    from: string,
     _to: string,
     trajectory: readonly string[],
   ): TrajectoryResult | null {
@@ -190,6 +190,7 @@ export class ContinuousGraphModel implements IStateModel {
       isAnomalous,
       logLikelihood: real,
       baselineLogLikelihood: expected,
+      sampleSize: this.graph.rowTotal(from),
     };
   }
 

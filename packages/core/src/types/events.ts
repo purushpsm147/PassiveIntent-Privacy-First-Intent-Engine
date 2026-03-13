@@ -56,6 +56,8 @@ export interface TrajectoryAnomalyPayload {
   realLogLikelihood: number;
   expectedBaselineLogLikelihood: number;
   zScore: number;
+  confidence: 'low' | 'medium' | 'high';
+  sampleSize: number;
 }
 
 export interface StateChangePayload {
@@ -69,6 +71,8 @@ export interface DwellTimeAnomalyPayload {
   meanMs: number;
   stdMs: number;
   zScore: number;
+  confidence: 'low' | 'medium' | 'high';
+  sampleSize: number;
 }
 
 export interface BotDetectedPayload {
@@ -184,6 +188,18 @@ export interface DwellTimeConfig {
   enabled?: boolean;
   minSamples?: number;
   zScoreThreshold?: number;
+  /**
+   * Target false positive rate for dwell-time anomaly detection, expressed as a
+   * float between `0.001` and `0.5` (e.g., `0.02` for 2% false positives).
+   *
+   * When provided, this is converted to a Z-score threshold internally via a
+   * lightweight inverse-normal approximation, overriding `zScoreThreshold`.
+   * Use this when you want to reason about acceptable false positive rates
+   * rather than raw Z-score values.
+   *
+   * @example 0.02  // ~2% false positive rate → Z ≈ 2.80
+   */
+  targetFPR?: number;
 }
 
 export interface BloomFilterConfig {
@@ -201,6 +217,18 @@ export interface MarkovGraphConfig {
    * Default: 3.5.  Decrease to increase sensitivity; increase to reduce noise.
    */
   divergenceThreshold?: number;
+  /**
+   * Target false positive rate for trajectory anomaly detection, expressed as a
+   * float between `0.001` and `0.5` (e.g., `0.02` for 2% false positives).
+   *
+   * When provided, this is converted to a Z-score threshold internally via a
+   * lightweight inverse-normal approximation, overriding `divergenceThreshold`.
+   * Use this when you want to reason about acceptable false positive rates
+   * rather than raw Z-score values.
+   *
+   * @example 0.005  // ~0.5% false positive rate → Z ≈ 3.25
+   */
+  targetFPR?: number;
   /**
    * Pre-computed mean of average per-step log-likelihood over a representative
    * set of *normal* sessions.  Required together with `baselineStdLL` to enable

@@ -454,7 +454,13 @@ test('IntentEngine track(): does NOT emit high_entropy when evaluateEntropy retu
 test('IntentEngine track(): emits trajectory_anomaly when evaluateTrajectory returns isAnomalous:true', () => {
   const { engine } = makeEngine({
     model: {
-      trajectory: { zScore: 4.2, isAnomalous: true, logLikelihood: -9, baselineLogLikelihood: -2 },
+      trajectory: {
+        zScore: 4.2,
+        isAnomalous: true,
+        logLikelihood: -9,
+        baselineLogLikelihood: -2,
+        sampleSize: 35,
+      },
     },
   });
   const events = [];
@@ -465,6 +471,8 @@ test('IntentEngine track(): emits trajectory_anomaly when evaluateTrajectory ret
   assert.equal(events[0].stateFrom, '/a');
   assert.equal(events[0].stateTo, '/b');
   assert.equal(events[0].zScore, 4.2);
+  assert.equal(events[0].sampleSize, 35);
+  assert.equal(events[0].confidence, 'high');
   engine.destroy();
 });
 

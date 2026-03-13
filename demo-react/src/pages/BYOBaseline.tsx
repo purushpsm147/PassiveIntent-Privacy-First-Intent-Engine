@@ -207,10 +207,15 @@ export default function BYOBaseline() {
   useEffect(() => {
     const unsubs = [
       on('trajectory_anomaly', (p: unknown) => {
-        const payload = p as { stateTo?: string; zScore?: number };
+        const payload = p as {
+          stateTo?: string;
+          zScore?: number;
+          confidence?: string;
+          sampleSize?: number;
+        };
         setAnomalies((prev) =>
           [
-            `🚨 Trajectory anomaly → ${payload.stateTo} (z=${payload.zScore?.toFixed(2)})`,
+            `🚨 Trajectory anomaly → ${payload.stateTo} (z=${payload.zScore?.toFixed(2)}, ${payload.confidence ?? '?'}, n=${payload.sampleSize ?? '?'})`,
             ...prev,
           ].slice(0, 10),
         );
@@ -225,12 +230,17 @@ export default function BYOBaseline() {
         );
       }),
       on('dwell_time_anomaly', (p: unknown) => {
-        const payload = p as { state?: string; zScore?: number };
+        const payload = p as {
+          state?: string;
+          zScore?: number;
+          confidence?: string;
+          sampleSize?: number;
+        };
         setAnomalies((prev) =>
-          [`⏱ Dwell anomaly at ${payload.state} (z=${payload.zScore?.toFixed(2)})`, ...prev].slice(
-            0,
-            10,
-          ),
+          [
+            `⏱ Dwell anomaly at ${payload.state} (z=${payload.zScore?.toFixed(2)}, ${payload.confidence ?? '?'}, n=${payload.sampleSize ?? '?'})`,
+            ...prev,
+          ].slice(0, 10),
         );
       }),
     ];

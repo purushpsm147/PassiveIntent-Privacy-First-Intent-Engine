@@ -407,14 +407,14 @@ describe('Idle-State Detector — user_idle / user_resumed', () => {
       (win as any).__testOriginalNowAQ = originalNow;
     });
 
-    // Advance mock time past the 2-minute idle threshold + one check interval,
-    // then tick the stubbed clock to fire the 5-second idle check timer.
+    // Advance mock time past the 2-minute idle threshold.
     cy.window().then((win) => {
       (win as any).__testMockTimeSetterAQ(5000 + 125_000); // 2 min + 5 s buffer
     });
 
-    // Tick the stubbed clock to fire the 5-second idle check timer.
-    cy.tick(6000);
+    // Tick the stubbed clock by the full debounce window so the one-shot
+    // USER_IDLE_THRESHOLD_MS timer fires (debounce replaced the 5 s poll).
+    cy.tick(120_001);
 
     cy.window().then((win) => {
       const idleEvents: any[] = (win as any).__testIdleEventsAQ;
@@ -459,7 +459,8 @@ describe('Idle-State Detector — user_idle / user_resumed', () => {
       (win as any).__testOriginalNowAR = originalNow;
     });
 
-    // Tick the stubbed clock forward one idle check cycle.
+    // Tick less than the debounce window — the last armIdleTimer() call reset
+    // the one-shot to 120 s, so 6 s is not enough to fire it.
     cy.tick(6000);
 
     cy.window().then((win) => {
@@ -515,8 +516,8 @@ describe('Idle-State Detector — user_idle / user_resumed', () => {
       (win as any).__testMockTimeSetterAS(5000 + 130_000); // > 2 min
     });
 
-    // Tick the stubbed clock forward to fire the idle check timer.
-    cy.tick(6000);
+    // Tick the full debounce window to fire the one-shot idle timer.
+    cy.tick(120_001);
 
     // User interacts — should trigger user_resumed
     cy.window().then((win) => {
@@ -569,8 +570,9 @@ describe('Idle-State Detector — user_idle / user_resumed', () => {
       (win as any).__testMockTimeSetterAT(5000 + 300_000); // 5 minutes
     });
 
-    // Tick the stubbed clock to fire any pending idle check timers.
-    cy.tick(6000);
+    // Tick the full debounce window so the one-shot timer fires — the guard
+    // inside the callback (hasPreviousState() === false) must suppress emission.
+    cy.tick(120_001);
 
     cy.window().then((win) => {
       const idleEvents: any[] = (win as any).__testIdleEventsAT;
@@ -615,9 +617,9 @@ describe('Idle-State Detector — user_idle / user_resumed', () => {
       (win as any).__testOriginalNowAU = originalNow;
     });
 
-    // Tick the stubbed clock well past the idle check interval to prove no
-    // timers fire after destroy().
-    cy.tick(7000);
+    // Tick past the full debounce window to prove destroy() cleared the
+    // one-shot timer — no idle events must fire even after 120 s.
+    cy.tick(120_001);
 
     cy.window().then((win) => {
       const idleEvents: any[] = (win as any).__testIdleEventsAU;
@@ -696,8 +698,8 @@ describe('Idle-State Detector — user_idle / user_resumed', () => {
       (win as any).__testMockTimeSetterAV(5000 + 30_000 + 130_000); // past 2 min idle
     });
 
-    // Tick the stubbed clock to fire the idle check timer.
-    cy.tick(6000);
+    // Tick the full debounce window to fire the one-shot idle timer.
+    cy.tick(120_001);
 
     cy.window().then((win) => {
       const idleEvents: any[] = (win as any).__testIdleEventsAV;

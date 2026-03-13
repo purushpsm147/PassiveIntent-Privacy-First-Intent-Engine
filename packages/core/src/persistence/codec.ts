@@ -44,3 +44,41 @@ export function base64ToUint8(base64: string): Uint8Array {
   }
   return arr;
 }
+
+/**
+ * Versioned codec for localStorage persistence.
+ *
+ * A 1-byte version header is prepended to every serialized payload so that
+ * future format changes can be detected on restore rather than silently
+ * producing corrupt state.  The IntentManager's `onError` boundary catches
+ * errors with `code === 'RESTORE_PARSE'` and falls back to a cold start.
+ */
+export const CURRENT_CODEC_VERSION = 0x01;
+
+/** Serialize bytes to a versioned base64 string. */
+export function serialize(bytes: Uint8Array): string {
+  const versioned = new Uint8Array(1 + bytes.length);
+  versioned[0] = CURRENT_CODEC_VERSION;
+  versioned.set(bytes, 1);
+  return uint8ToBase64(versioned);
+}
+
+/** Deserialize a versioned base64 string back to raw bytes. */
+export function deserialize(base64: string): Uint8Array {
+  const versioned = base64ToUint8(base64);
+  if (versioned.length === 0) {
+    throw Object.assign(new Error('Codec version mismatch: empty or invalid payload'), {
+      code: 'RESTORE_PARSE',
+    });
+  }
+  if (versioned[0] !== CURRENT_CODEC_VERSION) {
+    throw Object.assign(
+      new Error(
+        `Codec version mismatch: expected 0x${CURRENT_CODEC_VERSION.toString(16).padStart(2, '0')}, ` +
+          `got 0x${versioned[0].toString(16).padStart(2, '0')}`,
+      ),
+      { code: 'RESTORE_PARSE' },
+    );
+  }
+  return versioned.subarray(1);
+}

@@ -12,6 +12,19 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ---
 
+## [Unreleased] – Progressive Disclosure of Complexity
+
+### Added
+
+- **`confidence` and `sampleSize` fields on anomaly payloads** — `TrajectoryAnomalyPayload` and `DwellTimeAnomalyPayload` now carry two additional fields that expose signal quality so developers can gate their interventions during the cold-start phase:
+  - `sampleSize: number` — the number of observed samples underpinning the anomaly score (Markov `rowTotal` for trajectory, Welford accumulator count for dwell time).
+  - `confidence: 'low' | 'medium' | 'high'` — derived from `sampleSize`: `< 10` → `'low'`, `10–29` → `'medium'`, `≥ 30` → `'high'`.
+  - Applies to both the `IntentManager` path (`SignalEngine`) and the microkernel `IntentEngine` path (`ContinuousGraphModel`). The `TrajectoryResult` interface returned by `IStateModel.evaluateTrajectory()` also gains `sampleSize` so custom `IStateModel` implementations can surface their own sample counts.
+- **`targetFPR` config field** — `DwellTimeConfig` and `MarkovGraphConfig` now accept an optional `targetFPR: number` (float `0.001`–`0.5`). When provided, the engine converts it to a Z-score threshold internally using a lightweight inverse-normal CDF approximation (`√(−2 ln(fpr))`), overriding the corresponding raw threshold (`zScoreThreshold` / `divergenceThreshold`). This lets users reason about acceptable false-positive rates (e.g., `targetFPR: 0.02` for 2 % FPR) without needing to understand Z-scores. Out-of-range values are silently clamped to `[0.001, 0.5]`.
+- **`fprToZScore` helper** (internal, `config-normalizer.ts`) — bundle-size-optimised single-expression approximation with no lookup tables, no erf dependencies.
+
+---
+
 ## [1.1.0] – Microkernel Architecture, Web Integration & Testing
 
 ### Microkernel Architecture — Four-Layer Model

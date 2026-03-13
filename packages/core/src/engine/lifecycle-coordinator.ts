@@ -11,7 +11,6 @@ import { EventEmitter } from './event-emitter.js';
 import type { IntentEventMap } from '../types/events.js';
 import {
   ATTENTION_RETURN_THRESHOLD_MS,
-  IDLE_CHECK_INTERVAL_MS,
   MAX_PLAUSIBLE_DWELL_MS,
   USER_IDLE_THRESHOLD_MS,
 } from './constants.js';
@@ -81,8 +80,8 @@ export interface LifecycleCoordinatorConfig {
  *     - Both paths are skipped when `dwellTimeEnabled` is `false`
  *   - `destroy()`: deregisters callbacks and (conditionally) tears down the adapter
  *   - Idle detection (when the adapter supports `onInteraction`):
- *     - Tracks `lastInteractionAt` and polls every `IDLE_CHECK_INTERVAL_MS`
- *     - Emits `user_idle` when inactivity exceeds `USER_IDLE_THRESHOLD_MS`
+ *     - Resets a `USER_IDLE_THRESHOLD_MS` debounce timer on every interaction
+ *     - Emits `user_idle` when the timer fires (no interaction for that duration)
  *     - Emits `user_resumed` on the first interaction after an idle period
  *     - Adjusts the dwell baseline to exclude idle duration
  */
@@ -263,11 +262,35 @@ export class LifecycleCoordinator {
   /* ── Idle-state detection internals ────────────────────────────────── */
 
   /**
-   * Set up the interaction subscription and recurring idle-check timer.
+   * Set up the interaction subscription and debounce-based idle detection.
    * Gracefully skips when the adapter does not implement `onInteraction`.
+   *
+   * Every interaction resets a `USER_IDLE_THRESHOLD_MS` one-shot timer.
+   * When the timer fires without being cancelled, the user is considered idle.
    */
   private startIdleTracking(adapter: LifecycleAdapter | null): void {
     if (!adapter || typeof adapter.onInteraction !== 'function') return;
+
+    const armIdleTimer = (): void => {
+      if (this.idleCheckTimer !== null) {
+        this.timer.clearTimeout(this.idleCheckTimer);
+      }
+      this.idleCheckTimer = this.timer.setTimeout(() => {
+        this.idleCheckTimer = null;
+        if (this.isIdle || !this.hasPreviousState()) return;
+
+        this.isIdle = true;
+        this.idleStartedAt = this.lastInteractionAt + USER_IDLE_THRESHOLD_MS;
+
+        const currentState = this.getPreviousState();
+        if (currentState !== null) {
+          this.emitter.emit('user_idle', {
+            state: currentState,
+            idleMs: this.timer.now() - this.idleStartedAt,
+          });
+        }
+      }, USER_IDLE_THRESHOLD_MS);
+    };
 
     const unsub = adapter.onInteraction(() => {
       this.lastInteractionAt = this.timer.now();
@@ -289,6 +312,8 @@ export class LifecycleCoordinator {
           });
         }
       }
+
+      armIdleTimer();
     });
 
     // The adapter returned null — it cannot deliver interaction events
@@ -296,7 +321,8 @@ export class LifecycleCoordinator {
     if (!unsub) return;
 
     this.interactionUnsub = unsub;
-    this.scheduleIdleCheck();
+    // Arm the initial timer so idle is detected even with no interactions.
+    armIdleTimer();
   }
 
   /** Tear down the interaction listener and idle-check timer. */
@@ -306,44 +332,6 @@ export class LifecycleCoordinator {
     if (this.idleCheckTimer !== null) {
       this.timer.clearTimeout(this.idleCheckTimer);
       this.idleCheckTimer = null;
-    }
-  }
-
-  /** Schedule the next idle-check tick using the TimerAdapter. */
-  private scheduleIdleCheck(): void {
-    this.idleCheckTimer = this.timer.setTimeout(() => {
-      this.idleCheckTick();
-    }, IDLE_CHECK_INTERVAL_MS);
-  }
-
-  /** Single idle-check iteration; re-arms the timer when done. */
-  private idleCheckTick(): void {
-    this.idleCheckTimer = null; // consumed
-
-    const now = this.timer.now();
-    if (
-      !this.isIdle &&
-      this.hasPreviousState() &&
-      now - this.lastInteractionAt >= USER_IDLE_THRESHOLD_MS
-    ) {
-      this.isIdle = true;
-      this.idleStartedAt = this.lastInteractionAt + USER_IDLE_THRESHOLD_MS;
-
-      const currentState = this.getPreviousState();
-      if (currentState !== null) {
-        this.emitter.emit('user_idle', {
-          state: currentState,
-          idleMs: now - this.idleStartedAt,
-        });
-      }
-    }
-
-    // Re-arm for next tick — but only when idle tracking is still active.
-    // If destroy() was called from inside a user_idle / user_resumed handler
-    // above, stopIdleTracking() will have nulled interactionUnsub; skipping
-    // scheduleIdleCheck() here prevents a leaked timer after destruction.
-    if (this.interactionUnsub !== null) {
-      this.scheduleIdleCheck();
     }
   }
 }

@@ -863,6 +863,14 @@ test('dwell_time_anomaly fires for z-score above threshold', () => {
     assert.ok(ev.zScore >= 2.0, `z-score should be >= 2.0, got ${ev.zScore}`);
     assert.ok(ev.meanMs > 0);
     assert.ok(ev.stdMs > 0);
+    assert.ok(
+      typeof ev.sampleSize === 'number' && ev.sampleSize > 0,
+      `sampleSize should be a positive number, got ${ev.sampleSize}`,
+    );
+    assert.ok(
+      ['low', 'medium', 'high'].includes(ev.confidence),
+      `confidence should be low/medium/high, got ${ev.confidence}`,
+    );
 
     manager.flushNow();
   } finally {

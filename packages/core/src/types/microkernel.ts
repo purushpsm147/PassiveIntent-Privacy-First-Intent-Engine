@@ -131,6 +131,8 @@ export interface TrajectoryResult {
   logLikelihood: number;
   /** Expected log-likelihood under the pre-trained baseline graph. */
   baselineLogLikelihood: number;
+  /** Number of outgoing transitions observed from the departing state. */
+  sampleSize: number;
 }
 
 /**

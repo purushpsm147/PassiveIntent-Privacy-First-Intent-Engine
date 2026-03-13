@@ -384,6 +384,68 @@ test('second idle cycle after resume emits user_idle again', () => {
   manager.destroy();
 });
 
+// ---------------------------------------------------------------------------
+// Debounce-specific regression tests (polling → debounce refactor)
+// ---------------------------------------------------------------------------
+
+/**
+ * The core invariant of debounce: an interaction that arrives just before the
+ * threshold must fully reset the idle window.  Under the old polling model,
+ * the poller could fire up to IDLE_CHECK_INTERVAL_MS (5 s) after the threshold
+ * was crossed even if an interaction had already reset `lastInteractionAt`.
+ * Under debounce the in-flight timer is cancelled and a fresh one is armed, so
+ * idle must not fire until `interactionTime + USER_IDLE_THRESHOLD_MS`.
+ */
+test('interaction 1 ms before threshold resets the debounce window', () => {
+  const kit = createFakeAdapterWithInteraction();
+  const { manager, advanceTo, setTime } = createIdleTestHarness(kit);
+
+  manager.track('/products');
+
+  const idleEvents = [];
+  manager.on('user_idle', (e) => idleEvents.push(e));
+
+  // Interact at t = 1000 + 119_999 ms — 1 ms before the 120 s threshold.
+  setTime(1000 + 119_999);
+  kit.interact();
+
+  // Advance to where the original (pre-interaction) timer would have fired.
+  advanceTo(1000 + 120_000);
+  assert.equal(idleEvents.length, 0, 'idle must not fire — window was reset by late interaction');
+
+  // Advance to where the reset timer fires: interactionAt + 120_000.
+  advanceTo(1000 + 119_999 + 120_000);
+  assert.equal(idleEvents.length, 1, 'idle must fire after the reset window expires');
+
+  manager.destroy();
+});
+
+/**
+ * With debounce the one-shot timer fires at exactly USER_IDLE_THRESHOLD_MS
+ * after the last interaction (or after startIdleTracking when no interactions
+ * have occurred).  The old polling model could delay detection by up to
+ * IDLE_CHECK_INTERVAL_MS (5 s) past the threshold.
+ */
+test('idle fires at exactly USER_IDLE_THRESHOLD_MS with no polling jitter', () => {
+  const kit = createFakeAdapterWithInteraction();
+  const { manager, advanceTo } = createIdleTestHarness(kit);
+
+  manager.track('/home');
+
+  const idleEvents = [];
+  manager.on('user_idle', (e) => idleEvents.push(e));
+
+  // One millisecond before the threshold — must not fire.
+  advanceTo(1000 + 120_000 - 1);
+  assert.equal(idleEvents.length, 0, 'idle must not fire before the threshold');
+
+  // At exactly the threshold — must fire immediately, with no polling delay.
+  advanceTo(1000 + 120_000);
+  assert.equal(idleEvents.length, 1, 'idle must fire at exactly USER_IDLE_THRESHOLD_MS');
+
+  manager.destroy();
+});
+
 test('existing session_stale / attention_return still fire correctly with idle detection', () => {
   const kit = createFakeAdapterWithInteraction();
   const { manager, setTime } = createIdleTestHarness(kit);

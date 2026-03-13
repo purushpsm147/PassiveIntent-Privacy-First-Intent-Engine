@@ -11,6 +11,20 @@ import assert from 'node:assert/strict';
 import { buildIntentManagerOptions } from '../dist/src/engine/config-normalizer.js';
 import { SMOOTHING_EPSILON } from '../dist/src/engine/constants.js';
 
+/**
+ * Mirror of fprToZScore from config-normalizer.ts for test expectations.
+ * Beasley-Springer rational approximation: z = Φ⁻¹(1 − fpr).
+ */
+function fprToZScore(fpr) {
+  const p = Math.min(0.5, Math.max(0.001, fpr));
+  const t = Math.sqrt(-2.0 * Math.log(p));
+  return (
+    t -
+    (2.515517 + t * (0.802853 + t * 0.010328)) /
+      (1.0 + t * (1.432788 + t * (0.189269 + t * 0.001308)))
+  );
+}
+
 // ─── Default values ──────────────────────────────────────────────────────────
 
 test('buildIntentManagerOptions returns all defaults when called with {}', () => {
@@ -545,4 +559,89 @@ test('hesitationCorrelationWindowMs: NaN falls back to default 30000', () => {
 test('hesitationCorrelationWindowMs: negative falls back to default 30000', () => {
   const opts = buildIntentManagerOptions({ hesitationCorrelationWindowMs: -1 });
   assert.equal(opts.hesitationCorrelationWindowMs, 30_000);
+});
+
+// ─── targetFPR → Z-score conversion (dwellTime) ──────────────────────────────
+
+test('dwellTime.targetFPR drives dwellTimeZScoreThreshold via fprToZScore', () => {
+  const opts = buildIntentManagerOptions({ dwellTime: { targetFPR: 0.02 } });
+  const expected = fprToZScore(0.02); // Φ⁻¹(1 − 0.02) ≈ 2.054
+  assert.ok(Math.abs(opts.dwellTimeZScoreThreshold - expected) < 1e-4);
+});
+
+test('dwellTime.targetFPR takes precedence over zScoreThreshold when both provided', () => {
+  const opts = buildIntentManagerOptions({
+    dwellTime: { zScoreThreshold: 3.0, targetFPR: 0.02 },
+  });
+  const expected = fprToZScore(0.02);
+  assert.ok(Math.abs(opts.dwellTimeZScoreThreshold - expected) < 1e-4);
+  assert.notEqual(opts.dwellTimeZScoreThreshold, 3.0);
+});
+
+test('dwellTime.targetFPR absent: zScoreThreshold still works', () => {
+  const opts = buildIntentManagerOptions({ dwellTime: { zScoreThreshold: 3.0 } });
+  assert.equal(opts.dwellTimeZScoreThreshold, 3.0);
+});
+
+test('dwellTime.targetFPR: values below 0.001 are clamped to 0.001', () => {
+  const opts = buildIntentManagerOptions({ dwellTime: { targetFPR: 0.0001 } });
+  const expected = fprToZScore(0.001); // clamp to 0.001 → Φ⁻¹(0.999) ≈ 3.090
+  assert.ok(Math.abs(opts.dwellTimeZScoreThreshold - expected) < 1e-4);
+});
+
+test('dwellTime.targetFPR: values above 0.5 are clamped to 0.5', () => {
+  const opts = buildIntentManagerOptions({ dwellTime: { targetFPR: 0.9 } });
+  const expected = fprToZScore(0.5); // clamp to 0.5 → Φ⁻¹(0.5) = 0
+  assert.ok(Math.abs(opts.dwellTimeZScoreThreshold - expected) < 1e-4);
+});
+
+test('dwellTime.targetFPR: NaN falls back to default 2.5 (does not propagate NaN)', () => {
+  // NaN is non-finite so the Number.isFinite guard treats it as absent; detection stays enabled.
+  const opts = buildIntentManagerOptions({ dwellTime: { targetFPR: NaN } });
+  assert.equal(opts.dwellTimeZScoreThreshold, 2.5);
+});
+
+// ─── targetFPR → Z-score conversion (graph / divergenceThreshold) ────────────
+
+test('graph.targetFPR drives graphConfig.divergenceThreshold via fprToZScore', () => {
+  const opts = buildIntentManagerOptions({ graph: { targetFPR: 0.005 } });
+  const expected = fprToZScore(0.005); // Φ⁻¹(0.995) ≈ 2.576
+  assert.ok(Math.abs(opts.graphConfig.divergenceThreshold - expected) < 1e-4);
+});
+
+test('graph.targetFPR takes precedence over graph.divergenceThreshold when both provided', () => {
+  const opts = buildIntentManagerOptions({
+    graph: { divergenceThreshold: 4.0, targetFPR: 0.005 },
+  });
+  const expected = fprToZScore(0.005);
+  assert.ok(Math.abs(opts.graphConfig.divergenceThreshold - expected) < 1e-4);
+  assert.notEqual(opts.graphConfig.divergenceThreshold, 4.0);
+});
+
+test('graph.targetFPR absent: divergenceThreshold passes through unchanged', () => {
+  const opts = buildIntentManagerOptions({ graph: { divergenceThreshold: 4.0 } });
+  assert.equal(opts.graphConfig.divergenceThreshold, 4.0);
+});
+
+test('graph.targetFPR absent and no divergenceThreshold: graphConfig.divergenceThreshold is undefined', () => {
+  const opts = buildIntentManagerOptions({});
+  assert.equal(opts.graphConfig.divergenceThreshold, undefined);
+});
+
+test('graph.targetFPR: values below 0.001 are clamped to 0.001', () => {
+  const opts = buildIntentManagerOptions({ graph: { targetFPR: 0.0001 } });
+  const expected = fprToZScore(0.001); // clamp to 0.001 → Φ⁻¹(0.999) ≈ 3.090
+  assert.ok(Math.abs(opts.graphConfig.divergenceThreshold - expected) < 1e-4);
+});
+
+test('graph.targetFPR: values above 0.5 are clamped to 0.5', () => {
+  const opts = buildIntentManagerOptions({ graph: { targetFPR: 0.9 } });
+  const expected = fprToZScore(0.5); // clamp to 0.5 → Φ⁻¹(0.5) = 0
+  assert.ok(Math.abs(opts.graphConfig.divergenceThreshold - expected) < 1e-4);
+});
+
+test('graph.targetFPR: NaN falls back to undefined divergenceThreshold (does not propagate NaN)', () => {
+  // NaN is non-finite so the Number.isFinite guard treats it as absent; no threshold is set.
+  const opts = buildIntentManagerOptions({ graph: { targetFPR: NaN } });
+  assert.equal(opts.graphConfig.divergenceThreshold, undefined);
 });

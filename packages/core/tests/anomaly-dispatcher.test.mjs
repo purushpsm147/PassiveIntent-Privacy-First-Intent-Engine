@@ -149,6 +149,8 @@ test('dispatcher: emits trajectory_anomaly for TrajectoryDecision in treatment g
     realLogLikelihood: -1.5,
     expectedBaselineLogLikelihood: -0.5,
     zScore: -4.2,
+    confidence: 'high',
+    sampleSize: 50,
   };
   dispatcher.dispatch({ kind: 'trajectory_anomaly', payload });
 
@@ -184,6 +186,8 @@ test('dispatcher: control group suppresses all emissions but still counts anomal
       realLogLikelihood: -2,
       expectedBaselineLogLikelihood: -1,
       zScore: -5,
+      confidence: 'high',
+      sampleSize: 40,
     },
   });
 
@@ -237,6 +241,8 @@ test('dispatcher: cooldown is per event-type (independent windows)', () => {
       realLogLikelihood: -2,
       expectedBaselineLogLikelihood: -1,
       zScore: -4,
+      confidence: 'medium',
+      sampleSize: 15,
     },
   });
 
@@ -256,6 +262,8 @@ test('dispatcher: trajectory decision calls driftPolicy.recordAnomaly() regardle
     realLogLikelihood: -2,
     expectedBaselineLogLikelihood: -1,
     zScore: -4,
+    confidence: 'high',
+    sampleSize: 35,
   };
 
   dispatcher.dispatch({ kind: 'trajectory_anomaly', payload });
@@ -277,7 +285,15 @@ test('dispatcher: entropy/dwell decisions do NOT call driftPolicy.recordAnomaly(
   });
   dispatcher.dispatch({
     kind: 'dwell_time_anomaly',
-    payload: { state: '/y', dwellMs: 5000, meanMs: 1000, stdMs: 200, zScore: 2.5 },
+    payload: {
+      state: '/y',
+      dwellMs: 5000,
+      meanMs: 1000,
+      stdMs: 200,
+      zScore: 2.5,
+      confidence: 'high',
+      sampleSize: 30,
+    },
     isPositiveZScore: true,
   });
 
@@ -299,6 +315,8 @@ test('dispatcher: hesitation emitted when trajectory and positive-dwell occur wi
       realLogLikelihood: -2,
       expectedBaselineLogLikelihood: -1,
       zScore: -4.5,
+      confidence: 'high',
+      sampleSize: 50,
     },
   });
 
@@ -306,7 +324,15 @@ test('dispatcher: hesitation emitted when trajectory and positive-dwell occur wi
   timer.advance(500);
   dispatcher.dispatch({
     kind: 'dwell_time_anomaly',
-    payload: { state: '/b', dwellMs: 9000, meanMs: 2000, stdMs: 500, zScore: 3.1 },
+    payload: {
+      state: '/b',
+      dwellMs: 9000,
+      meanMs: 2000,
+      stdMs: 500,
+      zScore: 3.1,
+      confidence: 'high',
+      sampleSize: 12,
+    },
     isPositiveZScore: true,
   });
 
@@ -332,13 +358,23 @@ test('dispatcher: hesitation not emitted when dwell zScore is negative', () => {
       realLogLikelihood: -2,
       expectedBaselineLogLikelihood: -1,
       zScore: -4,
+      confidence: 'medium',
+      sampleSize: 20,
     },
   });
 
   // Negative zScore means unusually short dwell — not a hesitation signal.
   dispatcher.dispatch({
     kind: 'dwell_time_anomaly',
-    payload: { state: '/b', dwellMs: 100, meanMs: 2000, stdMs: 500, zScore: -2.5 },
+    payload: {
+      state: '/b',
+      dwellMs: 100,
+      meanMs: 2000,
+      stdMs: 500,
+      zScore: -2.5,
+      confidence: 'low',
+      sampleSize: 7,
+    },
     isPositiveZScore: false,
   });
 
@@ -361,6 +397,8 @@ test('dispatcher: hesitation not emitted when signals are outside correlation wi
       realLogLikelihood: -2,
       expectedBaselineLogLikelihood: -1,
       zScore: -4,
+      confidence: 'medium',
+      sampleSize: 18,
     },
   });
 
@@ -368,7 +406,15 @@ test('dispatcher: hesitation not emitted when signals are outside correlation wi
   timer.advance(2000);
   dispatcher.dispatch({
     kind: 'dwell_time_anomaly',
-    payload: { state: '/b', dwellMs: 8000, meanMs: 2000, stdMs: 500, zScore: 3 },
+    payload: {
+      state: '/b',
+      dwellMs: 8000,
+      meanMs: 2000,
+      stdMs: 500,
+      zScore: 3,
+      confidence: 'medium',
+      sampleSize: 14,
+    },
     isPositiveZScore: true,
   });
 
@@ -389,8 +435,18 @@ test('dispatcher: hesitation pair is consumed (does not fire twice for the same 
     realLogLikelihood: -2,
     expectedBaselineLogLikelihood: -1,
     zScore: -4,
+    confidence: 'high',
+    sampleSize: 45,
   };
-  const dwellPayload = { state: '/b', dwellMs: 8000, meanMs: 2000, stdMs: 500, zScore: 3 };
+  const dwellPayload = {
+    state: '/b',
+    dwellMs: 8000,
+    meanMs: 2000,
+    stdMs: 500,
+    zScore: 3,
+    confidence: 'medium',
+    sampleSize: 11,
+  };
 
   dispatcher.dispatch({ kind: 'trajectory_anomaly', payload: trajectoryPayload });
   dispatcher.dispatch({

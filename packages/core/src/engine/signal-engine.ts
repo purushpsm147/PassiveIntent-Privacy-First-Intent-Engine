@@ -24,6 +24,12 @@ import type {
 } from './anomaly-decisions.js';
 
 export { EventEmitter };
+
+function getConfidence(sampleSize: number): 'low' | 'medium' | 'high' {
+  if (sampleSize < 10) return 'low';
+  if (sampleSize < 30) return 'medium';
+  return 'high';
+}
 /**
  * Configuration surface for SignalEngine.
  * All values are resolved and defaulted by IntentManager before being passed in.
@@ -304,6 +310,7 @@ export class SignalEngine {
     this.benchmark.record('divergenceComputation', start);
 
     if (shouldEmit) {
+      const sampleSize = this.graph.rowTotal(from);
       return {
         kind: 'trajectory_anomaly',
         payload: {
@@ -312,6 +319,8 @@ export class SignalEngine {
           realLogLikelihood: real,
           expectedBaselineLogLikelihood: expected,
           zScore,
+          sampleSize,
+          confidence: getConfidence(sampleSize),
         },
       };
     }
@@ -353,6 +362,7 @@ export class SignalEngine {
     const zScore = (dwellMs - updated.meanMs) / std;
 
     if (Math.abs(zScore) >= this.dwellTimeZScoreThreshold) {
+      const sampleSize = updated.count;
       return {
         kind: 'dwell_time_anomaly',
         payload: {
@@ -361,6 +371,8 @@ export class SignalEngine {
           meanMs: updated.meanMs,
           stdMs: std,
           zScore,
+          sampleSize,
+          confidence: getConfidence(sampleSize),
         },
         isPositiveZScore: zScore > 0,
       };

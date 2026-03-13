@@ -241,7 +241,9 @@ function setupReveal() {
         }
       }
     },
-    { threshold: 0.14 },
+    // Keep oversized mobile sections eligible for reveal; tall panels like Art of Possible
+    // can never hit a higher intersection ratio on smaller viewports.
+    { threshold: 0.08 },
   );
 
   revealItems.forEach((item) => observer.observe(item));

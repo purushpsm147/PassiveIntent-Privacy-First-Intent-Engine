@@ -330,6 +330,8 @@ interface TrajectoryAnomalyPayload {
   realLogLikelihood: number; // LL under the live graph
   expectedBaselineLogLikelihood: number; // LL under the baseline graph
   zScore: number; // standard deviations from baseline mean
+  sampleSize: number; // Markov transition count for the departing state
+  confidence: 'low' | 'medium' | 'high'; // 'low' <10, 'medium' 10–29, 'high' ≥30
 }
 
 // Fires when dwell time on a state deviates from the learned mean
@@ -339,6 +341,8 @@ interface DwellTimeAnomalyPayload {
   meanMs: number; // learned mean dwell for this state
   stdMs: number; // learned standard deviation
   zScore: number; // (dwellMs - mean) / std
+  sampleSize: number; // Welford accumulator count for this state
+  confidence: 'low' | 'medium' | 'high'; // 'low' <10, 'medium' 10–29, 'high' ≥30
 }
 
 // Fires on every track() call
@@ -923,6 +927,7 @@ interface IntentManagerConfig {
   graph?: {
     highEntropyThreshold?: number; // [0..1], default: 0.75
     divergenceThreshold?: number; // z-score magnitude, default: 3.5
+    targetFPR?: number; // progressive disclosure: float [0.001–0.5] → Z-score via Φ⁻¹(1−fpr) (rational approx.); overrides divergenceThreshold
     baselineMeanLL?: number; // calibrated mean avg log-likelihood
     baselineStdLL?: number; // calibrated std dev of avg log-likelihood
     smoothingEpsilon?: number; // Laplace epsilon, default: 0.01
@@ -985,6 +990,7 @@ interface IntentManagerConfig {
     minSamples?: number; // minimum observations before firing (default: 10)
     // raise this value for short-session applications
     zScoreThreshold?: number; // |z| >= this fires the event (default: 2.5)
+    targetFPR?: number; // progressive disclosure: float [0.001–0.5] → Z-score via Φ⁻¹(1−fpr) (rational approx.); overrides zScoreThreshold
   };
 
   // Selective bigram (second-order) Markov transitions

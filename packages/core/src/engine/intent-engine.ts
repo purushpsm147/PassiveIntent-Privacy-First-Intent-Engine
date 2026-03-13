@@ -368,12 +368,15 @@ export class IntentEngine {
         });
       }
       if (trajectoryResult !== null && trajectoryResult.isAnomalous) {
+        const sampleSize = trajectoryResult.sampleSize;
         this.emitter.emit('trajectory_anomaly', {
           stateFrom: from,
           stateTo: state,
           realLogLikelihood: trajectoryResult.logLikelihood,
           expectedBaselineLogLikelihood: trajectoryResult.baselineLogLikelihood,
           zScore: trajectoryResult.zScore,
+          sampleSize,
+          confidence: sampleSize < 10 ? 'low' : sampleSize < 30 ? 'medium' : 'high',
         });
       }
     }
