@@ -40,7 +40,7 @@ export interface UsePassiveIntentReturn {
 
   /**
    * Returns the current telemetry snapshot (session-scoped aggregate counters
-   * only — no raw behavioral data). Returns an empty object cast during SSR.
+   * only — no raw behavioral data). Returns a typed zero-value object during SSR.
    */
   getTelemetry: () => PassiveIntentTelemetry;
 
