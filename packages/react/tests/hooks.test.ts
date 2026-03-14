@@ -59,7 +59,9 @@ function makeFakeInstance() {
     trackConversion: vi.fn(),
     // Test helper: emit an event to all registered listeners
     _emit(event: string, payload: any) {
-      listeners.get(event)?.forEach((cb) => cb(payload));
+      listeners.get(event)?.forEach((cb) => {
+        cb(payload);
+      });
     },
     _listeners: listeners,
   };
