@@ -1,6 +1,5 @@
 import React, { useMemo, useState, type ReactNode } from 'react';
-import { useEventLog } from '@passiveintent/react';
-import type { LogEntry, IntentEventName } from '@passiveintent/react';
+import { useIntent, type LogEntry } from './IntentContext';
 import IntentMeter from './components/IntentMeter';
 import type { DemoKey } from './App';
 
@@ -75,21 +74,6 @@ const QUICK_JUMPS: Array<{ key: DemoKey; label: string }> = [
   { key: 'byob', label: 'BYOB' },
 ];
 
-const ALL_EVENTS: IntentEventName[] = [
-  'state_change',
-  'high_entropy',
-  'trajectory_anomaly',
-  'dwell_time_anomaly',
-  'bot_detected',
-  'hesitation_detected',
-  'session_stale',
-  'attention_return',
-  'user_idle',
-  'user_resumed',
-  'exit_intent',
-  'conversion',
-];
-
 interface Props {
   active: DemoKey;
   onNavigate: (key: DemoKey) => void;
@@ -98,7 +82,7 @@ interface Props {
 }
 
 export default function Shell({ active, onNavigate, onReset, children }: Props) {
-  const { log: logEntries, clear: clearLog } = useEventLog(ALL_EVENTS);
+  const { logEntries, clearLog } = useIntent();
   const [sidebarOpen, setSidebarOpen] = useState(true);
   const [logOpen, setLogOpen] = useState(true);
 
@@ -293,12 +277,12 @@ function safeSerialize(data: unknown): string {
 }
 
 function LogEntryRow({ entry }: { entry: LogEntry }) {
-  const cssClass = `log-${entry.event.replace(/_/g, '-')}`;
+  const cssClass = `log-${entry.eventName.replace(/_/g, '-')}`;
   return (
     <div className={`log-entry ${cssClass} log-default`}>
-      <span className="evt-time">{new Date(entry.timestamp).toLocaleTimeString()}</span>
-      <span className="evt-name">{entry.event.replace(/_/g, ' ')}</span>
-      <span className="evt-data">{safeSerialize(entry.payload)}</span>
+      <span className="evt-time">{entry.time}</span>
+      <span className="evt-name">{entry.eventName.replace(/_/g, ' ')}</span>
+      <span className="evt-data">{safeSerialize(entry.data)}</span>
     </div>
   );
 }
