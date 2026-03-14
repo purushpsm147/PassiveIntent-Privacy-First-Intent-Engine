@@ -7,7 +7,7 @@
 import React, { useEffect, useState } from 'react';
 import { useIntent } from '../IntentContext';
 import CodeBlock from '../components/CodeBlock';
-import type { DwellTimeAnomalyPayload } from '@passiveintent/core';
+import type { DwellTimeAnomalyPayload } from '@passiveintent/react';
 
 export default function DwellTime() {
   const { track, on, timer } = useIntent();

@@ -9,10 +9,10 @@
  */
 
 import React, { useCallback, useEffect, useRef, useState } from 'react';
-import { PropensityCalculator, MarkovGraph } from '@passiveintent/core';
+import { PropensityCalculator, MarkovGraph } from '@passiveintent/react';
 import { useIntent } from '../IntentContext';
 import CodeBlock from '../components/CodeBlock';
-import type { TrajectoryAnomalyPayload } from '@passiveintent/core';
+import type { TrajectoryAnomalyPayload } from '@passiveintent/react';
 
 // ── Constants ─────────────────────────────────────────────────────────────────
 
@@ -541,7 +541,7 @@ export default function PropensityScore() {
       {/* ─────────────────── Code sample ────────────────────────────── */}
       <CodeBlock
         label="Wire PropensityCalculator into your app"
-        code={`<span class="kw">import</span> { PropensityCalculator } <span class="kw">from</span> <span class="str">'@passiveintent/core'</span>;
+        code={`<span class="kw">import</span> { PropensityCalculator } <span class="kw">from</span> <span class="str">'@passiveintent/react'</span>;
 
 <span class="kw">const</span> calc = <span class="kw">new</span> <span class="fn">PropensityCalculator</span>(<span class="num">0.2</span>, <span class="num">500</span>); <span class="cmt">// alpha=0.2, throttle=500ms</span>
 

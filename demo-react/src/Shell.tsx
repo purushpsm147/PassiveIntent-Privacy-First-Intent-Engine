@@ -1,5 +1,6 @@
 import React, { useMemo, useState, type ReactNode } from 'react';
-import { useIntent } from './IntentContext';
+import { useEventLog } from '@passiveintent/react';
+import type { LogEntry, IntentEventName } from '@passiveintent/react';
 import IntentMeter from './components/IntentMeter';
 import type { DemoKey } from './App';
 
@@ -74,6 +75,21 @@ const QUICK_JUMPS: Array<{ key: DemoKey; label: string }> = [
   { key: 'byob', label: 'BYOB' },
 ];
 
+const ALL_EVENTS: IntentEventName[] = [
+  'state_change',
+  'high_entropy',
+  'trajectory_anomaly',
+  'dwell_time_anomaly',
+  'bot_detected',
+  'hesitation_detected',
+  'session_stale',
+  'attention_return',
+  'user_idle',
+  'user_resumed',
+  'exit_intent',
+  'conversion',
+];
+
 interface Props {
   active: DemoKey;
   onNavigate: (key: DemoKey) => void;
@@ -82,7 +98,7 @@ interface Props {
 }
 
 export default function Shell({ active, onNavigate, onReset, children }: Props) {
-  const { logEntries, clearLog } = useIntent();
+  const { log: logEntries, clear: clearLog } = useEventLog(ALL_EVENTS);
   const [sidebarOpen, setSidebarOpen] = useState(true);
   const [logOpen, setLogOpen] = useState(true);
 
@@ -254,7 +270,7 @@ export default function Shell({ active, onNavigate, onReset, children }: Props) 
             {logEntries.length === 0 ? (
               <div className="log-empty">Events appear here as you interact.</div>
             ) : (
-              logEntries.map((entry) => <LogEntry key={entry.id} entry={entry} />)
+              logEntries.map((entry, i) => <LogEntry key={i} entry={entry} />)
             )}
           </div>
         </aside>
@@ -276,13 +292,13 @@ function safeSerialize(data: unknown): string {
   }
 }
 
-function LogEntry({ entry }: { entry: import('./IntentContext').LogEntry }) {
-  const cssClass = `log-${entry.eventName.replace(/_/g, '-')}`;
+function LogEntry({ entry }: { entry: LogEntry }) {
+  const cssClass = `log-${entry.event.replace(/_/g, '-')}`;
   return (
     <div className={`log-entry ${cssClass} log-default`}>
-      <span className="evt-time">{entry.time}</span>
-      <span className="evt-name">{entry.eventName.replace(/_/g, ' ')}</span>
-      <span className="evt-data">{safeSerialize(entry.data)}</span>
+      <span className="evt-time">{new Date(entry.timestamp).toLocaleTimeString()}</span>
+      <span className="evt-name">{entry.event.replace(/_/g, ' ')}</span>
+      <span className="evt-data">{safeSerialize(entry.payload)}</span>
     </div>
   );
 }

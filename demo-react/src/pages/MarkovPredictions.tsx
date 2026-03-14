@@ -5,7 +5,7 @@
  * as a sortable table.
  */
 import React, { useState } from 'react';
-import { MarkovGraph } from '@passiveintent/core';
+import { MarkovGraph } from '@passiveintent/react';
 import { useIntent } from '../IntentContext';
 import CodeBlock from '../components/CodeBlock';
 

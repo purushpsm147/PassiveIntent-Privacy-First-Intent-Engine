@@ -5,7 +5,7 @@
  * no real tab-switching or waiting required.
  */
 
-import type { LifecycleAdapter, TimerAdapter } from '@passiveintent/core';
+import type { LifecycleAdapter, TimerAdapter } from '@passiveintent/react';
 
 // ─── Controllable Timer ──────────────────────────────────────────────────────
 

@@ -178,11 +178,19 @@ describe('usePassiveIntent', () => {
       expect(() => unsub()).not.toThrow();
     });
 
-    it('getTelemetry() returns an empty object', () => {
+    it('getTelemetry() returns a fully-typed zero-value object', () => {
       const { result, unmount } = renderHook(() => usePassiveIntent(BASE_CONFIG));
       unmount();
 
-      expect(result.current.getTelemetry()).toEqual({});
+      expect(result.current.getTelemetry()).toEqual({
+        sessionId: '',
+        transitionsEvaluated: 0,
+        botStatus: 'human',
+        anomaliesFired: 0,
+        engineHealth: 'healthy',
+        baselineStatus: 'active',
+        assignmentGroup: 'control',
+      });
     });
 
     it('predictNextStates() returns an empty array', () => {

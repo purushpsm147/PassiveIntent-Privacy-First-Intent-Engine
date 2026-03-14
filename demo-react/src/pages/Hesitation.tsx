@@ -5,7 +5,7 @@
 import React, { useEffect, useState } from 'react';
 import { useIntent } from '../IntentContext';
 import CodeBlock from '../components/CodeBlock';
-import type { HesitationDetectedPayload } from '@passiveintent/core';
+import type { HesitationDetectedPayload } from '@passiveintent/react';
 
 export default function Hesitation() {
   const { track, on, timer } = useIntent();

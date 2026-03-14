@@ -13,12 +13,11 @@ import React, {
   useContext,
   useEffect,
   useReducer,
-  useState,
   type ReactNode,
 } from 'react';
 import { usePassiveIntent } from '@passiveintent/react';
-import { MemoryStorageAdapter } from '@passiveintent/core';
-import type { IntentEventName, PassiveIntentTelemetry } from '@passiveintent/core';
+import { MemoryStorageAdapter } from '@passiveintent/react';
+import type { IntentEventName, PassiveIntentTelemetry } from '@passiveintent/react';
 import { timerAdapter, lifecycleAdapter } from './adapters';
 import { ECOMMERCE_BASELINE } from './baseline';
 
@@ -126,26 +125,12 @@ export function IntentProvider({ children }: { children: ReactNode }) {
     dwellTime: { enabled: true, minSamples: 3, zScoreThreshold: 2.0 },
   });
 
-  // React fires child effects before parent effects, so children's initial
-  // on() calls arrive before usePassiveIntent's useEffect creates the
-  // IntentManager (returning no-op unsubscribes).  Bumping this counter
-  // after the instance exists gives wrappedOn a new identity → children
-  // re-run their subscription effects with a live instance.
-  const [instanceReady, setInstanceReady] = useState(0);
-  useEffect(() => {
-    setInstanceReady(1);
-  }, []);
-
-  const wrappedOn = useCallback(
-    (event: IntentEventName, handler: (payload: unknown) => void): (() => void) =>
-      on(event, handler),
-    [on, instanceReady],
-  );
-
-  // Subscribe to all events once, log them all
+  // Subscribe to all events once, log them all.
+  // Engine is now created synchronously in usePassiveIntent's render phase,
+  // so on() is live before any child effects run — no instanceReady hack needed.
   useEffect(() => {
     const unsubs = ALL_EVENTS.map((ev) =>
-      wrappedOn(ev as IntentEventName, (payload) => {
+      on(ev as IntentEventName, (payload) => {
         dispatch({
           type: 'ADD',
           entry: {
@@ -157,7 +142,7 @@ export function IntentProvider({ children }: { children: ReactNode }) {
       }),
     );
     return () => unsubs.forEach((u) => u());
-  }, [wrappedOn]);
+  }, [on]);
 
   const clearLog = useCallback(() => dispatch({ type: 'CLEAR' }), []);
 
@@ -165,7 +150,7 @@ export function IntentProvider({ children }: { children: ReactNode }) {
     <IntentContext.Provider
       value={{
         track,
-        on: wrappedOn,
+        on,
         getTelemetry,
         predictNextStates,
         hasSeen,

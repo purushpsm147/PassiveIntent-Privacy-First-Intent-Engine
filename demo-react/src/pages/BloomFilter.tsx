@@ -4,7 +4,7 @@
  * React pattern: controlled input + local state for the standalone filter demo.
  */
 import React, { useCallback, useState } from 'react';
-import { BloomFilter, computeBloomConfig } from '@passiveintent/core';
+import { BloomFilter, computeBloomConfig } from '@passiveintent/react';
 import { useIntent } from '../IntentContext';
 import CodeBlock from '../components/CodeBlock';
 
@@ -158,7 +158,7 @@ export default function BloomFilterPage() {
 
       <CodeBlock
         label="BloomFilter API"
-        code={`<span class="kw">import</span> { <span class="type">BloomFilter</span>, <span class="fn">computeBloomConfig</span> } <span class="kw">from</span> <span class="str">'@passiveintent/core'</span>;
+        code={`<span class="kw">import</span> { <span class="type">BloomFilter</span>, <span class="fn">computeBloomConfig</span> } <span class="kw">from</span> <span class="str">'@passiveintent/react'</span>;
 
 <span class="kw">const</span> cfg = <span class="fn">computeBloomConfig</span>(<span class="num">1_000</span>, <span class="num">0.01</span>);
 <span class="kw">const</span> bf  = <span class="kw">new</span> <span class="type">BloomFilter</span>(cfg.bitSize, cfg.hashCount);

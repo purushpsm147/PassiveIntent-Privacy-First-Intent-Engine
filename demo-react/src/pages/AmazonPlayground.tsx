@@ -13,7 +13,7 @@ import type {
   TrajectoryAnomalyPayload,
   AttentionReturnPayload,
   ExitIntentPayload,
-} from '@passiveintent/core';
+} from '@passiveintent/react';
 
 /** Yield to the browser so React can flush a render. */
 const yieldFrame = () => new Promise<void>((r) => requestAnimationFrame(() => r()));

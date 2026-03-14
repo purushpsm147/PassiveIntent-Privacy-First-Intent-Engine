@@ -5,94 +5,91 @@
  * LICENSE file in the root directory of this source tree.
  */
 
-import { useCallback, useEffect, useRef } from 'react';
+import { useCallback, useContext, useEffect, useMemo, useRef } from 'react';
 import { IntentManager } from '@passiveintent/core';
 import type {
-  PassiveIntentTelemetry,
   IntentEventMap,
   IntentEventName,
   IntentManagerConfig,
+  PassiveIntentTelemetry,
 } from '@passiveintent/core';
+import { PassiveIntentContext } from './context.js';
+import type { UsePassiveIntentReturn } from './types.js';
 
 // ── Re-exports for consumer convenience ──────────────────────────────────────
 
-export type { IntentManagerConfig, PassiveIntentTelemetry } from '@passiveintent/core';
+export type { UsePassiveIntentReturn } from './types.js';
+export { PassiveIntentProvider } from './provider.js';
+export type { PassiveIntentProviderProps } from './provider.js';
 
-// ── Return type ───────────────────────────────────────────────────────────────
+export type {
+  // Config & telemetry
+  IntentManagerConfig,
+  PassiveIntentTelemetry,
+  // Event names & map
+  IntentEventName,
+  IntentEventMap,
+  // Payload event types
+  ExitIntentPayload,
+  AttentionReturnPayload,
+  UserIdlePayload,
+  UserResumedPayload,
+  SessionStalePayload,
+  HighEntropyPayload,
+  DwellTimeAnomalyPayload,
+  BotDetectedPayload,
+  TrajectoryAnomalyPayload,
+  HesitationDetectedPayload,
+  ConversionPayload,
+  // Data structure configs
+  BloomFilterConfig,
+  MarkovGraphConfig,
+  // State model
+  SerializedMarkovGraph,
+  // Adapter interfaces
+  TimerAdapter,
+  LifecycleAdapter,
+  StorageAdapter,
+} from '@passiveintent/core';
 
-export interface UsePassiveIntentReturn {
-  /**
-   * Track a page view or custom state transition.
-   *
-   * State labels are automatically normalized (query strings, hash fragments,
-   * trailing slashes, UUIDs, and MongoDB ObjectIDs are stripped), so passing
-   * `window.location.href` or `location.pathname` directly is safe.
-   *
-   * No-op during SSR and before the instance is mounted.
-   */
-  track: (state: string) => void;
+export {
+  PropensityCalculator,
+  IntentManager,
+  MarkovGraph,
+  BloomFilter,
+  computeBloomConfig,
+  MemoryStorageAdapter,
+} from '@passiveintent/core';
 
-  /**
-   * Subscribe to an IntentManager event.
-   *
-   * Returns an unsubscribe function — pass it as the return value of a
-   * `useEffect` cleanup to avoid listener leaks:
-   *
-   * ```tsx
-   * useEffect(() => on('high_entropy', handler), [on]);
-   * ```
-   *
-   * Returns a no-op unsubscribe during SSR.
-   */
-  on: <K extends IntentEventName>(
-    event: K,
-    listener: (payload: IntentEventMap[K]) => void,
-  ) => () => void;
+// ── Domain hooks ──────────────────────────────────────────────────────────────
 
-  /**
-   * Returns the current telemetry snapshot (session-scoped aggregate counters
-   * only — no raw behavioral data). Returns an empty object cast during SSR.
-   */
-  getTelemetry: () => PassiveIntentTelemetry;
-
-  /**
-   * Returns `{ state, probability }[]` sorted descending by probability for
-   * all next states whose transition probability exceeds `threshold` (default
-   * `0.3`). Pass a `sanitize` predicate to exclude sensitive or state-mutating
-   * routes before using results for prefetching — see architecture docs.
-   *
-   * Returns an empty array during SSR or before the first `track()` call.
-   */
-  predictNextStates: (
-    threshold?: number,
-    sanitize?: (state: string) => boolean,
-  ) => { state: string; probability: number }[];
-
-  /**
-   * O(1) Bloom filter membership test — has the user ever visited this state
-   * (across sessions, via `localStorage`)? Returns `false` during SSR.
-   */
-  hasSeen: (state: string) => boolean;
-
-  /**
-   * Increment a named deterministic counter by `by` (default `1`).
-   * Exact integer arithmetic — zero false positives.
-   *
-   * Returns the new counter value, or `0` during SSR / when unmounted.
-   */
-  incrementCounter: (key: string, by?: number) => number;
-
-  /**
-   * Read the current value of a named deterministic counter.
-   * Returns `0` during SSR.
-   */
-  getCounter: (key: string) => number;
-
-  /**
-   * Reset a named deterministic counter to zero. No-op during SSR.
-   */
-  resetCounter: (key: string) => void;
-}
+export {
+  useExitIntent,
+  useIdle,
+  useAttentionReturn,
+  useSignals,
+  usePropensity,
+  usePropensityScore,
+  usePredictiveLink,
+  useEventLog,
+  useBloomFilter,
+  useMarkovGraph,
+} from './hooks.js';
+export type {
+  UseExitIntentReturn,
+  UseIdleReturn,
+  UseAttentionReturnReturn,
+  UseSignalsReturn,
+  UsePropensityOptions,
+  UsePropensityScoreOptions,
+  UsePredictiveLinkOptions,
+  UsePredictiveLinkReturn,
+  LogEntry,
+  UseEventLogOptions,
+  UseEventLogReturn,
+  UseBloomFilterReturn,
+  UseMarkovGraphReturn,
+} from './hooks.js';
 
 // ── Internal helpers ──────────────────────────────────────────────────────────
 
@@ -103,31 +100,49 @@ const IS_BROWSER = typeof window !== 'undefined';
  *  unsubscribe without guarding for undefined. */
 const NOOP_UNSUBSCRIBE: () => void = () => {};
 
+/** Typed zero-value for `getTelemetry()` when the engine is not yet mounted
+ *  (standalone SSR, or before the render-phase init guard runs). Returning a
+ *  properly shaped object avoids the `{} as PassiveIntentTelemetry` type lie
+ *  that would cause runtime errors on any destructured field access. */
+const TELEMETRY_DEFAULT: PassiveIntentTelemetry = {
+  sessionId: '',
+  transitionsEvaluated: 0,
+  botStatus: 'human',
+  anomaliesFired: 0,
+  engineHealth: 'healthy',
+  baselineStatus: 'active',
+  assignmentGroup: 'control',
+};
+
 // ── Hook ──────────────────────────────────────────────────────────────────────
 
 /**
- * `usePassiveIntent` — React hook that manages an {@link IntentManager} singleton
- * lifecycle for you.
+ * `usePassiveIntent` — two usage modes:
  *
- * - **Mount:** creates a new `IntentManager` with the config supplied at first
- *   render.
- * - **Unmount:** calls `instance.destroy()` for leak-free SPA teardown
- *   (cancels timers, removes `visibilitychange` listeners, flushes state).
- * - **React Strict Mode safe:** the instance is held in a `useRef` and
- *   created/destroyed inside `useEffect`. Strict Mode's double-invocation in
- *   development correctly triggers mount → destroy → remount, ensuring the
- *   engine always starts with a clean slate in production.
- * - **SSR safe:** `useEffect` never runs server-side. All returned functions
- *   are no-ops when `typeof window === 'undefined'`, so the hook is safe to
- *   call in Next.js Server Components and SSR frameworks without a
- *   `typeof window` guard at the call site.
- * - **Config stability:** the config object is captured in a ref on first
- *   render. An unstable inline config object (e.g.
- *   `usePassiveIntent({ storageKey: 'x' })`) will not recreate the engine on
- *   every render — only the config present at initial mount is used. To apply
- *   a new config, remount the component (e.g. change its `key` prop).
+ * **Context mode (recommended)** — call without arguments inside a
+ * `<PassiveIntentProvider>` to access the shared engine instance:
  *
- * @param config — `IntentManagerConfig` forwarded directly to `IntentManager`.
+ * ```tsx
+ * const { track, on } = usePassiveIntent();
+ * ```
+ *
+ * Throws a descriptive error if called outside a `<PassiveIntentProvider>`.
+ *
+ * **Standalone mode** — pass a config to create a component-scoped engine
+ * instance. Useful for isolated tracking sub-trees (e.g. embeddable widgets)
+ * or apps that prefer not to use a Provider. The instance is destroyed when
+ * the component unmounts.
+ *
+ * ```tsx
+ * const { track, on } = usePassiveIntent({ storageKey: 'widget' });
+ * ```
+ *
+ * - **React Strict Mode safe** — double mount/destroy is handled correctly.
+ * - **SSR safe** — all returned functions are no-ops when
+ *   `typeof window === 'undefined'`.
+ * - **Config stability** — the config is captured at first render; an inline
+ *   object literal will not recreate the engine on every render. To apply a
+ *   new config, remount the component (e.g. change its `key` prop).
  *
  * @example
  * ```tsx
@@ -135,64 +150,59 @@ const NOOP_UNSUBSCRIBE: () => void = () => {};
  * import { useEffect } from 'react';
  * import { useLocation } from 'react-router-dom';
  *
- * export function PassiveIntentProvider() {
+ * export function PassiveIntentTracker() {
  *   const location = useLocation();
- *   const { track, on } = usePassiveIntent({
- *     storageKey: 'my-app-intent',
- *     graph: { highEntropyThreshold: 0.8 },
- *     botProtection: true,
- *     eventCooldownMs: 60_000,
- *   });
+ *   const { track, on } = usePassiveIntent();
  *
- *   // Track every route change
  *   useEffect(() => {
  *     track(location.pathname);
  *   }, [location.pathname, track]);
  *
- *   // Subscribe to high-entropy events — unsubscribe on cleanup
  *   useEffect(() => {
- *     return on('high_entropy', ({ state, normalizedEntropy }) => {
- *       if (normalizedEntropy > 0.9) openSupportChat({ context: state });
- *     });
+ *     return on('exit_intent', ({ likelyNext }) => prefetch(likelyNext));
  *   }, [on]);
  *
  *   return null;
  * }
  * ```
  */
-export function usePassiveIntent(config: IntentManagerConfig): UsePassiveIntentReturn {
-  // Hold the instance across renders. A ref (not state) ensures that
-  // replacing the instance does not schedule an extra render cycle.
+export function usePassiveIntent(config: IntentManagerConfig): UsePassiveIntentReturn;
+export function usePassiveIntent(): UsePassiveIntentReturn;
+export function usePassiveIntent(config?: IntentManagerConfig): UsePassiveIntentReturn {
+  // ── All hooks called unconditionally (Rules of Hooks) ──────────────────────
+
+  const ctx = useContext(PassiveIntentContext);
+
+  // Standalone instance refs. In context mode (config === undefined) these
+  // refs are created but never used — instanceRef stays null and the effect
+  // short-circuits. The overhead is one ref and a no-op effect: negligible.
   const instanceRef = useRef<IntentManager | null>(null);
+  const configRef = useRef<IntentManagerConfig | undefined>(config);
 
-  // Capture config at first render so that inline object literals (which are
-  // recreated on every render) don't retrigger the effect and destroy the
-  // learned Markov graph prematurely.
-  const configRef = useRef<IntentManagerConfig>(config);
+  // Synchronous render-phase init — mirrors PassiveIntentProvider's approach.
+  // Engine must exist before child effects run; React executes child effects
+  // before parent effects, so a useEffect-based init would give any child
+  // on() calls a null instance, silently returning NOOP_UNSUBSCRIBE.
+  // The idempotent guard (instanceRef.current === null) makes this safe under
+  // Concurrent Mode re-renders: the instance is created exactly once per
+  // component lifetime regardless of how many times React invokes the render.
+  if (config !== undefined && instanceRef.current === null && IS_BROWSER) {
+    instanceRef.current = new IntentManager(configRef.current!);
+  }
 
+  // Cleanup only — creation is synchronous above. In React Strict Mode the
+  // cleanup runs between the double-invoke, setting ref to null so the lazy
+  // init block re-creates a fresh instance on the second render.
   useEffect(() => {
-    // Belt-and-suspenders: useEffect never runs on the server, but this guard
-    // makes the SSR contract explicit and keeps the linter happy.
-    if (!IS_BROWSER) return;
-
-    const instance = new IntentManager(configRef.current);
-    instanceRef.current = instance;
-
+    if (configRef.current === undefined) return; // context mode — no cleanup needed
     return () => {
-      // Flush pending localStorage writes, cancel debounce timers, and remove
-      // visibilitychange listeners before React discards the component.
-      instance.destroy();
+      instanceRef.current?.destroy();
       instanceRef.current = null;
     };
-  }, []); // empty: create once per mount, destroy once per unmount
+  }, []);
 
-  // ── Stable callbacks ───────────────────────────────────────────────────────
-  //
-  // All functions delegate to `instanceRef.current` at call time rather than
-  // closing over the instance at creation time. This means:
-  //   1. The dep array is safely empty — callbacks never go stale.
-  //   2. Calls that happen before the effect runs (e.g. during SSR hydration
-  //      or before the first paint) silently no-op instead of throwing.
+  // Stable callbacks — always created to satisfy Rules of Hooks.
+  // In context mode these are never returned; the Provider's callbacks are.
 
   const track = useCallback((state: string): void => {
     instanceRef.current?.track(state);
@@ -209,10 +219,7 @@ export function usePassiveIntent(config: IntentManagerConfig): UsePassiveIntentR
   );
 
   const getTelemetry = useCallback((): PassiveIntentTelemetry => {
-    // Cast via unknown: before mount instanceRef is null, so we return a
-    // partial object. Callers should only read telemetry after the first
-    // track() call anyway.
-    return instanceRef.current?.getTelemetry() ?? ({} as PassiveIntentTelemetry);
+    return instanceRef.current?.getTelemetry() ?? TELEMETRY_DEFAULT;
   }, []);
 
   const predictNextStates = useCallback(
@@ -241,14 +248,48 @@ export function usePassiveIntent(config: IntentManagerConfig): UsePassiveIntentR
     instanceRef.current?.resetCounter(key);
   }, []);
 
-  return {
-    track,
-    on,
-    getTelemetry,
-    predictNextStates,
-    hasSeen,
-    incrementCounter,
-    getCounter,
-    resetCounter,
-  };
+  // Standalone mode returns this object. useMemo guarantees referential
+  // stability across re-renders — all 8 callbacks have [] deps so the memo
+  // fires exactly once per mount, matching PassiveIntentProvider's strategy.
+  // In context mode this value is computed but never returned (negligible cost).
+  const standaloneValue = useMemo<UsePassiveIntentReturn>(
+    () => ({
+      track,
+      on,
+      getTelemetry,
+      predictNextStates,
+      hasSeen,
+      incrementCounter,
+      getCounter,
+      resetCounter,
+    }),
+    [
+      track,
+      on,
+      getTelemetry,
+      predictNextStates,
+      hasSeen,
+      incrementCounter,
+      getCounter,
+      resetCounter,
+    ],
+  );
+
+  // ── Conditional return — after all hooks ──────────────────────────────────
+
+  // Context mode: no config provided → delegate to the nearest Provider.
+  if (config === undefined) {
+    if (ctx === null) {
+      throw new Error(
+        '[PassiveIntent] usePassiveIntent() was called without a config argument ' +
+          'outside a <PassiveIntentProvider>. Either wrap your component tree in ' +
+          '<PassiveIntentProvider config={...}> or pass a config directly: ' +
+          'usePassiveIntent({ storageKey: "my-app" }).',
+      );
+    }
+    return ctx;
+  }
+
+  // Standalone mode: config provided → return local callbacks.
+  return standaloneValue;
 }

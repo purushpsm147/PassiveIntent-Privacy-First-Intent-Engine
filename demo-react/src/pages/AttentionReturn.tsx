@@ -5,7 +5,7 @@
 import React, { useEffect, useState } from 'react';
 import { useIntent } from '../IntentContext';
 import CodeBlock from '../components/CodeBlock';
-import type { AttentionReturnPayload } from '@passiveintent/core';
+import type { AttentionReturnPayload } from '@passiveintent/react';
 
 export default function AttentionReturn() {
   const { track, on, timer, lifecycle } = useIntent();
