@@ -114,6 +114,6 @@ Do not republish the same version.
 Use npm metadata instead:
 
 ```bash
-npm dist-tag add @passiveintent/core@1.0.0 latest
-npm deprecate @passiveintent/core@1.0.1 "Incorrect semver. Use >=1.1.0 instead."
+npm dist-tag add `@passiveintent/core`@1.1.0 latest
+npm deprecate `@passiveintent/core`@1.0.1 "Incorrect semver. Use >=1.1.0 instead."
 ```
