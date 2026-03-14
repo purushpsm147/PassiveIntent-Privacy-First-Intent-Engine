@@ -43,3 +43,17 @@ Because your nameservers are already on Cloudflare, no Hostinger DNS changes sho
 - `styles.css` - visual design/responsive layout
 - `script.js` - reveal animation and dynamic year
 - `_headers` - security headers for static hosting
+
+## Social preview image
+
+The landing page metadata expects a social sharing image at:
+
+- `landing/social-preview.png`
+
+Recommended asset spec:
+
+- `1200x630` pixels
+- `PNG` format
+- Keep important text away from the outer edges for cropped previews
+
+This file is used by Open Graph and Twitter metadata in `index.html`, which powers previews on X/Twitter, LinkedIn, WhatsApp, Slack, Discord, and other social/link unfurlers.
