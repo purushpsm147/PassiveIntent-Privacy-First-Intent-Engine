@@ -35,6 +35,15 @@ npm install
 
 Use exact versions if you are doing a lockstep release. Use `patch`, `minor`, or `major` only when you want npm to calculate the next version for you.
 
+```bash
+cd packages/core
+npm version major
+
+npm version minor
+
+npm version patch
+```
+
 ## What To Update
 
 - `packages/core/package.json`
@@ -85,11 +94,14 @@ npm run test:perf:all -w @passiveintent/core
 
 ```bash
 cd packages/core
-npm publish
+npm login
+npm pack --dry-run
+npm publish --access public
 npm view @passiveintent/core version
 
 cd ../react
-npm publish
+npm pack --dry-run
+npm publish --access public
 npm view @passiveintent/react version
 ```
 
