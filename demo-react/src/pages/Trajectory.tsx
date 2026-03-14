@@ -5,7 +5,7 @@ import React, { useEffect, useState } from 'react';
 import { useIntent } from '../IntentContext';
 import CodeBlock from '../components/CodeBlock';
 import { ECOMMERCE_BASELINE } from '../baseline';
-import type { TrajectoryAnomalyPayload, SerializedMarkovGraph } from '@passiveintent/core';
+import type { TrajectoryAnomalyPayload, SerializedMarkovGraph } from '@passiveintent/react';
 
 const NORMAL_PATH = [
   '/home',

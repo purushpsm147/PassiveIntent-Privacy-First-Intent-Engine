@@ -10,8 +10,8 @@
  * engine responds to those different configurations in real time.
  */
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
-import { MarkovGraph } from '@passiveintent/core';
-import type { SerializedMarkovGraph } from '@passiveintent/core';
+import { MarkovGraph } from '@passiveintent/react';
+import type { SerializedMarkovGraph } from '@passiveintent/react';
 import { useIntent } from '../IntentContext';
 import CodeBlock from '../components/CodeBlock';
 import MetricCard from '../components/MetricCard';

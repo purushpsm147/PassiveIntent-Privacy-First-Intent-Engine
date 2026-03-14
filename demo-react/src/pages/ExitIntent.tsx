@@ -4,7 +4,7 @@
 import React, { useEffect, useState } from 'react';
 import { useIntent } from '../IntentContext';
 import CodeBlock from '../components/CodeBlock';
-import type { ExitIntentPayload } from '@passiveintent/core';
+import type { ExitIntentPayload } from '@passiveintent/react';
 
 export default function ExitIntent() {
   const { track, on, lifecycle } = useIntent();

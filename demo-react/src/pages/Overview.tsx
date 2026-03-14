@@ -7,7 +7,7 @@ import React, { useCallback, useEffect, useState } from 'react';
 import { useIntent } from '../IntentContext';
 import MetricCard from '../components/MetricCard';
 import CodeBlock from '../components/CodeBlock';
-import type { PassiveIntentTelemetry } from '@passiveintent/core';
+import type { PassiveIntentTelemetry } from '@passiveintent/react';
 
 const QUICK_STATES = [
   '/home',

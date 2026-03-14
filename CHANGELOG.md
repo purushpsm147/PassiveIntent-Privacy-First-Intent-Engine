@@ -25,7 +25,9 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ---
 
-## [1.1.0] – Microkernel Architecture, Web Integration & Testing
+## [1.1.0] – Microkernel Architecture, Platform Features & Hardening
+
+_This is the corrected semver release for the feature work that was mistakenly published as `1.0.1`._
 
 ### Microkernel Architecture — Four-Layer Model
 
@@ -114,12 +116,6 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
   - `destroy() prevents further state emissions after popstate` — guards the teardown path.
   - `createBrowserIntent: listener registered after construction receives initial state_change via microtask` — end-to-end factory-level regression guard.
 - Total unit test count: **85 tests, 0 failures**.
-
----
-
-## [Unreleased] – Post-1.0 Engineering & Infrastructure
-
-_Branch: `codex/convert-to-npm-workspaces-monorepo` — included in v1.0.0 initial release to enable future ecosystem extensions without breaking changes_
 
 ### Smart Exit-Intent Detection — `exit_intent` Event
 

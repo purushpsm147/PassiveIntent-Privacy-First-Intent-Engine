@@ -6,7 +6,7 @@
 import React, { useEffect, useState } from 'react';
 import { useIntent } from '../IntentContext';
 import CodeBlock from '../components/CodeBlock';
-import type { HighEntropyPayload } from '@passiveintent/core';
+import type { HighEntropyPayload } from '@passiveintent/react';
 
 const RANDOM_STATES = [
   '/search',

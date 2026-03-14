@@ -48,6 +48,7 @@ type FakeInstance = {
   incrementCounter: ReturnType<typeof vi.fn>;
   getCounter: ReturnType<typeof vi.fn>;
   resetCounter: ReturnType<typeof vi.fn>;
+  trackConversion: ReturnType<typeof vi.fn>;
 };
 
 function makeFakeInstance(): FakeInstance {
@@ -62,6 +63,7 @@ function makeFakeInstance(): FakeInstance {
     incrementCounter: vi.fn().mockReturnValue(2),
     getCounter: vi.fn().mockReturnValue(5),
     resetCounter: vi.fn(),
+    trackConversion: vi.fn(),
   };
 }
 
@@ -178,11 +180,19 @@ describe('usePassiveIntent', () => {
       expect(() => unsub()).not.toThrow();
     });
 
-    it('getTelemetry() returns an empty object', () => {
+    it('getTelemetry() returns a fully-typed zero-value object', () => {
       const { result, unmount } = renderHook(() => usePassiveIntent(BASE_CONFIG));
       unmount();
 
-      expect(result.current.getTelemetry()).toEqual({});
+      expect(result.current.getTelemetry()).toEqual({
+        sessionId: '',
+        transitionsEvaluated: 0,
+        botStatus: 'human',
+        anomaliesFired: 0,
+        engineHealth: 'healthy',
+        baselineStatus: 'active',
+        assignmentGroup: 'control',
+      });
     });
 
     it('predictNextStates() returns an empty array', () => {

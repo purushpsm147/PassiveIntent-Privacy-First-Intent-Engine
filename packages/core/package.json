@@ -1,6 +1,6 @@
 {
   "name": "@passiveintent/core",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "description": "Privacy-first, SSR-safe intent detection engine using local Markov-chain inference and Bloom filters.",
   "keywords": [
     "intent",

@@ -4,7 +4,7 @@
 import React, { useEffect, useState } from 'react';
 import { useIntent } from '../IntentContext';
 import CodeBlock from '../components/CodeBlock';
-import type { BotDetectedPayload, PassiveIntentTelemetry } from '@passiveintent/core';
+import type { BotDetectedPayload, PassiveIntentTelemetry } from '@passiveintent/react';
 
 const STATES = ['/home', '/products', '/cart', '/checkout', '/search', '/blog'];
 

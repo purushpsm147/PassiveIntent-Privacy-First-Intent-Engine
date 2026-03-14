@@ -4,12 +4,12 @@
  * for methods not yet exposed by the hook.
  */
 import React, { useCallback, useEffect, useRef, useState } from 'react';
-import { IntentManager } from '@passiveintent/core';
-import { MemoryStorageAdapter } from '@passiveintent/core';
+import { IntentManager } from '@passiveintent/react';
+import { MemoryStorageAdapter } from '@passiveintent/react';
 import { useIntent } from '../IntentContext';
 import CodeBlock from '../components/CodeBlock';
 import { timerAdapter, lifecycleAdapter } from '../adapters';
-import type { ConversionPayload } from '@passiveintent/core';
+import type { ConversionPayload } from '@passiveintent/react';
 
 export default function Conversion() {
   const { on } = useIntent();
@@ -137,7 +137,7 @@ export default function Conversion() {
 
       <CodeBlock
         label="trackConversion — local-only revenue correlation"
-        code={`<span class="kw">import</span> { <span class="type">IntentManager</span> } <span class="kw">from</span> <span class="str">'@passiveintent/core'</span>;
+        code={`<span class="kw">import</span> { <span class="type">IntentManager</span> } <span class="kw">from</span> <span class="str">'@passiveintent/react'</span>;
 
 <span class="cmt">// Create a manager instance alongside usePassiveIntent</span>
 <span class="kw">const</span> manager = <span class="kw">new</span> <span class="type">IntentManager</span>({ storageKey: <span class="str">'my-app'</span> });

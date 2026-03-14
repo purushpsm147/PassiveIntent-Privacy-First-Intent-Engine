@@ -16,7 +16,7 @@ import type {
   DwellTimeAnomalyPayload,
   HesitationDetectedPayload,
   TrajectoryAnomalyPayload,
-} from '@passiveintent/core';
+} from '@passiveintent/react';
 
 interface Gauge {
   label: string;
