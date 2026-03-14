@@ -187,8 +187,8 @@ export function usePassiveIntent(config?: IntentManagerConfig): UsePassiveIntent
   // The idempotent guard (instanceRef.current === null) makes this safe under
   // Concurrent Mode re-renders: the instance is created exactly once per
   // component lifetime regardless of how many times React invokes the render.
-  if (config !== undefined && instanceRef.current === null && IS_BROWSER) {
-    instanceRef.current = new IntentManager(configRef.current!);
+  if (configRef.current !== undefined && instanceRef.current === null && IS_BROWSER) {
+    instanceRef.current = new IntentManager(configRef.current);
   }
 
   // Cleanup only — creation is synchronous above. In React Strict Mode the
@@ -285,7 +285,7 @@ export function usePassiveIntent(config?: IntentManagerConfig): UsePassiveIntent
   // ── Conditional return — after all hooks ──────────────────────────────────
 
   // Context mode: no config provided → delegate to the nearest Provider.
-  if (config === undefined) {
+  if (configRef.current === undefined) {
     if (ctx === null) {
       throw new Error(
         '[PassiveIntent] usePassiveIntent() was called without a config argument ' +
