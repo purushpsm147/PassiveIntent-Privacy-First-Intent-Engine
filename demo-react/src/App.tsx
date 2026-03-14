@@ -1,7 +1,5 @@
 import React, { useState } from 'react';
-import { PassiveIntentProvider, MemoryStorageAdapter } from '@passiveintent/react';
-import { timerAdapter, lifecycleAdapter } from './adapters';
-import { ECOMMERCE_BASELINE } from './baseline';
+import { IntentProvider } from './IntentContext';
 import Shell from './Shell';
 import Overview from './pages/Overview';
 import BasicTracking from './pages/BasicTracking';
@@ -63,44 +61,16 @@ const PAGE_MAP: Record<DemoKey, React.ComponentType> = {
   'cross-tab': CrossTabSync,
 };
 
-// Module-level singleton — avoids polluting localStorage during the demo.
-// Shared across session resets (same behaviour as the old IntentContext).
-const memStorage = new MemoryStorageAdapter();
-
 export default function App() {
   const [active, setActive] = useState<DemoKey>('overview');
   const [sessionKey, setSessionKey] = useState(0);
   const ActivePage = PAGE_MAP[active];
 
   return (
-    <PassiveIntentProvider
-      key={sessionKey}
-      config={{
-        storageKey: 'pi-react-demo',
-        botProtection: true,
-        crossTabSync: false,
-        enableBigrams: true,
-        persistThrottleMs: 200,
-        baseline: ECOMMERCE_BASELINE,
-        baselineMeanLL: -1.4,
-        baselineStdLL: 0.35,
-        graph: {
-          highEntropyThreshold: 0.72,
-          divergenceThreshold: 2.5,
-          maxStates: 500,
-          smoothingAlpha: 0.1,
-        },
-        dwellTime: { enabled: true, minSamples: 3, zScoreThreshold: 2.0 },
-      }}
-      adapters={{
-        storage: memStorage,
-        timer: timerAdapter,
-        lifecycle: lifecycleAdapter,
-      }}
-    >
+    <IntentProvider key={sessionKey}>
       <Shell active={active} onNavigate={setActive} onReset={() => setSessionKey((k) => k + 1)}>
         <ActivePage />
       </Shell>
-    </PassiveIntentProvider>
+    </IntentProvider>
   );
 }

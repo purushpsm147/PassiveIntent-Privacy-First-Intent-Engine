@@ -5,7 +5,12 @@
  * LICENSE file in the root directory of this source tree.
  */
 
-import type { IntentEventMap, IntentEventName, PassiveIntentTelemetry } from '@passiveintent/core';
+import type {
+  ConversionPayload,
+  IntentEventMap,
+  IntentEventName,
+  PassiveIntentTelemetry,
+} from '@passiveintent/core';
 
 // ── Public return type ────────────────────────────────────────────────────────
 
@@ -81,4 +86,15 @@ export interface UsePassiveIntentReturn {
    * Reset a named deterministic counter to zero. No-op during SSR.
    */
   resetCounter: (key: string) => void;
+
+  /**
+   * Emit a local-only `conversion` event. The payload never leaves the device
+   * unless your `conversion` listener explicitly sends it. No-op during SSR.
+   *
+   * ```tsx
+   * const { trackConversion } = usePassiveIntent();
+   * trackConversion({ type: 'purchase', value: 49.99, currency: 'USD' });
+   * ```
+   */
+  trackConversion: (payload: ConversionPayload) => void;
 }

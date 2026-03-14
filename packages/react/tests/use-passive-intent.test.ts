@@ -48,6 +48,7 @@ type FakeInstance = {
   incrementCounter: ReturnType<typeof vi.fn>;
   getCounter: ReturnType<typeof vi.fn>;
   resetCounter: ReturnType<typeof vi.fn>;
+  trackConversion: ReturnType<typeof vi.fn>;
 };
 
 function makeFakeInstance(): FakeInstance {
@@ -62,6 +63,7 @@ function makeFakeInstance(): FakeInstance {
     incrementCounter: vi.fn().mockReturnValue(2),
     getCounter: vi.fn().mockReturnValue(5),
     resetCounter: vi.fn(),
+    trackConversion: vi.fn(),
   };
 }
 

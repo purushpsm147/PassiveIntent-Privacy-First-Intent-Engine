@@ -8,6 +8,7 @@
 import { useCallback, useContext, useEffect, useMemo, useRef } from 'react';
 import { IntentManager } from '@passiveintent/core';
 import type {
+  ConversionPayload,
   IntentEventMap,
   IntentEventName,
   IntentManagerConfig,
@@ -248,8 +249,12 @@ export function usePassiveIntent(config?: IntentManagerConfig): UsePassiveIntent
     instanceRef.current?.resetCounter(key);
   }, []);
 
+  const trackConversion = useCallback((payload: ConversionPayload): void => {
+    instanceRef.current?.trackConversion(payload);
+  }, []);
+
   // Standalone mode returns this object. useMemo guarantees referential
-  // stability across re-renders — all 8 callbacks have [] deps so the memo
+  // stability across re-renders — all 9 callbacks have [] deps so the memo
   // fires exactly once per mount, matching PassiveIntentProvider's strategy.
   // In context mode this value is computed but never returned (negligible cost).
   const standaloneValue = useMemo<UsePassiveIntentReturn>(
@@ -262,6 +267,7 @@ export function usePassiveIntent(config?: IntentManagerConfig): UsePassiveIntent
       incrementCounter,
       getCounter,
       resetCounter,
+      trackConversion,
     }),
     [
       track,
@@ -272,6 +278,7 @@ export function usePassiveIntent(config?: IntentManagerConfig): UsePassiveIntent
       incrementCounter,
       getCounter,
       resetCounter,
+      trackConversion,
     ],
   );
 

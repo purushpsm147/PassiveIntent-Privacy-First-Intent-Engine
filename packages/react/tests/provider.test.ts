@@ -41,6 +41,7 @@ type FakeInstance = {
   incrementCounter: ReturnType<typeof vi.fn>;
   getCounter: ReturnType<typeof vi.fn>;
   resetCounter: ReturnType<typeof vi.fn>;
+  trackConversion: ReturnType<typeof vi.fn>;
 };
 
 function makeFakeInstance(): FakeInstance {
@@ -54,6 +55,7 @@ function makeFakeInstance(): FakeInstance {
     incrementCounter: vi.fn().mockReturnValue(2),
     getCounter: vi.fn().mockReturnValue(5),
     resetCounter: vi.fn(),
+    trackConversion: vi.fn(),
   };
 }
 
@@ -151,6 +153,21 @@ describe('PassiveIntentProvider + context-mode usePassiveIntent', () => {
       expect(instance.track).toHaveBeenCalledTimes(2);
       expect(instance.track).toHaveBeenNthCalledWith(1, '/home');
       expect(instance.track).toHaveBeenNthCalledWith(2, '/checkout');
+      unmount();
+    });
+
+    it('delegates trackConversion() to the Provider instance', () => {
+      const { result, unmount } = renderHook(() => usePassiveIntent(), {
+        wrapper: ({ children }) => withProvider(children),
+      });
+
+      const instance = MockIM.mock.results[0].value as unknown as FakeInstance;
+      const payload = { type: 'purchase', value: 49.99, currency: 'USD' };
+
+      result.current.trackConversion(payload);
+
+      expect(instance.trackConversion).toHaveBeenCalledTimes(1);
+      expect(instance.trackConversion).toHaveBeenCalledWith(payload);
       unmount();
     });
 

@@ -56,6 +56,7 @@ function makeFakeInstance() {
     incrementCounter: vi.fn().mockReturnValue(0),
     getCounter: vi.fn().mockReturnValue(0),
     resetCounter: vi.fn(),
+    trackConversion: vi.fn(),
     // Test helper: emit an event to all registered listeners
     _emit(event: string, payload: any) {
       listeners.get(event)?.forEach((cb) => cb(payload));

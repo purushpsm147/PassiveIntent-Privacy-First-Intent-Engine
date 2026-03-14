@@ -8,6 +8,7 @@
 import React, { useCallback, useEffect, useMemo, useRef, type ReactNode } from 'react';
 import { IntentManager } from '@passiveintent/core';
 import type {
+  ConversionPayload,
   IntentEventMap,
   IntentEventName,
   IntentManagerConfig,
@@ -173,6 +174,10 @@ export function PassiveIntentProvider({
     instanceRef.current?.resetCounter(key);
   }, []);
 
+  const trackConversion = useCallback((payload: ConversionPayload): void => {
+    instanceRef.current?.trackConversion(payload);
+  }, []);
+
   // ── Context value ─────────────────────────────────────────────────────────
   // useMemo ensures the context value object is referentially stable across
   // re-renders of the Provider. All callback deps are useCallback([]) refs
@@ -187,6 +192,7 @@ export function PassiveIntentProvider({
       incrementCounter,
       getCounter,
       resetCounter,
+      trackConversion,
     }),
     [
       track,
@@ -197,6 +203,7 @@ export function PassiveIntentProvider({
       incrementCounter,
       getCounter,
       resetCounter,
+      trackConversion,
     ],
   );
 
